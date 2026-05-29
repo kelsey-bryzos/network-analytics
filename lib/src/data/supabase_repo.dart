@@ -330,44 +330,16 @@ class SupabaseRepo {
     return (res.data as Map?)?.cast<String, dynamic>() ?? {};
   }
 
+  /// Probe a REST data source via bryzos-proxy. All current data sources
+  /// are REST; MySQL is out of scope for v1 of the deployed app.
   Future<Map<String, dynamic>> testDataSource(String dataSourceId,
-      {String kind = 'mysql'}) async {
-    if (kind == 'rest') {
-      // For REST sources we issue a lightweight probe via bryzos-proxy.
-      final res = await client.functions.invoke(
-        'bryzos-proxy',
-        body: {
-          'data_source_id': dataSourceId,
-          'table': 'user',
-          'limit': 1,
-        },
-        headers: _fnHeaders(),
-      );
-      final data = (res.data as Map?)?.cast<String, dynamic>() ?? {};
-      return data;
-    }
-    final res = await client.functions.invoke(
-      'mysql-test',
-      body: {'data_source_id': dataSourceId},
-      headers: _fnHeaders(),
-    );
-    return (res.data as Map?)?.cast<String, dynamic>() ?? {};
-  }
-
-  /// Fetch rows from a Bryzos REST table via the bryzos-proxy Edge Function.
-  Future<Map<String, dynamic>> bryzosTable(
-    String dataSourceId, {
-    required String table,
-    int limit = 100,
-    int offset = 0,
-  }) async {
+      {String kind = 'rest'}) async {
     final res = await client.functions.invoke(
       'bryzos-proxy',
       body: {
         'data_source_id': dataSourceId,
-        'table': table,
-        'limit': limit,
-        'offset': offset,
+        'table': 'user',
+        'limit': 1,
       },
       headers: _fnHeaders(),
     );
@@ -390,46 +362,6 @@ class SupabaseRepo {
         'time_range': timeRange,
         'max_items': maxItems,
       },
-      headers: _fnHeaders(),
-    );
-    return (res.data as Map?)?.cast<String, dynamic>() ?? {};
-  }
-
-  Future<Map<String, dynamic>> introspect(String dataSourceId) async {
-    final res = await client.functions.invoke(
-      'mysql-introspect',
-      body: {'data_source_id': dataSourceId},
-      headers: _fnHeaders(),
-    );
-    return (res.data as Map?)?.cast<String, dynamic>() ?? {};
-  }
-
-  /// Run a raw read-only SQL query against a data source via the mysql-query
-  /// Edge Function.
-  Future<Map<String, dynamic>> runQuery({
-    required String dataSourceId,
-    required String sql,
-    List<Object?>? params,
-    int? maxRows,
-  }) async {
-    final res = await client.functions.invoke(
-      'mysql-query',
-      body: {
-        'data_source_id': dataSourceId,
-        'sql': sql,
-        if (params != null) 'params': params,
-        if (maxRows != null) 'max_rows': maxRows,
-      },
-      headers: _fnHeaders(),
-    );
-    return (res.data as Map?)?.cast<String, dynamic>() ?? {};
-  }
-
-  // ------------------ Widget data ------------------
-  Future<Map<String, dynamic>> widgetData(String widgetId) async {
-    final res = await client.functions.invoke(
-      'widget-data',
-      body: {'widget_id': widgetId},
       headers: _fnHeaders(),
     );
     return (res.data as Map?)?.cast<String, dynamic>() ?? {};

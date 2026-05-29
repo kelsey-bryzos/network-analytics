@@ -21,8 +21,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.32.0'   # pin to the version you develop with
-          channel: 'stable'
+          channel: 'stable'   # use latest stable; pubspec requires Dart ^3.11.3
           cache: true
 
       # ── 3. Install dependencies ──────────────────────────────────────────

@@ -13,6 +13,53 @@ import '../../design/optics_card.dart';
 import '../../design/theme.dart';
 import 'role_info_tooltip.dart';
 
+// ---------------------------------------------------------------------------
+// Tenant-scoped providers for the settings screen.
+// These are keyed by tenantId so each org card always queries its own data,
+// independent of which tenant is currently "active" in the JWT.
+// ---------------------------------------------------------------------------
+
+/// Members list for a specific tenant (bypasses the global activeTenantProvider).
+final _tenantMembersProvider =
+    FutureProvider.family<List<Map<String, dynamic>>, String>((ref, tenantId) async {
+  final client = ref.watch(supabaseProvider);
+  final rows = await client.rpc('list_tenant_members', params: {'tid': tenantId});
+  return (rows as List).map((r) {
+    final m = r as Map<String, dynamic>;
+    final firstName = (m['first_name'] as String?)?.trim() ?? '';
+    final lastName  = (m['last_name']  as String?)?.trim() ?? '';
+    final fullName  = [firstName, lastName].where((s) => s.isNotEmpty).join(' ');
+    final displayName = (m['display_name'] as String?)?.trim() ?? '';
+    return {
+      'role': m['role'],
+      'display_name': displayName.isNotEmpty
+          ? displayName
+          : (fullName.isNotEmpty ? fullName : 'Unknown User'),
+      'first_name': firstName,
+      'last_name': lastName,
+      'full_name': fullName.isNotEmpty ? fullName : null,
+      'email': (m['email'] as String?)?.trim() ?? '',
+      'user_id': m['user_id'],
+      'is_bryzos_staff': m['is_bryzos_staff'] ?? false,
+    };
+  }).toList();
+});
+
+/// Pending invites for a specific tenant (bypasses the global activeTenantPendingInvitesProvider).
+final _tenantPendingInvitesProvider =
+    FutureProvider.family<List<Map<String, dynamic>>, String>((ref, tenantId) async {
+  final client = ref.watch(supabaseProvider);
+  final rows = await client.rpc(
+    'list_tenant_pending_invites',
+    params: {'tid': tenantId},
+  );
+  // Attach tenant_id to each invite so the revoke handler can use it.
+  return (rows as List).map((r) {
+    final m = (r as Map).cast<String, dynamic>();
+    return {...m, 'tenant_id': tenantId};
+  }).toList();
+});
+
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
@@ -572,15 +619,15 @@ class _ActiveTenantCardState extends ConsumerState<_ActiveTenantCard> {
                   ],
                 ),
                 const SizedBox(height: OpticsSpacing.md),
-                const _TeamList(),
+                _TeamList(tenantId: widget.tenant['id'] as String),
                 const SizedBox(height: OpticsSpacing.lg),
                 const Text('PENDING INVITES', style: _orgSectionLabel),
                 const SizedBox(height: OpticsSpacing.md),
-                const _PendingInvitesList(),
+                _PendingInvitesList(tenantId: widget.tenant['id'] as String),
                 const SizedBox(height: OpticsSpacing.lg),
                 const Text('INVITE TEAMMATE', style: _orgSectionLabel),
                 const SizedBox(height: OpticsSpacing.md),
-                const _InvitePanel(),
+                _InvitePanel(tenantId: widget.tenant['id'] as String),
               ],
             ),
           ),
@@ -591,11 +638,14 @@ class _ActiveTenantCardState extends ConsumerState<_ActiveTenantCard> {
 }
 
 class _TeamList extends ConsumerWidget {
-  const _TeamList();
+  final String tenantId;
+  const _TeamList({required this.tenantId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final membersAsync = ref.watch(activeTenantMembersProvider);
+    // Use a tenant-specific provider keyed to this card's tenant, not the
+    // global activeTenantProvider, so the list always reflects the correct org.
+    final membersAsync = ref.watch(_tenantMembersProvider(tenantId));
     return membersAsync.when(
       data: (members) {
         if (members.isEmpty) {
@@ -731,11 +781,12 @@ class _TeamList extends ConsumerWidget {
 /// Lists outstanding (un-accepted) invites for the active tenant, with a
 /// revoke (×) button per row. Release Plan §1.9.
 class _PendingInvitesList extends ConsumerWidget {
-  const _PendingInvitesList();
+  final String tenantId;
+  const _PendingInvitesList({required this.tenantId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final invitesAsync = ref.watch(activeTenantPendingInvitesProvider);
+    final invitesAsync = ref.watch(_tenantPendingInvitesProvider(tenantId));
     return invitesAsync.when(
       loading: () => const Padding(
         padding: EdgeInsets.symmetric(vertical: 4),
@@ -805,7 +856,8 @@ class _PendingInviteRowState extends ConsumerState<_PendingInviteRow> {
     setState(() => _busy = true);
     try {
       final client = ref.read(supabaseProvider);
-      final tid = ref.read(activeTenantProvider);
+      // Use invite's own tenant_id if available, fall back to active tenant.
+      final tid = (inv['tenant_id'] as String?) ?? ref.read(activeTenantProvider);
       final res = await client.functions.invoke(
         'revoke-invite',
         body: {'invite_id': inv['id']},
@@ -907,7 +959,8 @@ class _PendingInviteRowState extends ConsumerState<_PendingInviteRow> {
 }
 
 class _InvitePanel extends ConsumerStatefulWidget {
-  const _InvitePanel();
+  final String tenantId;
+  const _InvitePanel({required this.tenantId});
   @override
   ConsumerState<_InvitePanel> createState() => _InvitePanelState();
 }
@@ -947,7 +1000,7 @@ class _InvitePanelState extends ConsumerState<_InvitePanel> {
     setState(() => _busy = true);
     try {
       final client = ref.read(supabaseProvider);
-      final tid = ref.read(activeTenantProvider);
+      final tid = widget.tenantId;
       final res = await client.functions.invoke(
         'invite-user',
         body: {
@@ -956,7 +1009,7 @@ class _InvitePanelState extends ConsumerState<_InvitePanel> {
           'first_name': first,
           'last_name': last,
         },
-        headers: tid == null ? {} : {'x-optics-tenant': tid},
+        headers: {'x-optics-tenant': tid},
       );
       if (mounted) {
         _firstName.clear();
@@ -993,7 +1046,11 @@ class _InvitePanelState extends ConsumerState<_InvitePanel> {
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 5),
         ));
-        ref.invalidate(activeTenantMembersProvider); // Refresh list
+        // Invalidate both the tenant-specific providers for this card
+        // and the global providers so other parts of the UI stay fresh.
+        ref.invalidate(_tenantMembersProvider(tid));
+        ref.invalidate(_tenantPendingInvitesProvider(tid));
+        ref.invalidate(activeTenantMembersProvider);
         ref.invalidate(activeTenantPendingInvitesProvider);
       }
     } catch (e) {

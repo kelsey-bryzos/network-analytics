@@ -230,10 +230,11 @@ class _AcceptInviteScreenState extends ConsumerState<AcceptInviteScreen> {
   Future<void> _applySession(Map<String, dynamic> data) async {
     final sessionMap = data['session'] as Map<String, dynamic>?;
     if (sessionMap != null) {
-      final accessToken = sessionMap['access_token']?.toString() ?? '';
       final refreshToken = sessionMap['refresh_token']?.toString() ?? '';
-      if (accessToken.isNotEmpty && refreshToken.isNotEmpty) {
-        await Supabase.instance.client.auth.setSession(accessToken, refreshToken);
+      if (refreshToken.isNotEmpty) {
+        // setSession() takes only the refresh token — it exchanges it for a
+        // fresh access+refresh pair and stores the resulting session.
+        await Supabase.instance.client.auth.setSession(refreshToken);
       }
     }
   }

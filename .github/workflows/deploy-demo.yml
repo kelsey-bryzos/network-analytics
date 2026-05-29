@@ -1,10 +1,10 @@
-name: Deploy Web to Cloudflare Pages
+name: Deploy Demo to Cloudflare Pages
 
-# Triggers: every push to `main` OR a manual run from GitHub Actions UI.
+# Triggers: every push to `demo` branch OR a manual run from GitHub Actions UI.
 on:
   push:
     branches:
-      - main
+      - demo
   workflow_dispatch:
 
 jobs:
@@ -28,22 +28,17 @@ jobs:
       - name: Install Flutter dependencies
         run: flutter pub get
 
-      # ── 4. Build Flutter Web ─────────────────────────────────────────────
-      - name: Build Flutter web (release)
+      # ── 4. Build Flutter Web (Demo) ──────────────────────────────────────
+      - name: Build Flutter web (demo release)
         run: |
           flutter build web \
             --release \
             --base-href "/" \
-            --dart-define=ENV=prod \
-            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL_PROD }} \
-            --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY_PROD }}
+            --dart-define=ENV=demo \
+            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL_DEMO }} \
+            --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY_DEMO }}
 
       # ── 4b. Fingerprint + cache-bust ─────────────────────────────────────
-      # 1. Rename main.dart.js → main.v{SHA}.dart.js (new CDN URL every deploy)
-      # 2. Patch flutter_bootstrap.js to load the versioned filename
-      # 3. Stamp SW bytes so changed file forces stale-SW eviction in browsers
-      # 4. Add ?v=SHA to bootstrap <script> in index.html for extra bust
-      # 5. Write _headers so SW/bootstrap/index.html never cache long-term
       - name: Fingerprint main.dart.js and fix CDN caching
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
@@ -57,13 +52,12 @@ jobs:
           printf '/main.v*.dart.js\n  Cache-Control: public, max-age=31536000, immutable\n/flutter_service_worker.js\n  Cache-Control: public, max-age=0, must-revalidate\n/flutter_bootstrap.js\n  Cache-Control: public, max-age=0, must-revalidate\n/index.html\n  Cache-Control: public, max-age=0, must-revalidate\n/\n  Cache-Control: public, max-age=0, must-revalidate\n' > build/web/_headers
 
           echo "Renamed main.dart.js -> ${VERSIONED}"
-          echo "Patched flutter_bootstrap.js -> ${VERSIONED}"
           echo "Stamped SW: ${SHORT_SHA}"
 
-      # ── 5. Deploy to Cloudflare Pages ────────────────────────────────────
-      - name: Deploy to Cloudflare Pages
+      # ── 5. Deploy to Cloudflare Pages (Demo) ─────────────────────────────
+      - name: Deploy to Cloudflare Pages (demo)
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy build/web --project-name=network-analytics --branch=main
+          command: pages deploy build/web --project-name=network-analytics-demo --branch=demo

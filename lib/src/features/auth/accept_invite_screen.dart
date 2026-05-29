@@ -49,8 +49,6 @@ class _AcceptInviteScreenState extends ConsumerState<AcceptInviteScreen> {
 
   // T&C state — only relevant for Path C (new users)
   bool _termsAccepted = false;
-  bool _showTerms = false;          // toggle inline T&C panel
-  bool _termsScrolledToBottom = false;
 
   // Success state
   bool _accepted = false;
@@ -497,6 +495,13 @@ class _AcceptInviteScreenState extends ConsumerState<AcceptInviteScreen> {
 
   // ── T&C section (Path C only) ────────────────────────────────────────────
 
+  void _openTermsDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => _TermsDialog(termsContent: _termsText()),
+    );
+  }
+
   Widget _termsSection() {
     return Container(
       decoration: BoxDecoration(
@@ -507,125 +512,66 @@ class _AcceptInviteScreenState extends ConsumerState<AcceptInviteScreen> {
               ? const Color(0xFF3DB8FF).withOpacity(0.5)
               : OpticsColors.border,
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Header row with checkbox
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: Checkbox(
-                    value: _termsAccepted,
-                    onChanged: (v) => setState(() {
-                      _termsAccepted = v ?? false;
-                      _submitError = null;
-                    }),
-                    activeColor: const Color(0xFF3DB8FF),
-                    side: BorderSide(
-                      color: _termsAccepted
-                          ? const Color(0xFF3DB8FF)
-                          : OpticsColors.textMuted,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: RichText(
-                    text: TextSpan(
-                      style: OpticsTextStyles.bodySm,
-                      children: [
-                        const TextSpan(text: 'I have read and agree to the '),
-                        TextSpan(
-                          text: 'Terms and Conditions',
-                          style: OpticsTextStyles.bodySm.copyWith(
-                            color: const Color(0xFF3DB8FF),
-                            decoration: TextDecoration.underline,
-                          ),
-                          recognizer: TapGestureRecognizer()
-                            ..onTap = () => setState(() => _showTerms = !_showTerms),
-                        ),
-                        const TextSpan(text: ' of Bryzos, LLC.'),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Expand/collapse toggle
-          GestureDetector(
-            onTap: () => setState(() => _showTerms = !_showTerms),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
-              child: Row(
-                children: [
-                  Icon(
-                    _showTerms ? Icons.expand_less : Icons.expand_more,
-                    size: 16,
-                    color: OpticsColors.textMuted,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    _showTerms ? 'HIDE TERMS' : 'READ TERMS',
-                    style: OpticsTextStyles.bodySm.copyWith(
-                      color: OpticsColors.textMuted,
-                      fontSize: 11,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          // Inline T&C text panel (collapsible)
-          if (_showTerms) ...[
-            Container(
-              height: 320,
-              decoration: BoxDecoration(
-                border: Border(
-                  top: BorderSide(color: OpticsColors.border),
-                ),
-              ),
-              child: NotificationListener<ScrollNotification>(
-                onNotification: (n) {
-                  if (!_termsScrolledToBottom && n is ScrollUpdateNotification) {
-                    final metrics = n.metrics;
-                    if (metrics.pixels >= metrics.maxScrollExtent - 40) {
-                      setState(() => _termsScrolledToBottom = true);
-                    }
-                  }
-                  return false;
-                },
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: _termsText(),
+        ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: Checkbox(
+                value: _termsAccepted,
+                onChanged: (v) => setState(() {
+                  _termsAccepted = v ?? false;
+                  _submitError = null;
+                }),
+                activeColor: const Color(0xFF3DB8FF),
+                side: BorderSide(
+                  color: _termsAccepted
+                      ? const Color(0xFF3DB8FF)
+                      : OpticsColors.textMuted,
                 ),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
-              child: AnimatedOpacity(
-                opacity: _termsScrolledToBottom ? 0.0 : 1.0,
-                duration: const Duration(milliseconds: 300),
-                child: Text(
-                  '↓ SCROLL TO READ ALL TERMS',
-                  style: OpticsTextStyles.bodySm.copyWith(
-                    color: const Color(0xFF3DB8FF).withOpacity(0.7),
-                    fontSize: 11,
-                    letterSpacing: 0.8,
-                  ),
-                  textAlign: TextAlign.center,
+            const SizedBox(width: 10),
+            Expanded(
+              child: RichText(
+                text: TextSpan(
+                  style: OpticsTextStyles.bodySm,
+                  children: [
+                    const TextSpan(text: 'I have read and agree to the '),
+                    TextSpan(
+                      text: 'Terms and Conditions',
+                      style: OpticsTextStyles.bodySm.copyWith(
+                        color: const Color(0xFF3DB8FF),
+                        decoration: TextDecoration.underline,
+                      ),
+                      recognizer: TapGestureRecognizer()
+                        ..onTap = _openTermsDialog,
+                    ),
+                    const TextSpan(text: ' of Bryzos, LLC.'),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            // "Read" button to open the popup
+            GestureDetector(
+              onTap: _openTermsDialog,
+              child: Text(
+                'READ',
+                style: OpticsTextStyles.bodySm.copyWith(
+                  color: const Color(0xFF3DB8FF),
+                  fontSize: 11,
+                  letterSpacing: 0.8,
+                  decoration: TextDecoration.underline,
                 ),
               ),
             ),
           ],
-        ],
+        ),
       ),
     );
   }
@@ -865,5 +811,138 @@ class _AcceptInviteScreenState extends ConsumerState<AcceptInviteScreen> {
       case 'viewer': return 'Viewer';
     }
     return r;
+  }
+}
+
+// ── Terms and Conditions popup dialog ─────────────────────────────────────
+
+class _TermsDialog extends StatefulWidget {
+  final Widget termsContent;
+  const _TermsDialog({required this.termsContent});
+
+  @override
+  State<_TermsDialog> createState() => _TermsDialogState();
+}
+
+class _TermsDialogState extends State<_TermsDialog> {
+  bool _scrolledToBottom = false;
+  late final ScrollController _scrollCtl;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollCtl = ScrollController();
+    _scrollCtl.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollCtl.removeListener(_onScroll);
+    _scrollCtl.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrolledToBottom &&
+        _scrollCtl.offset >= _scrollCtl.position.maxScrollExtent - 40) {
+      setState(() => _scrolledToBottom = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: OpticsColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(OpticsRadii.lg),
+        side: const BorderSide(color: OpticsColors.border),
+      ),
+      child: SizedBox(
+        width: 640,
+        height: 640,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.fromLTRB(24, 20, 16, 16),
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: OpticsColors.border)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.description_outlined,
+                      size: 18, color: Color(0xFF3DB8FF)),
+                  const SizedBox(width: 8),
+                  const Text('TERMS AND CONDITIONS',
+                      style: OpticsTextStyles.sectionLabel),
+                  const Spacer(),
+                  IconButton(
+                    tooltip: 'Close',
+                    icon: const Icon(Icons.close, size: 18,
+                        color: OpticsColors.textMuted),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            ),
+            // Scrollable body
+            Expanded(
+              child: NotificationListener<ScrollNotification>(
+                onNotification: (n) {
+                  if (!_scrolledToBottom && n is ScrollUpdateNotification) {
+                    final m = n.metrics;
+                    if (m.pixels >= m.maxScrollExtent - 40) {
+                      setState(() => _scrolledToBottom = true);
+                    }
+                  }
+                  return false;
+                },
+                child: SingleChildScrollView(
+                  controller: _scrollCtl,
+                  padding: const EdgeInsets.all(24),
+                  child: widget.termsContent,
+                ),
+              ),
+            ),
+            // Scroll hint + close button
+            Container(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
+              decoration: BoxDecoration(
+                border: Border(top: BorderSide(color: OpticsColors.border)),
+              ),
+              child: Row(
+                children: [
+                  AnimatedOpacity(
+                    opacity: _scrolledToBottom ? 0.0 : 1.0,
+                    duration: const Duration(milliseconds: 300),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.arrow_downward,
+                            size: 13, color: Color(0xFF3DB8FF)),
+                        const SizedBox(width: 4),
+                        Text(
+                          'SCROLL TO READ ALL',
+                          style: OpticsTextStyles.bodySm.copyWith(
+                            color: const Color(0xFF3DB8FF),
+                            fontSize: 11,
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Spacer(),
+                  ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('CLOSE'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

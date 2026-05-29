@@ -1,0 +1,3 @@
+# Cloudflare Pages SPA fallback — all client-side routes hit /index.html
+# so GoRouter can take over. The 200 (not 301) keeps the URL unchanged.
+/*    /index.html   200

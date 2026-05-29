@@ -1,0 +1,51 @@
+name: Deploy Web to Cloudflare Pages
+
+# Triggers: every push to `main` OR a manual run from GitHub Actions UI.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Flutter SDK ───────────────────────────────────────────────────
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.0'   # pin to the version you develop with
+          channel: 'stable'
+          cache: true
+
+      # ── 3. Install dependencies ──────────────────────────────────────────
+      - name: Install Flutter dependencies
+        working-directory: program/flutter_app
+        run: flutter pub get
+
+      # ── 4. Build Flutter Web ─────────────────────────────────────────────
+      # The Supabase URL and anon key are already baked into env.dart as safe
+      # compile-time defaults (anon keys are public by design). No secrets
+      # needed for the web build itself — all sensitive ops go through Edge
+      # Functions that use the service role key server-side.
+      - name: Build Flutter web (release)
+        working-directory: program/flutter_app
+        run: |
+          flutter build web \
+            --release \
+            --base-href "/"
+
+      # ── 5. Deploy to Cloudflare Pages ────────────────────────────────────
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy program/flutter_app/build/web --project-name=network-analytics --branch=main

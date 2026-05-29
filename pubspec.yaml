@@ -1,0 +1,93 @@
+name: optics
+description: "Network Analytics — multi-tenant analytics for distributors."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.3
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # State & routing
+  flutter_riverpod: ^2.6.1
+  go_router: ^14.6.2
+
+  # Backend
+  supabase_flutter: ^2.8.0
+
+  # Charts
+  fl_chart: ^0.69.0
+
+  # Utils
+  file_picker: ^8.0.0
+  # Desktop-only drag-and-drop. Imported through
+  # `lib/src/platform/drop_target.dart` which provides a no-op stub on web.
+  desktop_drop: ^0.4.4
+  cross_file: ^0.3.4
+  collection: ^1.18.0
+  intl: ^0.20.0
+  uuid: ^4.5.1
+  http: ^1.2.2
+  shared_preferences: ^2.3.3
+  url_launcher: ^6.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  # MSIX packaging for Windows distribution (Release Plan §6.4).
+  # Run: `flutter pub run msix:create` after `flutter build windows --release`.
+  msix: ^3.16.7
+
+# -------------------------------------------------------------------------
+# MSIX packaging config (Release Plan §6.4–§6.8)
+# -------------------------------------------------------------------------
+# The publisher_display_name + identity_name must match the Windows code-
+# signing certificate's CN. Update once the Bryzos LLC certificate is issued.
+# -------------------------------------------------------------------------
+msix_config:
+  display_name: Network Analytics
+  publisher_display_name: Bryzos, LLC
+  identity_name: com.bryzos.optics
+  # publisher: REPLACE WITH CERT SUBJECT, e.g. "CN=Bryzos LLC, O=Bryzos LLC, L=..., S=..., C=US"
+  msix_version: 1.0.0.0
+  description: Network Analytics — multi-tenant analytics for distributors.
+  logo_path: assets/logos/network_analytics_icon_512.png
+  capabilities: internetClient, internetClientServer
+  protocol_activation: optics
+  app_installer:
+    publish_folder_path: deploy/windows/updates
+    hours_between_update_checks: 24
+    automatic_background_task: true
+    update_blocks_activation: false
+    show_prompt: false
+    force_update_from_any_version: false
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/logos/
+
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Light.ttf
+          weight: 300
+        - asset: assets/fonts/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700
+    - family: Syncopate
+      fonts:
+        - asset: assets/fonts/Syncopate-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Syncopate-Bold.ttf
+          weight: 700

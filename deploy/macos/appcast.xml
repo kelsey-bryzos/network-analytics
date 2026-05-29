@@ -1,0 +1,49 @@
+<?xml version="1.0" standalone="yes"?>
+<!--
+  Sparkle appcast feed for Optics macOS (Release Plan §5.10).
+
+  This file is hosted at  https://updates.optics.bryzos.com/macos/appcast.xml
+  (or whatever host the §3 domain decision lands on). Sparkle in the running
+  app polls it once per day; when a newer <item> appears, the update is
+  downloaded silently and applied on next idle moment.
+
+  Every release:
+    1. Bump CFBundleShortVersionString + CFBundleVersion in Info.plist.
+    2. `flutter build macos --release`
+    3. codesign + notarize + staple the .dmg (Release Plan §5.5–§5.8).
+    4. `sign_update Optics-X.Y.Z.dmg`     ← Sparkle's EdDSA signing tool.
+    5. Upload the signed .dmg to the update host (S3/R2/Cloudfront).
+    6. Prepend a new <item> below with the new url, length, version, and
+       sparkle:edSignature value from step 4.
+-->
+<rss version="2.0"
+     xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
+     xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Optics for macOS</title>
+    <link>https://updates.optics.bryzos.com/macos/appcast.xml</link>
+    <description>Most recent changes for Optics on macOS.</description>
+    <language>en</language>
+
+    <!--
+      Example item — replace with real releases. Keep the <item>s in
+      reverse-chronological order (newest first); Sparkle picks the first
+      <item> with a sparkle:version greater than the running app.
+    -->
+    <!--
+    <item>
+      <title>Version 1.0.0</title>
+      <pubDate>Mon, 01 Jun 2026 12:00:00 -0500</pubDate>
+      <sparkle:minimumSystemVersion>11.0</sparkle:minimumSystemVersion>
+      <sparkle:releaseNotesLink>https://updates.optics.bryzos.com/macos/release-notes/1.0.0.html</sparkle:releaseNotesLink>
+      <enclosure
+        url="https://updates.optics.bryzos.com/macos/Optics-1.0.0.dmg"
+        sparkle:version="1.0.0"
+        sparkle:shortVersionString="1.0.0"
+        sparkle:edSignature="FILL_IN_FROM_sign_update_OUTPUT"
+        length="0"
+        type="application/octet-stream" />
+    </item>
+    -->
+  </channel>
+</rss>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Optics MSIX App Installer manifest (Release Plan §6.8 — Path A).
+
+  This file is hosted at  https://updates.optics.bryzos.com/windows/Optics.appinstaller
+  Windows itself (not Optics) handles silent background update checks every
+  24 hours, downloads the new MSIX, and applies it on next launch.
+
+  Every release:
+    1. Bump <Version> below + the version in pubspec.yaml msix_config block.
+    2. `flutter build windows --release`
+    3. `flutter pub run msix:create` to produce build/windows/x64/runner/Release/optics.msix
+    4. Sign the MSIX with the Bryzos LLC code-signing cert (Release Plan §6.5):
+         signtool sign /fd SHA256 /a /tr http://timestamp.digicert.com /td SHA256 optics.msix
+    5. Upload the signed .msix to the update host.
+    6. Bump <Version> and Uri attribute below to point at the new .msix; re-upload this file.
+
+  IMPORTANT: Publisher must EXACTLY match the cert subject (CN=…).
+-->
+<AppInstaller Uri="https://updates.optics.bryzos.com/windows/Optics.appinstaller"
+              Version="1.0.0.0"
+              xmlns="http://schemas.microsoft.com/appx/appinstaller/2018">
+  <MainPackage Name="com.bryzos.optics"
+               Publisher="CN=REPLACE_WITH_CERT_SUBJECT"
+               Version="1.0.0.0"
+               ProcessorArchitecture="x64"
+               Uri="https://updates.optics.bryzos.com/windows/Optics-1.0.0.msix" />
+
+  <UpdateSettings>
+    <OnLaunch HoursBetweenUpdateChecks="24"
+              ShowPrompt="false"
+              UpdateBlocksActivation="false" />
+    <AutomaticBackgroundTask />
+  </UpdateSettings>
+</AppInstaller>

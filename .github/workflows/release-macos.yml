@@ -172,41 +172,16 @@ jobs:
 
       - name: Append item to appcast.xml
         env:
+          APPCAST_PATH: web/updates/macos/appcast.xml
           VERSION: ${{ steps.ver.outputs.version }}
           BUILD: ${{ steps.ver.outputs.build }}
           SIG: ${{ steps.sign.outputs.sig }}
           LEN: ${{ steps.sign.outputs.len }}
+          REPO: ${{ github.repository }}
         run: |
-          APPCAST="web/updates/macos/appcast.xml"
           DMG_NAME=$(basename "$DMG")
-          URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/${DMG_NAME}"
-          PUB_DATE=$(date -u "+%a, %d %b %Y %H:%M:%S +0000")
-          NEW_ITEM="    <item>
-      <title>Version ${VERSION}</title>
-      <pubDate>${PUB_DATE}</pubDate>
-      <sparkle:version>${BUILD}</sparkle:version>
-      <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
-      <sparkle:minimumSystemVersion>10.15</sparkle:minimumSystemVersion>
-      <description><![CDATA[<p>See <a href=\"https://github.com/${{ github.repository }}/releases/tag/v${VERSION}\">release notes on GitHub</a>.</p>]]></description>
-      <enclosure
-        url=\"${URL}\"
-        sparkle:edSignature=\"${SIG}\"
-        length=\"${LEN}\"
-        type=\"application/octet-stream\" />
-    </item>"
-          # Insert right after the opening <channel> ... <description>…</description> block,
-          # immediately before the first <!-- comment or before </channel>. We use a python
-          # one-liner to keep the XML parseable.
-          python3 - <<PY
-import re, pathlib, html
-p = pathlib.Path("$APPCAST")
-src = p.read_text()
-item = """$NEW_ITEM"""
-# Insert before </channel>
-new = src.replace("</channel>", item + "\n  </channel>")
-p.write_text(new)
-print("Appcast updated.")
-PY
+          export DMG_URL="https://github.com/${REPO}/releases/download/v${VERSION}/${DMG_NAME}"
+          python3 .github/scripts/append_appcast_item.py
 
       - name: Commit & push updated appcast
         run: |

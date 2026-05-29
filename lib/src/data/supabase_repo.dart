@@ -830,11 +830,19 @@ final activeTenantMembersProvider = FutureProvider<List<Map<String, dynamic>>>((
   final rows = await client.rpc('list_tenant_members', params: {'tid': tenantId});
   return (rows as List).map((r) {
     final m = r as Map<String, dynamic>;
+    final firstName = (m['first_name'] as String?)?.trim() ?? '';
+    final lastName  = (m['last_name']  as String?)?.trim() ?? '';
+    final fullName  = [firstName, lastName].where((s) => s.isNotEmpty).join(' ');
+    final displayName = (m['display_name'] as String?)?.trim() ?? '';
     return {
       'role': m['role'],
-      'display_name': (m['display_name'] as String?)?.isNotEmpty == true
-          ? m['display_name']
-          : 'Unknown User',
+      'display_name': displayName.isNotEmpty
+          ? displayName
+          : (fullName.isNotEmpty ? fullName : 'Unknown User'),
+      'first_name': firstName,
+      'last_name': lastName,
+      'full_name': fullName.isNotEmpty ? fullName : null,
+      'email': (m['email'] as String?)?.trim() ?? '',
       'user_id': m['user_id'],
       'is_bryzos_staff': m['is_bryzos_staff'] ?? false,
     };

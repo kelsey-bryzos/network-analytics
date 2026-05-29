@@ -606,41 +606,110 @@ class _TeamList extends ConsumerWidget {
         }
         return Column(
           children: members.map((m) {
-            final role = (m['role'] as String).toUpperCase();
-            final name = m['display_name'] as String;
+            final role           = (m['role'] as String).toUpperCase();
+            final displayName    = (m['display_name'] as String?) ?? '';
+            final fullName       = (m['full_name']    as String?) ?? displayName;
+            final email          = (m['email']        as String?) ?? '';
+            final isBryzosStaff  = m['is_bryzos_staff'] == true;
+
+            // Avatar initial: prefer first char of fullName, else email
+            final avatarChar = fullName.isNotEmpty
+                ? fullName[0].toUpperCase()
+                : (email.isNotEmpty ? email[0].toUpperCase() : '?');
+
             return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.only(bottom: 10),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
+                  // Avatar circle
                   Container(
-                    width: 28,
-                    height: 28,
-                    decoration: const BoxDecoration(
-                      color: OpticsColors.surfaceElevated,
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: isBryzosStaff
+                          ? const Color(0xFF7C3AED).withValues(alpha: 0.18)
+                          : OpticsColors.surfaceElevated,
                       shape: BoxShape.circle,
+                      border: isBryzosStaff
+                          ? Border.all(color: const Color(0xFF7C3AED).withValues(alpha: 0.5), width: 1)
+                          : null,
                     ),
                     alignment: Alignment.center,
                     child: Text(
-                      name.isNotEmpty ? name[0].toUpperCase() : '?',
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                      avatarChar,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: isBryzosStaff
+                            ? const Color(0xFFA78BFA)
+                            : OpticsColors.textSecondary,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Expanded(child: Text(name, style: OpticsTextStyles.body)),
+                  // Name + email stack
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            if (fullName.isNotEmpty)
+                              Text(fullName, style: OpticsTextStyles.body),
+                            if (isBryzosStaff) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF7C3AED).withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(3),
+                                  border: Border.all(
+                                    color: const Color(0xFF7C3AED).withValues(alpha: 0.4),
+                                  ),
+                                ),
+                                child: const Text(
+                                  'BRYZOS',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFFA78BFA),
+                                    letterSpacing: 0.8,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        if (email.isNotEmpty)
+                          Text(
+                            email,
+                            style: OpticsTextStyles.bodySm.copyWith(
+                              color: OpticsColors.textMuted,
+                              fontSize: 11,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Role badge
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
-                      color: role == 'OWNER' 
-                          ? OpticsColors.accentCyan.withValues(alpha: 0.1) 
+                      color: role == 'OWNER'
+                          ? OpticsColors.accentCyan.withValues(alpha: 0.1)
                           : OpticsColors.surfaceElevated,
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
                       role,
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: FontWeight.bold,
-                        color: role == 'OWNER' ? OpticsColors.accentCyan : OpticsColors.textSecondary,
+                        color: role == 'OWNER'
+                            ? OpticsColors.accentCyan
+                            : OpticsColors.textSecondary,
                       ),
                     ),
                   ),

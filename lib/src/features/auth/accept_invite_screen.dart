@@ -40,7 +40,9 @@ class _AcceptInviteScreenState extends ConsumerState<AcceptInviteScreen> {
   String? _previewError;
   Map<String, dynamic>? _preview;
 
-  final _passwordCtl = TextEditingController();
+  final _firstNameCtl = TextEditingController();
+  final _lastNameCtl  = TextEditingController();
+  final _passwordCtl  = TextEditingController();
   bool _showPassword = false;
   bool _submitting = false;
   String? _submitError;
@@ -62,6 +64,8 @@ class _AcceptInviteScreenState extends ConsumerState<AcceptInviteScreen> {
 
   @override
   void dispose() {
+    _firstNameCtl.dispose();
+    _lastNameCtl.dispose();
     _passwordCtl.dispose();
     super.dispose();
   }
@@ -166,7 +170,17 @@ class _AcceptInviteScreenState extends ConsumerState<AcceptInviteScreen> {
   Future<void> _signUpAndAccept() async {
     final tok = (widget.token ?? '').trim();
     if (tok.isEmpty) return;
-    final password = _passwordCtl.text;
+    final firstName = _firstNameCtl.text.trim();
+    final lastName  = _lastNameCtl.text.trim();
+    final password  = _passwordCtl.text;
+    if (firstName.isEmpty) {
+      setState(() => _submitError = 'Please enter your first name.');
+      return;
+    }
+    if (lastName.isEmpty) {
+      setState(() => _submitError = 'Please enter your last name.');
+      return;
+    }
     if (password.length < 8) {
       setState(() => _submitError = 'Password must be at least 8 characters.');
       return;
@@ -184,6 +198,8 @@ class _AcceptInviteScreenState extends ConsumerState<AcceptInviteScreen> {
           'password': password,
           'mode': 'signup',
           'terms_accepted': true,
+          'first_name': firstName,
+          'last_name': lastName,
         },
       );
       if (r.status >= 400) {
@@ -217,7 +233,7 @@ class _AcceptInviteScreenState extends ConsumerState<AcceptInviteScreen> {
       final accessToken = sessionMap['access_token']?.toString() ?? '';
       final refreshToken = sessionMap['refresh_token']?.toString() ?? '';
       if (accessToken.isNotEmpty && refreshToken.isNotEmpty) {
-        await Supabase.instance.client.auth.setSession(accessToken);
+        await Supabase.instance.client.auth.setSession(accessToken, refreshToken);
       }
     }
   }
@@ -241,11 +257,8 @@ class _AcceptInviteScreenState extends ConsumerState<AcceptInviteScreen> {
         _acceptedTenantName = tenantName;
       });
     } else {
-      // New user (Path C) — route to the platform-chooser welcome screen.
-      final orgParam = tenantName.isNotEmpty
-          ? Uri.encodeQueryComponent(tenantName)
-          : '';
-      context.go('/welcome${orgParam.isNotEmpty ? '?org=$orgParam' : ''}');
+      // New user (Path C) — go straight to dashboards.
+      context.go('/dashboards');
     }
   }
 
@@ -400,10 +413,32 @@ class _AcceptInviteScreenState extends ConsumerState<AcceptInviteScreen> {
     // ── Path C: Brand new user → create account + T&C ────────────────────────
     return _layout(
       title: '',
-      subtitle: 'Set a password to create your account and join ${tenantName.isEmpty ? "your organization" : tenantName}.',
+      subtitle: 'Create your account to join ${tenantName.isEmpty ? "your organization" : tenantName} on Network Analytics.',
       children: [
         _inviteSummary(p),
         const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _firstNameCtl,
+                autofillHints: const [AutofillHints.givenName],
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(labelText: 'FIRST NAME'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: TextField(
+                controller: _lastNameCtl,
+                autofillHints: const [AutofillHints.familyName],
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(labelText: 'LAST NAME'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
         TextField(
           enabled: false,
           decoration: const InputDecoration(labelText: 'EMAIL'),

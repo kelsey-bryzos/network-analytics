@@ -240,10 +240,15 @@ class _AcceptInviteScreenState extends ConsumerState<AcceptInviteScreen> {
   }
 
   Future<void> _finalise(Map<String, dynamic> data, {required bool showConfirmScreen}) async {
+    // Refresh the session so the local JWT picks up the new
+    // active_tenant_id that accept-invite just wrote to app_metadata.
+    // This ensures the correct tenant is active immediately AND on next login.
     try { await Supabase.instance.client.auth.refreshSession(); } catch (_) {}
 
     final acceptedTenantId = (data['tenant_id'] ?? '').toString();
     if (acceptedTenantId.isNotEmpty) {
+      // Also push into Riverpod state so the rest of the app responds instantly
+      // without waiting for the next auth event.
       ref.read(activeTenantProvider.notifier).state = acceptedTenantId;
     }
 

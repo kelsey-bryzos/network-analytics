@@ -34,7 +34,7 @@ jobs:
           flutter build web \
             --release \
             --base-href "/" \
-            --dart-define=ENV=demo \
+            --dart-define=APP_ENV=demo \
             --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL_DEMO }} \
             --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY_DEMO }}
 

@@ -38,7 +38,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final client = ref.read(supabaseProvider);
       final rows = await client.from('memberships').select('role, tenants(id, name, slug, logo_url, app_name, display_order)');
       if (mounted) {
-        final list = (rows as List).map((r) => (r as Map).cast<String, dynamic>()).toList();
+        final raw = (rows as List).map((r) => (r as Map).cast<String, dynamic>()).toList();
+        // Deduplicate by tenant ID — a user can theoretically have multiple
+        // membership rows for the same tenant (e.g. during migration). Keep
+        // the first (highest-privilege) occurrence to avoid duplicate cards.
+        final seen = <String>{};
+        final list = raw.where((m) {
+          final tid = (m['tenants'] as Map?)?['id'] as String?;
+          if (tid == null) return false;
+          return seen.add(tid);
+        }).toList();
         list.sort((a, b) {
           final aOrder = ((a['tenants'] as Map?)?['display_order'] as int?) ?? 999;
           final bOrder = ((b['tenants'] as Map?)?['display_order'] as int?) ?? 999;

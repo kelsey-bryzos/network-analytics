@@ -34,7 +34,7 @@ jobs:
           flutter build web \
             --release \
             --base-href "/" \
-            --dart-define=ENV=staging \
+            --dart-define=APP_ENV=staging \
             --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL_STAGING }} \
             --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY_STAGING }}
 

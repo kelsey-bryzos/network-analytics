@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../config/env.dart';
 import '../../data/models.dart';
 import '../../data/supabase_repo.dart';
 import '../../design/theme.dart';
@@ -233,8 +234,11 @@ class _TopBar extends ConsumerWidget {
         children: [
           // Logo area (far left) — image at 58px tall, centered in 66px header
           SizedBox(
-            width: 200, // reserved for logo / company name
-            child: tenantAsync.when(
+            width: OpticsEnv.envBadgeLabel != null ? 260 : 200,
+            child: Row(
+              children: [
+                Flexible(
+                  child: tenantAsync.when(
               data: (tenant) {
                 // Consistent text fallback style — Inter 13px bold, no Syncopate
                 const fallbackStyle = TextStyle(
@@ -273,6 +277,13 @@ class _TopBar extends ConsumerWidget {
               },
               loading: () => const SizedBox.shrink(),
               error: (_, __) => const SizedBox.shrink(),
+            ),
+                ),
+                if (OpticsEnv.envBadgeLabel != null) ...[ 
+                  const SizedBox(width: 8),
+                  _EnvBadge(OpticsEnv.envBadgeLabel!),
+                ],
+              ],
             ),
           ),
           
@@ -388,6 +399,37 @@ class _TopBar extends ConsumerWidget {
 // Pulls from dashboards / reports / library and shows an overlay dropdown of
 // matches. Selecting a result navigates to the right destination.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// Environment badge shown in the header when not running in production.
+/// Styled as a pill with colour-coded accent: amber for staging, violet for demo.
+class _EnvBadge extends StatelessWidget {
+  final String label; // 'STAGING' or 'DEMO'
+  const _EnvBadge(this.label);
+
+  @override
+  Widget build(BuildContext context) {
+    final isStaging = label == 'STAGING';
+    final color = isStaging ? const Color(0xFFF59E0B) : OpticsColors.accentViolet;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withValues(alpha: 0.6), width: 1),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontFamily: 'Syncopate',
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+          color: color,
+          letterSpacing: 1.2,
+        ),
+      ),
+    );
+  }
+}
 
 class _SearchHit {
   final String kind; // 'dashboard' | 'report' | 'library'

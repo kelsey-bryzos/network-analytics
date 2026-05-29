@@ -21,7 +21,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'   # use latest stable; pubspec requires Dart ^3.11.3
+          channel: 'stable'
           cache: true
 
       # ── 3. Install dependencies ──────────────────────────────────────────
@@ -29,64 +29,33 @@ jobs:
         run: flutter pub get
 
       # ── 4. Build Flutter Web ─────────────────────────────────────────────
-      # The Supabase URL and anon key are already baked into env.dart as safe
-      # compile-time defaults (anon keys are public by design). No secrets
-      # needed for the web build itself — all sensitive ops go through Edge
-      # Functions that use the service role key server-side.
       - name: Build Flutter web (release)
         run: |
           flutter build web \
             --release \
             --base-href "/"
 
-      # ── 4b. Fingerprint main.dart.js + fix CDN caching ───────────────────
-      # Flutter always outputs "main.dart.js" — a fixed filename that Cloudflare
-      # CDN caches with immutable (1yr). On each deploy we:
-      #   1. Rename main.dart.js → main.v{SHORT_SHA}.dart.js (new URL, cache-miss)
-      #   2. Patch flutter_bootstrap.js to load the versioned filename
-      #   3. Add a version comment to flutter_service_worker.js so its bytes
-      #      change every deploy — forcing browsers with stale SWs to install new
-      #   4. Add ?v={SHA} to the flutter_bootstrap.js <script> tag in index.html
-      #      so browsers that cached index.html still get fresh bootstrap
-      #   5. Write _headers to ensure SW/bootstrap/index never cache long-term
+      # ── 4b. Fingerprint + cache-bust ─────────────────────────────────────
+      # 1. Rename main.dart.js → main.v{SHA}.dart.js (new CDN URL every deploy)
+      # 2. Patch flutter_bootstrap.js to load the versioned filename
+      # 3. Stamp SW bytes so changed file forces stale-SW eviction in browsers
+      # 4. Add ?v=SHA to bootstrap <script> in index.html for extra bust
+      # 5. Write _headers so SW/bootstrap/index.html never cache long-term
       - name: Fingerprint main.dart.js and fix CDN caching
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           VERSIONED="main.v${SHORT_SHA}.dart.js"
 
-          # 1. Rename the compiled bundle
           mv build/web/main.dart.js "build/web/${VERSIONED}"
-
-          # 2. Patch flutter_bootstrap.js to reference the versioned bundle
           sed -i "s|main\.dart\.js|${VERSIONED}|g" build/web/flutter_bootstrap.js
-
-          # 3. Stamp a version line into the service worker so its bytes change
-          #    every deploy. Browsers compare SW bytes; if they change, the new
-          #    SW is installed immediately (evicting stale cached bundles).
           echo "// deploy-sha: ${SHORT_SHA}" >> build/web/flutter_service_worker.js
+          sed -i "s|flutter_bootstrap\.js\" async|flutter_bootstrap.js?v=${SHORT_SHA}\" async|g" build/web/index.html
 
-          # 4. Stamp ?v=SHA onto the bootstrap <script> tag in index.html so
-          #    browsers that have index.html cached still load fresh bootstrap
-          sed -i "s|<script src=\"flutter_bootstrap.js\" async></script>|<script src=\"flutter_bootstrap.js?v=${SHORT_SHA}\" async></script>|g" build/web/index.html
+          printf '/main.v*.dart.js\n  Cache-Control: public, max-age=31536000, immutable\n/flutter_service_worker.js\n  Cache-Control: public, max-age=0, must-revalidate\n/flutter_bootstrap.js\n  Cache-Control: public, max-age=0, must-revalidate\n/index.html\n  Cache-Control: public, max-age=0, must-revalidate\n/\n  Cache-Control: public, max-age=0, must-revalidate\n' > build/web/_headers
 
-          # 5. _headers: versioned bundles stay immutable; everything else revalidates
-          cat > build/web/_headers << 'HDRS'
-/main.v*.dart.js
-  Cache-Control: public, max-age=31536000, immutable
-/flutter_service_worker.js
-  Cache-Control: public, max-age=0, must-revalidate
-/flutter_bootstrap.js
-  Cache-Control: public, max-age=0, must-revalidate
-/index.html
-  Cache-Control: public, max-age=0, must-revalidate
-/
-  Cache-Control: public, max-age=0, must-revalidate
-HDRS
-
-          echo "✅ Renamed main.dart.js → ${VERSIONED}"
-          echo "✅ Patched flutter_bootstrap.js → ${VERSIONED}"
-          echo "✅ Stamped SW version: ${SHORT_SHA}"
-          echo "✅ Stamped index.html bootstrap ?v=${SHORT_SHA}"
+          echo "Renamed main.dart.js -> ${VERSIONED}"
+          echo "Patched flutter_bootstrap.js -> ${VERSIONED}"
+          echo "Stamped SW: ${SHORT_SHA}"
 
       # ── 5. Deploy to Cloudflare Pages ────────────────────────────────────
       - name: Deploy to Cloudflare Pages

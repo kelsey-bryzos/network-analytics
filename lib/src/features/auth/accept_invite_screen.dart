@@ -309,7 +309,12 @@ class _AcceptInviteScreenState extends ConsumerState<AcceptInviteScreen> {
     final tenantName = (p['tenant_name'] ?? '').toString();
     final role = (p['role'] ?? '').toString();
     final userExists = p['user_exists'] == true;
-    final needsTerms = p['needs_terms'] == true;
+    // T&Cs are always required for brand-new account creation (Path C).
+    // We intentionally do NOT gate this on the backend `needs_terms` flag — a
+    // legal requirement must never silently disappear due to a server-side
+    // signal regression. Path C is reached only when userExists == false, which
+    // by definition means a new account is being created and must accept terms.
+    final needsTerms = !userExists;
 
     final session = Supabase.instance.client.auth.currentSession;
     final signedInEmail = (session?.user.email ?? '').toLowerCase();

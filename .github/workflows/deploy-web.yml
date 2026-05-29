@@ -27,7 +27,6 @@ jobs:
 
       # ── 3. Install dependencies ──────────────────────────────────────────
       - name: Install Flutter dependencies
-        working-directory: program/flutter_app
         run: flutter pub get
 
       # ── 4. Build Flutter Web ─────────────────────────────────────────────
@@ -36,7 +35,6 @@ jobs:
       # needed for the web build itself — all sensitive ops go through Edge
       # Functions that use the service role key server-side.
       - name: Build Flutter web (release)
-        working-directory: program/flutter_app
         run: |
           flutter build web \
             --release \
@@ -48,4 +46,4 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy program/flutter_app/build/web --project-name=network-analytics --branch=main
+          command: pages deploy build/web --project-name=network-analytics --branch=main

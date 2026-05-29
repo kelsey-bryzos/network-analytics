@@ -59,7 +59,7 @@ class WelcomeScreen extends StatelessWidget {
                 const SizedBox(height: 28),
                 Text(
                   "YOU'RE IN!",
-                  style: OpticsTextStyles.headline.copyWith(
+                  style: OpticsTextStyles.headingXl.copyWith(
                     fontSize: 22,
                     letterSpacing: 3,
                     color: OpticsColors.textPrimary,
@@ -82,7 +82,7 @@ class WelcomeScreen extends StatelessWidget {
                 if (kIsWeb) ...[
                   Text(
                     'HOW WOULD YOU LIKE TO ACCESS NETWORK ANALYTICS?',
-                    style: OpticsTextStyles.label.copyWith(
+                    style: OpticsTextStyles.sectionLabel.copyWith(
                       color: OpticsColors.textMuted,
                       fontSize: 11,
                       letterSpacing: 1.2,
@@ -231,7 +231,7 @@ class _PlatformCardState extends State<_PlatformCard> {
                   children: [
                     Text(
                       widget.title,
-                      style: OpticsTextStyles.label.copyWith(
+                      style: OpticsTextStyles.sectionLabel.copyWith(
                         color: _hovered ? widget.accent : OpticsColors.textPrimary,
                         fontSize: 12,
                         letterSpacing: 1,
@@ -275,7 +275,7 @@ class _DownloadSheet extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('DOWNLOAD', style: OpticsTextStyles.label.copyWith(letterSpacing: 1.5)),
+          Text('DOWNLOAD', style: OpticsTextStyles.sectionLabel.copyWith(letterSpacing: 1.5)),
           const SizedBox(height: 12),
           Text(
             'Copy and open the link below in a new tab to start your download:',

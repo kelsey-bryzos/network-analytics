@@ -1464,8 +1464,176 @@ class _WidgetRendererCore extends StatelessWidget {
   // ══════════════════════════════════════════════════════════════════
 
   Widget _table() {
+    // Detail-list metrics (e.g. orders_recent_list, users_recent_list,
+    // quotes_detail_list, expired_lost_quotes, cancelled_orders_list,
+    // bpns_full_list, bom_upload_detail) return arbitrary-shape rows in
+    // `_rows` rather than the labels/values pair used by ranked tables.
+    // When present, render those as a generic multi-column detail table.
+    final rawRows = model.binding['_rows'];
+    if (rawRows is List && rawRows.isNotEmpty) {
+      return _rowsDetailTable(rawRows);
+    }
     if (_hasMulti) return _multiSeriesTable();
     return _singleSeriesTable();
+  }
+
+  /// Renders an arbitrary-shape detail list returned by the server as
+  /// `_rows: [{col1: ..., col2: ...}, ...]`. Column order, headers, and
+  /// alignment are inferred from the first row's key set; numeric values
+  /// are right-aligned and money-formatted when the unit is monetary, and
+  /// date-like ISO strings are formatted human-readably.
+  Widget _rowsDetailTable(List rawRows) {
+    final rows = rawRows
+        .whereType<Map>()
+        .map((m) => m.cast<String, dynamic>())
+        .toList();
+    if (rows.isEmpty) return _noData();
+    // Column order = first row's key insertion order.
+    final cols = rows.first.keys.toList();
+    final headers = [for (final c in cols) _humanizeKey(c)];
+    final aligns = <TextAlign>[
+      for (final c in cols)
+        _isNumericColumn(c, rows) ? TextAlign.right : TextAlign.left,
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _chartHeader(),
+        // Frozen header
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: _wt.headerBg,
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(6)),
+          ),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 24,
+                child: Text('#',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: _wt.mutedText)),
+              ),
+              for (int c = 0; c < cols.length; c++)
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Text(
+                      headers[c],
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: _wt.mutedText),
+                      textAlign: aligns[c],
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        // Scrollable body
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                for (int i = 0; i < rows.length; i++)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 7),
+                    color: i.isOdd
+                        ? _wt.headerBg.withValues(alpha: 0.3)
+                        : Colors.transparent,
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 24,
+                          child: Text('${i + 1}',
+                              style: TextStyle(
+                                  fontSize: 11, color: _wt.mutedText)),
+                        ),
+                        for (int c = 0; c < cols.length; c++)
+                          Expanded(
+                            child: Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 4),
+                              child: Text(
+                                _formatCell(cols[c], rows[i][cols[c]]),
+                                style: TextStyle(
+                                    fontSize: 11, color: _wt.bodyText),
+                                textAlign: aligns[c],
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// "buyer_company_name" → "Buyer Company Name", "po" → "PO".
+  String _humanizeKey(String key) {
+    if (key.length <= 3 && key == key.toLowerCase()) return key.toUpperCase();
+    return key
+        .split('_')
+        .map((w) =>
+            w.isEmpty ? w : (w[0].toUpperCase() + w.substring(1)))
+        .join(' ');
+  }
+
+  /// A column is treated as numeric if >50% of its non-null values are nums.
+  bool _isNumericColumn(String key, List<Map<String, dynamic>> rows) {
+    int total = 0, nums = 0;
+    for (final r in rows) {
+      final v = r[key];
+      if (v == null) continue;
+      total++;
+      if (v is num) nums++;
+    }
+    return total > 0 && nums * 2 > total;
+  }
+
+  String _formatCell(String key, dynamic v) {
+    if (v == null) return '';
+    if (v is num) {
+      final isMoney = _looksLikeMoneyKey(key);
+      if (isMoney) return _fmtSmartMoney(v.toDouble());
+      return _fmtFull(v.toDouble());
+    }
+    if (v is bool) return v ? 'Yes' : 'No';
+    final s = v.toString();
+    // ISO timestamp → short date
+    if (_looksLikeIsoDate(s)) {
+      final d = DateTime.tryParse(s);
+      if (d != null) return DateFormat('yyyy-MM-dd').format(d.toLocal());
+    }
+    return s;
+  }
+
+  bool _looksLikeMoneyKey(String key) {
+    final k = key.toLowerCase();
+    return k.contains('price') ||
+        k.contains('revenue') ||
+        k.contains('total') ||
+        k.contains('value') ||
+        k.contains('amount') ||
+        k.contains('cost') ||
+        k.contains('spread');
+  }
+
+  bool _looksLikeIsoDate(String s) {
+    if (s.length < 10) return false;
+    return RegExp(r'^\d{4}-\d{2}-\d{2}').hasMatch(s);
   }
 
   Widget _singleSeriesTable() {

@@ -7,6 +7,7 @@ import 'design/theme.dart';
 import 'features/auth/sign_in_screen.dart';
 import 'features/auth/accept_invite_screen.dart';
 import 'features/auth/welcome_screen.dart';
+import 'features/auth/reset_password_screen.dart';
 import 'features/shell/app_shell.dart';
 import 'features/dashboards/dashboards_list_screen.dart';
 import 'features/reports/reports_list_screen.dart';
@@ -37,10 +38,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       final atSignIn = state.matchedLocation == '/sign-in';
       final atAcceptInvite = state.matchedLocation == '/accept-invite';
       final atWelcome = state.matchedLocation == '/welcome';
-      // /accept-invite and /welcome are unauthenticated routes.
-      // /accept-invite handles signed-in/signed-out states itself.
-      // /welcome is shown immediately after signup before auth propagates.
-      if (atAcceptInvite || atWelcome) return null;
+      final atResetPassword = state.matchedLocation == '/reset-password';
+      // /accept-invite, /welcome, and /reset-password are unauthenticated routes.
+      if (atAcceptInvite || atWelcome || atResetPassword) return null;
       if (!loggedIn && !atSignIn) return '/sign-in';
       if (loggedIn && atSignIn) return '/dashboards';
       return null;
@@ -61,6 +61,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (_, state) => NoTransitionPage(child: WelcomeScreen(
           tenantName: state.uri.queryParameters['org'] ?? '',
         )),
+      ),
+      GoRoute(
+        path: '/reset-password',
+        pageBuilder: (_, __) => const NoTransitionPage(child: ResetPasswordScreen()),
       ),
       ShellRoute(
         builder: (ctx, state, child) => AppShell(child: child),

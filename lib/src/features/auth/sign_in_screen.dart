@@ -23,6 +23,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   bool _magicLink = false;
   bool _magicSent = false;
   bool _signUp = false;
+  bool _forgotPassword = false;
+  bool _resetSent = false;
 
   @override
   void dispose() {
@@ -36,10 +38,17 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       _loading = true;
       _error = null;
       _magicSent = false;
+      _resetSent = false;
     });
     try {
       final client = Supabase.instance.client;
-      if (_magicLink) {
+      if (_forgotPassword) {
+        await client.auth.resetPasswordForEmail(
+          _email.text.trim(),
+          redirectTo: 'https://analytics.bryzos.com/reset-password',
+        );
+        setState(() => _resetSent = true);
+      } else if (_magicLink) {
         await client.auth.signInWithOtp(email: _email.text.trim());
         setState(() => _magicSent = true);
       } else if (_signUp) {
@@ -98,11 +107,15 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   ],
                 ),
                 const SizedBox(height: 28),
-                Text(_signUp ? 'CREATE ACCOUNT' : 'SIGN IN',
-                    style: OpticsTextStyles.headingXl),
+                Text(
+                  _forgotPassword ? 'RESET PASSWORD' : (_signUp ? 'CREATE ACCOUNT' : 'SIGN IN'),
+                  style: OpticsTextStyles.headingXl,
+                ),
                 const SizedBox(height: 6),
-                const Text(
-                  'Multi-tenant analytics for distributors.',
+                Text(
+                  _forgotPassword
+                      ? 'Enter your email and we\'ll send you a reset link.'
+                      : 'Multi-tenant analytics for distributors.',
                   style: OpticsTextStyles.bodySm,
                 ),
                 const SizedBox(height: 24),
@@ -112,7 +125,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   autofillHints: const [AutofillHints.email],
                   decoration: const InputDecoration(hintText: 'Email address'),
                 ),
-                if (!_magicLink) ...[
+                if (!_magicLink && !_forgotPassword) ...[
                   const SizedBox(height: 10),
                   TextField(
                     controller: _password,
@@ -142,6 +155,16 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     ),
                   ),
                 ],
+                if (_resetSent) ...[
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Password reset email sent — check your inbox.',
+                    style: TextStyle(
+                      color: OpticsColors.success,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 ElevatedButton(
                   onPressed: _loading ? null : _submit,
@@ -154,39 +177,62 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                             color: Colors.black,
                           ),
                         )
-                      : Text(_magicLink
-                          ? 'Send magic link'
-                          : (_signUp ? 'Create account' : 'Sign in')),
+                      : Text(_forgotPassword
+                          ? 'SEND RESET LINK'
+                          : (_magicLink
+                              ? 'SEND MAGIC LINK'
+                              : (_signUp ? 'CREATE ACCOUNT' : 'SIGN IN'))),
                 ),
                 const SizedBox(height: 12),
-                TextButton(
-                  onPressed: () => setState(() => _magicLink = !_magicLink),
-                  child: Text(
-                    _magicLink ? 'Use password instead' : 'Use magic link',
-                  ),
-                ),
-                if (kAllowSelfSignup)
+                if (_forgotPassword)
                   TextButton(
                     onPressed: () => setState(() {
-                      _signUp = !_signUp;
-                      _magicLink = false;
+                      _forgotPassword = false;
+                      _resetSent = false;
+                      _error = null;
                     }),
-                    child: Text(
-                      _signUp
-                          ? 'Have an account? Sign in'
-                          : 'New here? Create an account',
-                    ),
+                    child: const Text('BACK TO SIGN IN'),
                   )
-                else
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6),
+                else ...[
+                  TextButton(
+                    onPressed: () => setState(() {
+                      _forgotPassword = true;
+                      _magicLink = false;
+                      _signUp = false;
+                      _error = null;
+                    }),
+                    child: const Text('FORGOT PASSWORD?'),
+                  ),
+                  TextButton(
+                    onPressed: () => setState(() => _magicLink = !_magicLink),
                     child: Text(
-                      'Network Analytics is invite-only. Ask your administrator for an invite link.',
-                      textAlign: TextAlign.center,
-                      style: OpticsTextStyles.bodySm
-                          .copyWith(color: OpticsColors.textMuted),
+                      _magicLink ? 'USE PASSWORD INSTEAD' : 'USE MAGIC LINK',
                     ),
                   ),
+                ],
+                if (!_forgotPassword)
+                  if (kAllowSelfSignup)
+                    TextButton(
+                      onPressed: () => setState(() {
+                        _signUp = !_signUp;
+                        _magicLink = false;
+                      }),
+                      child: Text(
+                        _signUp
+                            ? 'HAVE AN ACCOUNT? SIGN IN'
+                            : 'NEW HERE? CREATE AN ACCOUNT',
+                      ),
+                    )
+                  else
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        'Network Analytics is invite-only. Ask your administrator for an invite link.',
+                        textAlign: TextAlign.center,
+                        style: OpticsTextStyles.bodySm
+                            .copyWith(color: OpticsColors.textMuted),
+                      ),
+                    ),
               ],
             ),
           ),

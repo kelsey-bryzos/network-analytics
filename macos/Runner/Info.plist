@@ -35,7 +35,7 @@
 	     The private key stays in 1Password; the public key (base64) goes here.
 	     Until then, leave the placeholder so the bundle still builds. -->
 	<key>SUFeedURL</key>
-	<string>https://updates.optics.bryzos.com/macos/appcast.xml</string>
+	<string>https://analytics.bryzos.com/updates/macos/appcast.xml</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUScheduledCheckInterval</key>
@@ -43,7 +43,7 @@
 	<key>SUAutomaticallyUpdate</key>
 	<true/>
 	<key>SUPublicEDKey</key>
-	<string>REPLACE_WITH_SPARKLE_ED25519_PUBLIC_KEY</string>
+	<string>yrqfBpw+m/j00C5QzOYltFbWuuQSkyb5nWyWtxvdX50=</string>
 
 	<!-- Register the optics:// URL scheme so email invite links can open
 	     the desktop app (e.g. optics://accept-invite?token=…). -->

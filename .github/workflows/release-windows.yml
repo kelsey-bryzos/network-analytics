@@ -1,0 +1,118 @@
+name: Release Windows
+
+# Build a Windows release, zip it, upload to a GitHub Release, and update
+# web/updates/windows/latest.json (served by Cloudflare Pages) so the
+# in-app UpdateChecker prompts existing users to download the new build.
+#
+# Trigger:
+#   - Tag push of the form v1.2.3 (same trigger as the macOS release).
+#   - Manual dispatch with version_name + version_code.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: 'Semantic version (e.g. 1.0.1)'
+        required: true
+      version_code:
+        description: 'Monotonic build number (e.g. 1010)'
+        required: true
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive version
+        id: ver
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${GITHUB_REF_NAME}"
+            VER="${TAG#v}"
+          else
+            VER="${{ github.event.inputs.version_name }}"
+          fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            CODE="${{ github.event.inputs.version_code }}"
+          else
+            IFS='.' read -r MA MI PA <<< "$VER"
+            CODE=$(( MA*1000000 + MI*1000 + PA ))
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "build=$CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Flutter (stable)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build Windows release
+        run: |
+          flutter build windows --release --build-name=${{ steps.ver.outputs.version }} --build-number=${{ steps.ver.outputs.build }}
+
+      - name: Package zip
+        id: pkg
+        shell: pwsh
+        run: |
+          $version = "${{ steps.ver.outputs.version }}"
+          $src = "build/windows/x64/runner/Release"
+          $zip = "dist/NetworkAnalytics-$version-windows-x64.zip"
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive -Path "$src/*" -DestinationPath $zip -Force
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          "ZIP=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "SHA256=$hash" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Get-ChildItem dist
+
+      - name: Create / update GitHub Release & upload zip
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: Network Analytics v${{ steps.ver.outputs.version }}
+          files: ${{ env.ZIP }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+
+      - name: Update latest.json
+        shell: bash
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          BUILD="${{ steps.ver.outputs.build }}"
+          ZIP_NAME=$(basename "$ZIP")
+          URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/${ZIP_NAME}"
+          DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          cat > web/updates/windows/latest.json <<EOF
+          {
+            "version": "${VERSION}",
+            "build_number": ${BUILD},
+            "release_date": "${DATE}",
+            "release_notes_html": "<p>See <a href=\"https://github.com/${{ github.repository }}/releases/tag/v${VERSION}\">release notes on GitHub</a>.</p>",
+            "download_url": "${URL}",
+            "sha256": "${SHA256}",
+            "minimum_os": "10.0.17763",
+            "mandatory": false
+          }
+          EOF
+          cat web/updates/windows/latest.json
+
+      - name: Commit & push updated latest.json
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add web/updates/windows/latest.json
+          git commit -m "release(windows): bump latest.json to v${{ steps.ver.outputs.version }}" || echo "no changes"
+          git push origin HEAD:main

@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/models.dart';
 import '../../data/supabase_repo.dart';
 import '../../design/theme.dart';
+import '../../platform/update_checker.dart';
 import '../dashboards/dashboards_list_screen.dart' show activeDashboardIdProvider;
 
 class _NavItem {
@@ -23,12 +24,28 @@ const _navItems = [
   _NavItem(Icons.settings_outlined, 'Settings', '/settings'),
 ];
 
-class AppShell extends ConsumerWidget {
+class AppShell extends ConsumerStatefulWidget {
   final Widget child;
   const AppShell({super.key, required this.child});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends ConsumerState<AppShell> {
+  bool _updateChecked = false;
+
+  @override
+  Widget build(BuildContext context) {
+    // Run once per app lifetime, after the first authenticated frame.
+    // No-op on web/macOS/iOS/Android; on Windows it polls latest.json and
+    // prompts if a newer build is available.
+    if (!_updateChecked) {
+      _updateChecked = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) UpdateChecker.checkOnStartup(context);
+      });
+    }
     final loc = GoRouterState.of(context).matchedLocation;
     return Scaffold(
       backgroundColor: OpticsColors.canvas,
@@ -52,7 +69,7 @@ class AppShell extends ConsumerWidget {
                   top: topBarHeight,
                   right: 0,
                   bottom: 0,
-                  child: child,
+                  child: widget.child,
                 ),
                 // Left sidebar — painted after content so its right-edge
                 // shadow is visible.

@@ -2,8 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>com.apple.security.app-sandbox</key>
-	<true/>
+	<!-- Sandbox is DISABLED for direct (non-MAS) DMG distribution so Sparkle's
+	     auto-update relauncher can replace the running .app bundle. If we ever
+	     ship to the Mac App Store we'll need a sandboxed XPC variant. -->
 	<key>com.apple.security.network.client</key>
 	<true/>
 	<key>com.apple.security.files.user-selected.read-only</key>

@@ -1,3 +1,9 @@
+# Environment / secrets — never commit these
+.env
+.env.*
+*.env
+secrets.dart
+
 # Miscellaneous
 *.class
 *.log
@@ -31,6 +37,8 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+/build
+build
 /coverage/
 
 # Symbolication related

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Network Analytics — macOS Updates</title>
+    <link>https://analytics.bryzos.com/updates/macos/appcast.xml</link>
+    <description>Silent auto-update feed for the Network Analytics macOS desktop app.</description>
+    <language>en</language>
+    <!--
+      Items are appended by .github/workflows/release-macos.yml on every
+      tagged release (v1.0.0, v1.0.1, …). The signature (sparkle:edSignature)
+      is produced by `sign_update` using the Ed25519 private key stored in
+      the SPARKLE_ED_PRIVATE_KEY GitHub secret.
+
+      Example item shape (do not delete this comment — workflow inserts above it):
+        <item>
+          <title>Version 1.0.1</title>
+          <pubDate>Thu, 29 May 2026 03:30:00 +0000</pubDate>
+          <sparkle:version>1010</sparkle:version>
+          <sparkle:shortVersionString>1.0.1</sparkle:shortVersionString>
+          <sparkle:minimumSystemVersion>10.15</sparkle:minimumSystemVersion>
+          <description><![CDATA[<ul><li>Bug fixes and improvements.</li></ul>]]></description>
+          <enclosure
+            url="https://github.com/kelsey-bryzos/network-analytics/releases/download/v1.0.1/NetworkAnalytics-1.0.1.dmg"
+            sparkle:edSignature="<base64 sig from sign_update>"
+            length="<bytes>"
+            type="application/octet-stream" />
+        </item>
+    -->
+  </channel>
+</rss>

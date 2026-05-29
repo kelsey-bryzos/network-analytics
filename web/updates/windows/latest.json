@@ -1,0 +1,11 @@
+{
+  "_comment": "Updated by .github/workflows/release-windows.yml on every tagged release.",
+  "version": "0.0.0",
+  "build_number": 0,
+  "release_date": null,
+  "release_notes_html": "",
+  "download_url": null,
+  "sha256": null,
+  "minimum_os": "10.0.17763",
+  "mandatory": false
+}

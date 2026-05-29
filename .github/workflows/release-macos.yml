@@ -1,0 +1,218 @@
+name: Release macOS (Sparkle)
+
+# Build a signed DMG of the macOS desktop app, EdDSA-sign it with Sparkle,
+# upload it to a GitHub Release, append a new <item> to the appcast.xml
+# served by Cloudflare Pages, and commit the updated appcast back to main.
+#
+# Trigger:
+#   - Pushing a tag of the form v1.2.3
+#   - Manual dispatch with a version_name + version_code input
+#
+# Required GitHub secrets:
+#   SPARKLE_ED_PRIVATE_KEY  base64 Ed25519 private key (32-byte raw seed)
+#
+# Optional (for Developer ID signed/notarized DMG — leave empty for ad-hoc):
+#   MACOS_CERT_P12_BASE64      base64 .p12 of Developer ID Application cert
+#   MACOS_CERT_P12_PASSWORD    password for the .p12
+#   MACOS_NOTARY_APPLE_ID      Apple ID email
+#   MACOS_NOTARY_TEAM_ID       Apple Developer Team ID
+#   MACOS_NOTARY_APP_PASSWORD  app-specific password for notarytool
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: 'Semantic version (e.g. 1.0.1)'
+        required: true
+      version_code:
+        description: 'Monotonic build number (e.g. 1010)'
+        required: true
+
+jobs:
+  build-sign-release:
+    runs-on: macos-14
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive version
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${GITHUB_REF_NAME}"        # e.g. v1.0.1
+            VER="${TAG#v}"
+          else
+            VER="${{ github.event.inputs.version_name }}"
+          fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            CODE="${{ github.event.inputs.version_code }}"
+          else
+            # Derive a monotonic code from semver: 1.2.3 -> 1*1_000_000 + 2*1_000 + 3
+            IFS='.' read -r MA MI PA <<< "$VER"
+            CODE=$(( MA*1000000 + MI*1000 + PA ))
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "build=$CODE" >> "$GITHUB_OUTPUT"
+          echo "Derived: version=$VER build=$CODE"
+
+      - name: Setup Flutter (stable)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build macOS app (release)
+        env:
+          FLUTTER_BUILD_NAME: ${{ steps.ver.outputs.version }}
+          FLUTTER_BUILD_NUMBER: ${{ steps.ver.outputs.build }}
+        run: |
+          flutter build macos \
+            --release \
+            --build-name=${{ steps.ver.outputs.version }} \
+            --build-number=${{ steps.ver.outputs.build }}
+
+      - name: (Optional) Codesign with Developer ID
+        if: env.MACOS_CERT_P12_BASE64 != ''
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_P12_PASSWORD: ${{ secrets.MACOS_CERT_P12_PASSWORD }}
+        run: |
+          KEYCHAIN=signing.keychain-db
+          KEYCHAIN_PASS=$(uuidgen)
+          security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          echo "$MACOS_CERT_P12_BASE64" | base64 --decode > cert.p12
+          security import cert.p12 -k "$KEYCHAIN" -P "$MACOS_CERT_P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASS" "$KEYCHAIN"
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" | grep "Developer ID Application" | head -n1 | awk -F'"' '{print $2}')
+          echo "Signing with: $IDENTITY"
+          codesign --deep --force --options runtime --timestamp \
+            --sign "$IDENTITY" \
+            build/macos/Build/Products/Release/network_analytics.app
+
+      - name: Create DMG
+        run: |
+          mkdir -p dist
+          APP_PATH="build/macos/Build/Products/Release/network_analytics.app"
+          if [ ! -d "$APP_PATH" ]; then
+            # Fall back to PRODUCT_NAME variants
+            APP_PATH=$(find build/macos/Build/Products/Release -name '*.app' -maxdepth 1 -type d | head -n1)
+          fi
+          DMG="dist/NetworkAnalytics-${{ steps.ver.outputs.version }}.dmg"
+          hdiutil create -volname "Network Analytics" \
+            -srcfolder "$APP_PATH" \
+            -ov -format UDZO "$DMG"
+          echo "DMG=$DMG" >> "$GITHUB_ENV"
+          ls -la dist/
+
+      - name: (Optional) Notarize DMG
+        if: env.MACOS_NOTARY_APPLE_ID != ''
+        env:
+          MACOS_NOTARY_APPLE_ID: ${{ secrets.MACOS_NOTARY_APPLE_ID }}
+          MACOS_NOTARY_TEAM_ID: ${{ secrets.MACOS_NOTARY_TEAM_ID }}
+          MACOS_NOTARY_APP_PASSWORD: ${{ secrets.MACOS_NOTARY_APP_PASSWORD }}
+        run: |
+          xcrun notarytool submit "$DMG" \
+            --apple-id "$MACOS_NOTARY_APPLE_ID" \
+            --team-id "$MACOS_NOTARY_TEAM_ID" \
+            --password "$MACOS_NOTARY_APP_PASSWORD" \
+            --wait
+          xcrun stapler staple "$DMG"
+
+      - name: Install Sparkle CLI tools (sign_update)
+        run: |
+          SPARKLE_VERSION=2.6.4
+          curl -L -o sparkle.tar.xz "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz"
+          mkdir -p sparkle && tar -xJf sparkle.tar.xz -C sparkle
+          echo "$PWD/sparkle/bin" >> "$GITHUB_PATH"
+          ls sparkle/bin
+
+      - name: EdDSA-sign the DMG with Sparkle
+        id: sign
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          # sign_update writes "sparkle:edSignature=… length=…" to stdout when
+          # given the key on stdin via --ed-key-file -.
+          echo "$SPARKLE_ED_PRIVATE_KEY" > ed_priv.key
+          OUT=$(./sparkle/bin/sign_update --ed-key-file ed_priv.key "$DMG")
+          rm -f ed_priv.key
+          echo "Sparkle output: $OUT"
+          # OUT looks like: sparkle:edSignature="…" length="12345"
+          SIG=$(echo "$OUT" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p')
+          LEN=$(echo "$OUT" | sed -n 's/.*length="\([^"]*\)".*/\1/p')
+          if [ -z "$SIG" ] || [ -z "$LEN" ]; then
+            echo "::error::sign_update did not produce a signature/length"
+            exit 1
+          fi
+          echo "sig=$SIG" >> "$GITHUB_OUTPUT"
+          echo "len=$LEN" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release & upload DMG
+        id: gh_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: Network Analytics v${{ steps.ver.outputs.version }}
+          files: ${{ env.DMG }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+
+      - name: Append item to appcast.xml
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          BUILD: ${{ steps.ver.outputs.build }}
+          SIG: ${{ steps.sign.outputs.sig }}
+          LEN: ${{ steps.sign.outputs.len }}
+        run: |
+          APPCAST="web/updates/macos/appcast.xml"
+          DMG_NAME=$(basename "$DMG")
+          URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/${DMG_NAME}"
+          PUB_DATE=$(date -u "+%a, %d %b %Y %H:%M:%S +0000")
+          NEW_ITEM="    <item>
+      <title>Version ${VERSION}</title>
+      <pubDate>${PUB_DATE}</pubDate>
+      <sparkle:version>${BUILD}</sparkle:version>
+      <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>10.15</sparkle:minimumSystemVersion>
+      <description><![CDATA[<p>See <a href=\"https://github.com/${{ github.repository }}/releases/tag/v${VERSION}\">release notes on GitHub</a>.</p>]]></description>
+      <enclosure
+        url=\"${URL}\"
+        sparkle:edSignature=\"${SIG}\"
+        length=\"${LEN}\"
+        type=\"application/octet-stream\" />
+    </item>"
+          # Insert right after the opening <channel> ... <description>…</description> block,
+          # immediately before the first <!-- comment or before </channel>. We use a python
+          # one-liner to keep the XML parseable.
+          python3 - <<PY
+import re, pathlib, html
+p = pathlib.Path("$APPCAST")
+src = p.read_text()
+item = """$NEW_ITEM"""
+# Insert before </channel>
+new = src.replace("</channel>", item + "\n  </channel>")
+p.write_text(new)
+print("Appcast updated.")
+PY
+
+      - name: Commit & push updated appcast
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add web/updates/macos/appcast.xml
+          git commit -m "release(macos): append v${{ steps.ver.outputs.version }} to appcast" || echo "no changes"
+          # Push back to main so Cloudflare Pages picks it up on its next deploy.
+          git push origin HEAD:main

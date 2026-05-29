@@ -30,6 +30,11 @@ target 'Runner' do
   use_frameworks!
 
   flutter_install_all_macos_pods File.dirname(File.realpath(__FILE__))
+
+  # Sparkle silent auto-update framework. The version pin matches the
+  # `sign_update` / `generate_appcast` binaries used in CI (.github/workflows/release-macos.yml).
+  pod 'Sparkle', '~> 2.6'
+
   target 'RunnerTests' do
     inherit! :search_paths
   end

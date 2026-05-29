@@ -39,22 +39,39 @@ jobs:
             --release \
             --base-href "/"
 
-      # ── 4b. Override cache headers for main.dart.js ──────────────────────
-      # Flutter emits main.dart.js with cache-control: immutable (1 year).
-      # Cloudflare Pages respects a _headers file to override per-path headers.
-      # We set main.dart.js to must-revalidate so the CDN always checks for
-      # a new version on each deploy, while still caching aggressively between
-      # deploys. Fingerprinted chunk files (*_dart2js* etc.) keep immutable.
-      - name: Inject _headers to fix main.dart.js caching
+      # ── 4b. Fingerprint main.dart.js + fix CDN caching ───────────────────
+      # Flutter always outputs "main.dart.js" — a fixed filename that Cloudflare
+      # CDN caches with immutable (1yr). On each deploy we rename it to
+      # main.v{SHORT_SHA}.dart.js (a new URL the CDN has never seen), then
+      # patch flutter_bootstrap.js to load the versioned filename. This ensures
+      # every deploy gets a fresh asset regardless of CDN or browser caches.
+      # We also write a _headers file so future main.dart.js variants are served
+      # without immutable, and index.html/SW always revalidate.
+      - name: Fingerprint main.dart.js and fix CDN caching
         run: |
-          cat > build/web/_headers << 'EOF'
-          /main.dart.js
-            Cache-Control: public, max-age=0, must-revalidate
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          VERSIONED="main.v${SHORT_SHA}.dart.js"
+
+          # Rename the output file
+          mv build/web/main.dart.js "build/web/${VERSIONED}"
+
+          # Patch flutter_bootstrap.js: replace the hardcoded "main.dart.js" entrypoint reference
+          sed -i "s|main\\.dart\\.js|${VERSIONED}|g" build/web/flutter_bootstrap.js
+
+          # _headers: versioned main files keep immutable; index.html + SW always revalidate
+          cat > build/web/_headers << EOF
+          /main.v*.dart.js
+            Cache-Control: public, max-age=31536000, immutable
           /flutter_service_worker.js
             Cache-Control: public, max-age=0, must-revalidate
           /index.html
             Cache-Control: public, max-age=0, must-revalidate
+          /
+            Cache-Control: public, max-age=0, must-revalidate
           EOF
+
+          echo "Renamed main.dart.js → ${VERSIONED}"
+          echo "Patched flutter_bootstrap.js to load ${VERSIONED}"
 
       # ── 5. Deploy to Cloudflare Pages ────────────────────────────────────
       - name: Deploy to Cloudflare Pages

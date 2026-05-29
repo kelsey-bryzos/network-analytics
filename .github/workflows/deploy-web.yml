@@ -39,6 +39,23 @@ jobs:
             --release \
             --base-href "/"
 
+      # ── 4b. Override cache headers for main.dart.js ──────────────────────
+      # Flutter emits main.dart.js with cache-control: immutable (1 year).
+      # Cloudflare Pages respects a _headers file to override per-path headers.
+      # We set main.dart.js to must-revalidate so the CDN always checks for
+      # a new version on each deploy, while still caching aggressively between
+      # deploys. Fingerprinted chunk files (*_dart2js* etc.) keep immutable.
+      - name: Inject _headers to fix main.dart.js caching
+        run: |
+          cat > build/web/_headers << 'EOF'
+          /main.dart.js
+            Cache-Control: public, max-age=0, must-revalidate
+          /flutter_service_worker.js
+            Cache-Control: public, max-age=0, must-revalidate
+          /index.html
+            Cache-Control: public, max-age=0, must-revalidate
+          EOF
+
       # ── 5. Deploy to Cloudflare Pages ────────────────────────────────────
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3

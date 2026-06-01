@@ -30,6 +30,10 @@ on:
       version_code:
         description: 'Monotonic build number (e.g. 1010)'
         required: true
+      environment:
+        description: 'Environment (prod, staging, demo)'
+        required: true
+        default: 'prod'
 
 jobs:
   build-sign-release:
@@ -71,6 +75,23 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
+      - name: Set Environment Variables
+        id: env_vars
+        run: |
+          ENV_NAME="${{ github.event.inputs.environment || 'prod' }}"
+          echo "Building for environment: $ENV_NAME"
+          
+          if [ "$ENV_NAME" = "staging" ]; then
+            echo "DART_DEFINES=--dart-define=APP_ENV=staging --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL_STAGING }} --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY_STAGING }}" >> "$GITHUB_OUTPUT"
+            echo "DMG_SUFFIX=-Staging" >> "$GITHUB_OUTPUT"
+          elif [ "$ENV_NAME" = "demo" ]; then
+            echo "DART_DEFINES=--dart-define=APP_ENV=demo --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL_DEMO }} --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY_DEMO }}" >> "$GITHUB_OUTPUT"
+            echo "DMG_SUFFIX=-Demo" >> "$GITHUB_OUTPUT"
+          else
+            echo "DART_DEFINES=" >> "$GITHUB_OUTPUT"
+            echo "DMG_SUFFIX=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build macOS app (release)
         env:
           FLUTTER_BUILD_NAME: ${{ steps.ver.outputs.version }}
@@ -79,7 +100,8 @@ jobs:
           flutter build macos \
             --release \
             --build-name=${{ steps.ver.outputs.version }} \
-            --build-number=${{ steps.ver.outputs.build }}
+            --build-number=${{ steps.ver.outputs.build }} \
+            ${{ steps.env_vars.outputs.DART_DEFINES }}
 
       - name: (Optional) Codesign with Developer ID
         if: env.MACOS_CERT_P12_BASE64 != ''
@@ -110,7 +132,7 @@ jobs:
             # Fall back to PRODUCT_NAME variants
             APP_PATH=$(find build/macos/Build/Products/Release -name '*.app' -maxdepth 1 -type d | head -n1)
           fi
-          DMG="dist/NetworkAnalytics-${{ steps.ver.outputs.version }}.dmg"
+          DMG="dist/NetworkAnalytics-${{ steps.ver.outputs.version }}${{ steps.env_vars.outputs.DMG_SUFFIX }}.dmg"
           hdiutil create -volname "Network Analytics" \
             -srcfolder "$APP_PATH" \
             -ov -format UDZO "$DMG"

@@ -20,6 +20,10 @@ on:
       version_code:
         description: 'Monotonic build number (e.g. 1010)'
         required: true
+      environment:
+        description: 'Environment (prod, staging, demo)'
+        required: true
+        default: 'prod'
 
 jobs:
   build-release:
@@ -59,9 +63,27 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
+      - name: Set Environment Variables
+        id: env_vars
+        shell: bash
+        run: |
+          ENV_NAME="${{ github.event.inputs.environment || 'prod' }}"
+          echo "Building for environment: $ENV_NAME"
+          
+          if [ "$ENV_NAME" = "staging" ]; then
+            echo "DART_DEFINES=--dart-define=APP_ENV=staging --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL_STAGING }} --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY_STAGING }}" >> "$GITHUB_OUTPUT"
+            echo "ZIP_SUFFIX=-Staging" >> "$GITHUB_OUTPUT"
+          elif [ "$ENV_NAME" = "demo" ]; then
+            echo "DART_DEFINES=--dart-define=APP_ENV=demo --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL_DEMO }} --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY_DEMO }}" >> "$GITHUB_OUTPUT"
+            echo "ZIP_SUFFIX=-Demo" >> "$GITHUB_OUTPUT"
+          else
+            echo "DART_DEFINES=" >> "$GITHUB_OUTPUT"
+            echo "ZIP_SUFFIX=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build Windows release
         run: |
-          flutter build windows --release --build-name=${{ steps.ver.outputs.version }} --build-number=${{ steps.ver.outputs.build }}
+          flutter build windows --release --build-name=${{ steps.ver.outputs.version }} --build-number=${{ steps.ver.outputs.build }} ${{ steps.env_vars.outputs.DART_DEFINES }}
 
       - name: Package zip
         id: pkg
@@ -69,7 +91,7 @@ jobs:
         run: |
           $version = "${{ steps.ver.outputs.version }}"
           $src = "build/windows/x64/runner/Release"
-          $zip = "dist/NetworkAnalytics-$version-windows-x64.zip"
+          $zip = "dist/NetworkAnalytics-$version-windows-x64${{ steps.env_vars.outputs.ZIP_SUFFIX }}.zip"
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Compress-Archive -Path "$src/*" -DestinationPath $zip -Force
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()

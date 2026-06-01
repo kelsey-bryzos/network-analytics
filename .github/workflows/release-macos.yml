@@ -215,4 +215,4 @@ jobs:
           git add web/updates/macos/appcast.xml
           git commit -m "release(macos): append v${{ steps.ver.outputs.version }} to appcast" || echo "no changes"
           # Push back to main so Cloudflare Pages picks it up on its next deploy.
-          git push origin HEAD:main
+          for i in {1..10}; do git pull --rebase origin main && git push origin HEAD:main && break || sleep 5; done

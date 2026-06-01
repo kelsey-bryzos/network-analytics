@@ -140,4 +140,4 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add web/updates/windows/latest.json
           git commit -m "release(windows): bump latest.json to v${{ steps.ver.outputs.version }}" || echo "no changes"
-          git push origin HEAD:main
+          for i in {1..10}; do git pull --rebase origin main && git push origin HEAD:main && break || sleep 5; done

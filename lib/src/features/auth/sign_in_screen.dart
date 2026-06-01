@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../config/env.dart';
 import '../../design/theme.dart';
 
 class SignInScreen extends ConsumerStatefulWidget {
@@ -45,7 +46,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       if (_forgotPassword) {
         await client.auth.resetPasswordForEmail(
           _email.text.trim(),
-          redirectTo: 'https://analytics.bryzos.com/reset-password',
+          redirectTo: '${OpticsEnv.appBaseUrl}/reset-password',
         );
         setState(() => _resetSent = true);
       } else if (_magicLink) {

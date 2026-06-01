@@ -36,4 +36,11 @@ class OpticsEnv {
     if (isDemo) return 'DEMO';
     return null;
   }
+
+  /// The base URL of the currently deployed environment.
+  static String get appBaseUrl {
+    if (isStaging) return 'https://network-analytics-staging.pages.dev';
+    if (isDemo) return 'https://network-analytics-demo.pages.dev';
+    return 'https://analytics.bryzos.com';
+  }
 }

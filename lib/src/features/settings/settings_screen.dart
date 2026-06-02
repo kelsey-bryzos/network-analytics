@@ -23,7 +23,7 @@ import 'role_info_tooltip.dart';
 final _tenantMembersProvider =
     FutureProvider.family<List<Map<String, dynamic>>, String>((ref, tenantId) async {
   final client = ref.watch(supabaseProvider);
-  final rows = await client.rpc('list_tenant_members', params: {'tid': tenantId});
+  final rows = await client.rpc('get_tenant_members', params: {'p_tid': tenantId});
   return (rows as List).map((r) {
     final m = r as Map<String, dynamic>;
     final firstName = (m['first_name'] as String?)?.trim() ?? '';
@@ -60,8 +60,8 @@ final _tenantDataSourcesProvider =
   // is blocked by RLS (tenant_id = current_tenant_id()) when this is not
   // the active tenant — the RPC bypasses that check after verifying membership.
   final rows = await client.rpc(
-    'list_tenant_data_sources',
-    params: {'tid': tenantId},
+    'get_tenant_data_sources',
+    params: {'p_tid': tenantId},
   );
   return (rows as List)
       .map((r) => DataSource.fromMap((r as Map).cast<String, dynamic>()))
@@ -73,8 +73,8 @@ final _tenantPendingInvitesProvider =
     FutureProvider.family<List<Map<String, dynamic>>, String>((ref, tenantId) async {
   final client = ref.watch(supabaseProvider);
   final rows = await client.rpc(
-    'list_tenant_pending_invites',
-    params: {'tid': tenantId},
+    'get_tenant_pending_invites',
+    params: {'p_tid': tenantId},
   );
   // Attach tenant_id to each invite so the revoke handler can use it.
   return (rows as List).map((r) {

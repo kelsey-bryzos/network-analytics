@@ -1566,16 +1566,17 @@ class _TenantDataSourceRowState extends ConsumerState<_TenantDataSourceRow> {
           ),
         );
       }
-      // Poll for completion so the row updates without manual refresh.
-      _pollUntilDone();
+      // Await the poll so the finally block only runs after polling finishes.
+      // _pollUntilDone clears _refreshing itself on completion/timeout.
+      await _pollUntilDone();
     } catch (e) {
+      // Only reached on exception from requestDataSourceSync itself.
       if (mounted) {
+        setState(() { _refreshing = false; _refreshStartedAt = null; });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Refresh failed: $e')),
         );
       }
-    } finally {
-      if (mounted) setState(() { _refreshing = false; _refreshStartedAt = null; });
     }
   }
 

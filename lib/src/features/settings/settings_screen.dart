@@ -106,6 +106,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _loadTenants() async {
     try {
       final client = ref.read(supabaseProvider);
+      // Clean up any stale "running" sync rows so the UI never shows
+      // "Sync appears stuck" due to a crashed Edge Function.
+      client.rpc('clean_stale_sync_runs').catchError((_) {});
       final rows = await client.from('memberships').select('role, tenants(id, name, slug, logo_url, app_name, display_order)');
       if (mounted) {
         final raw = (rows as List).map((r) => (r as Map).cast<String, dynamic>()).toList();
@@ -799,9 +802,9 @@ class _TeamList extends ConsumerWidget {
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (_, __) => const Text(
-        'No additional team members invited yet.',
-        style: OpticsTextStyles.bodySm,
+      error: (e, _) => Text(
+        'Could not load members: $e',
+        style: OpticsTextStyles.bodySm.copyWith(color: OpticsColors.error),
       ),
     );
   }

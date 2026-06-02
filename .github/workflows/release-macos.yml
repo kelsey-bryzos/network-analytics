@@ -212,7 +212,13 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Save the modified appcast before switching branches
+          cp web/updates/macos/appcast.xml /tmp/appcast_updated.xml
+          # Switch to main so we commit on the right branch (not detached HEAD at tag)
+          git fetch origin main
+          git checkout main
+          git pull --rebase origin main
+          cp /tmp/appcast_updated.xml web/updates/macos/appcast.xml
           git add web/updates/macos/appcast.xml
           git commit -m "release(macos): append v${{ steps.ver.outputs.version }} to appcast" || echo "no changes"
-          # Push back to main so Cloudflare Pages picks it up on its next deploy.
-          for i in {1..10}; do git pull --rebase origin main && git push origin HEAD:main && break || sleep 5; done
+          for i in {1..10}; do git push origin main && break || sleep 5; done

@@ -140,6 +140,8 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           # Save the modified file before switching branches
           cp web/updates/windows/latest.json /tmp/latest_updated.json
+          # Reset any local changes so rebase doesn't fail with "unstaged changes"
+          git checkout -- .
           # Switch to main so we commit on the right branch (not detached HEAD at tag)
           git fetch origin main
           git checkout main

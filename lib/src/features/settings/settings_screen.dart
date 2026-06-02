@@ -804,7 +804,7 @@ class _TeamList extends ConsumerWidget {
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Text(
         'Could not load members: $e',
-        style: OpticsTextStyles.bodySm.copyWith(color: OpticsColors.error),
+        style: OpticsTextStyles.bodySm.copyWith(color: OpticsColors.danger),
       ),
     );
   }

@@ -45,39 +45,40 @@ final _tenantMembersProvider =
   }).toList();
 });
 
-/// Data sources scoped to a specific tenant. Uses an admin-privileged RPC so
-/// the list is always correct even if the caller's JWT still reflects a
-/// different active tenant (e.g. a brief window right after switch-tenant
-/// before the JWT has been refreshed).
+/// Data sources scoped to a specific tenant. Uses the settings-data Edge
+/// Function to bypass PostgREST schema cache issues entirely.
 final _tenantDataSourcesProvider =
     FutureProvider.family<List<DataSource>, String>((ref, tenantId) async {
   final client = ref.watch(supabaseProvider);
   // Re-fetch whenever the global list changes (covers invalidation after
   // add/delete/edit operations).
   ref.watch(dataSourcesProvider);
-  // Use the SECURITY DEFINER RPC so this works regardless of which tenant
-  // is currently active in the JWT. The direct .from('data_sources') query
-  // is blocked by RLS (tenant_id = current_tenant_id()) when this is not
-  // the active tenant — the RPC bypasses that check after verifying membership.
-  final rows = await client.rpc(
-    'get_tenant_data_sources',
-    params: {'p_tid': tenantId},
+  final res = await client.functions.invoke(
+    'settings-data',
+    body: {'query': 'data_sources', 'tenant_id': tenantId},
   );
-  return (rows as List)
+  final resData = (res.data as Map?)?.cast<String, dynamic>() ?? {};
+  if (resData['error'] != null) throw Exception(resData['error']);
+  final rows = (resData['data'] as List?) ?? [];
+  return rows
       .map((r) => DataSource.fromMap((r as Map).cast<String, dynamic>()))
       .toList();
 });
 
-/// Pending invites for a specific tenant (bypasses the global activeTenantPendingInvitesProvider).
+/// Pending invites for a specific tenant. Uses the settings-data Edge Function
+/// to bypass PostgREST schema cache issues.
 final _tenantPendingInvitesProvider =
     FutureProvider.family<List<Map<String, dynamic>>, String>((ref, tenantId) async {
   final client = ref.watch(supabaseProvider);
-  final rows = await client.rpc(
-    'get_tenant_pending_invites',
-    params: {'p_tid': tenantId},
+  final res = await client.functions.invoke(
+    'settings-data',
+    body: {'query': 'pending_invites', 'tenant_id': tenantId},
   );
+  final resData = (res.data as Map?)?.cast<String, dynamic>() ?? {};
+  if (resData['error'] != null) throw Exception(resData['error']);
+  final rows = (resData['data'] as List?) ?? [];
   // Attach tenant_id to each invite so the revoke handler can use it.
-  return (rows as List).map((r) {
+  return rows.map((r) {
     final m = (r as Map).cast<String, dynamic>();
     return {...m, 'tenant_id': tenantId};
   }).toList();

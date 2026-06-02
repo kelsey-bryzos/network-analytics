@@ -305,35 +305,64 @@ class SupabaseRepo {
 
   /// Kick off a manual refresh. Returns immediately; the edge function fires
   /// sync-rds in the background and stamps data_source_sync on completion.
+  ///
+  /// [tenantId] should be the tenant that owns this data source. request-sync
+  /// resolves the tenant from the data source itself (no tenant header needed
+  /// there), but passing it keeps the header consistent for any middleware.
   Future<Map<String, dynamic>> requestDataSourceSync(
     String dataSourceId, {
     String mode = 'incremental',
+    String? tenantId,
   }) async {
+    final headers = tenantId != null
+        ? {'x-optics-tenant': tenantId}
+        : _fnHeaders();
     final res = await client.functions.invoke(
       'request-sync',
       body: {'data_source_id': dataSourceId, 'mode': mode},
-      headers: _fnHeaders(),
+      headers: headers,
     );
     return (res.data as Map?)?.cast<String, dynamic>() ?? {};
   }
 
   /// Cancel a running sync. Marks in-flight etl_runs as cancelled and sets
   /// data_source_sync.last_sync_status = 'cancelled'.
+  ///
+  /// [tenantId] should be the tenant that owns this data source.
   Future<Map<String, dynamic>> cancelDataSourceSync(
-    String dataSourceId,
-  ) async {
+    String dataSourceId, {
+    String? tenantId,
+  }) async {
+    final headers = tenantId != null
+        ? {'x-optics-tenant': tenantId}
+        : _fnHeaders();
     final res = await client.functions.invoke(
       'request-sync',
       body: {'data_source_id': dataSourceId, 'action': 'cancel'},
-      headers: _fnHeaders(),
+      headers: headers,
     );
     return (res.data as Map?)?.cast<String, dynamic>() ?? {};
   }
 
   /// Probe a REST data source via bryzos-proxy. All current data sources
   /// are REST; MySQL is out of scope for v1 of the deployed app.
-  Future<Map<String, dynamic>> testDataSource(String dataSourceId,
-      {String kind = 'rest'}) async {
+  ///
+  /// [tenantId] must be the tenant that *owns* this data source. The proxy
+  /// enforces ds.tenant_id == x-optics-tenant, so passing the wrong tenant
+  /// (e.g. the currently-active tenant when viewing a different org's card)
+  /// returns 403. Always pass the data source's own tenantId here.
+  Future<Map<String, dynamic>> testDataSource(
+    String dataSourceId, {
+    String kind = 'rest',
+    String? tenantId,
+  }) async {
+    // Use the caller-supplied tenantId (the data source's owner) in preference
+    // to the currently-active tenant from the JWT. This fixes the 403 that
+    // occurred when a Bryzos admin had tenant A active but was testing a data
+    // source that belongs to tenant B.
+    final headers = tenantId != null
+        ? {'x-optics-tenant': tenantId}
+        : _fnHeaders();
     final res = await client.functions.invoke(
       'bryzos-proxy',
       body: {
@@ -341,7 +370,7 @@ class SupabaseRepo {
         'table': 'user',
         'limit': 1,
       },
-      headers: _fnHeaders(),
+      headers: headers,
     );
     return (res.data as Map?)?.cast<String, dynamic>() ?? {};
   }

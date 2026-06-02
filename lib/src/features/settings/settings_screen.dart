@@ -45,6 +45,29 @@ final _tenantMembersProvider =
   }).toList();
 });
 
+/// Data sources scoped to a specific tenant. Uses an admin-privileged RPC so
+/// the list is always correct even if the caller's JWT still reflects a
+/// different active tenant (e.g. a brief window right after switch-tenant
+/// before the JWT has been refreshed).
+final _tenantDataSourcesProvider =
+    FutureProvider.family<List<DataSource>, String>((ref, tenantId) async {
+  final client = ref.watch(supabaseProvider);
+  // Re-fetch whenever the global list changes (covers invalidation after
+  // add/delete/edit operations).
+  ref.watch(dataSourcesProvider);
+  // Use the SECURITY DEFINER RPC so this works regardless of which tenant
+  // is currently active in the JWT. The direct .from('data_sources') query
+  // is blocked by RLS (tenant_id = current_tenant_id()) when this is not
+  // the active tenant — the RPC bypasses that check after verifying membership.
+  final rows = await client.rpc(
+    'list_tenant_data_sources',
+    params: {'tid': tenantId},
+  );
+  return (rows as List)
+      .map((r) => DataSource.fromMap((r as Map).cast<String, dynamic>()))
+      .toList();
+});
+
 /// Pending invites for a specific tenant (bypasses the global activeTenantPendingInvitesProvider).
 final _tenantPendingInvitesProvider =
     FutureProvider.family<List<Map<String, dynamic>>, String>((ref, tenantId) async {
@@ -125,6 +148,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         // Force the header logo + every tenant-scoped query to refetch.
         ref.invalidate(activeTenantObjectProvider);
         ref.invalidate(dataSourcesProvider);
+        // Also invalidate the tenant-specific data sources provider so the
+        // settings card shows fresh data after switching.
+        ref.invalidate(_tenantDataSourcesProvider(tenantId));
         ref.invalidate(dashboardsListProvider);
         // Reports and library are tenant-scoped too — drop the cached
         // lists so the new tenant doesn't briefly see the previous
@@ -590,7 +616,10 @@ class _ActiveTenantCardState extends ConsumerState<_ActiveTenantCard> {
                             tenantId: widget.tenant['id'] as String,
                           ),
                         ).then((created) {
-                          if (created == true) ref.invalidate(dataSourcesProvider);
+                          if (created == true) {
+                            ref.invalidate(dataSourcesProvider);
+                            ref.invalidate(_tenantDataSourcesProvider(widget.tenant['id'] as String));
+                          }
                         }),
                         icon: const Icon(Icons.add, size: 16),
                         label: const Text('Add Data Source'),
@@ -1433,7 +1462,11 @@ class _TenantDataSourcesList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(dataSourcesProvider);
+    // Use the tenant-scoped provider so this list is always correct regardless
+    // of which tenant is currently active in the JWT. This fixes the bug where
+    // switching to another org's settings card showed "No data sources" because
+    // RLS filtered by the old active tenant.
+    final async = ref.watch(_tenantDataSourcesProvider(tenantId));
     return async.when(
       loading: () => const Padding(
         padding: EdgeInsets.symmetric(vertical: 8),
@@ -1446,8 +1479,7 @@ class _TenantDataSourcesList extends ConsumerWidget {
         'Error loading data sources: $e',
         style: const TextStyle(color: OpticsColors.danger, fontSize: 12),
       ),
-      data: (all) {
-        final items = all.where((s) => s.tenantId == tenantId).toList();
+      data: (items) {
         if (items.isEmpty) {
           return const Text(
             'No data sources connected yet.',
@@ -1481,6 +1513,8 @@ class _TenantDataSourceRowState extends ConsumerState<_TenantDataSourceRow> {
   bool _testing = false;
   bool _refreshing = false;
   bool _cancelling = false;
+  // Timestamp when _refreshing was set true — used to detect local hangs.
+  DateTime? _refreshStartedAt;
 
   Color get _statusColor {
     switch (widget.source.lastTestStatus) {
@@ -1511,10 +1545,16 @@ class _TenantDataSourceRowState extends ConsumerState<_TenantDataSourceRow> {
   }
 
   Future<void> _runRefresh() async {
-    setState(() => _refreshing = true);
+    setState(() {
+      _refreshing = true;
+      _refreshStartedAt = DateTime.now();
+    });
     try {
       final res =
-          await ref.read(repoProvider).requestDataSourceSync(widget.source.id);
+          await ref.read(repoProvider).requestDataSourceSync(
+                widget.source.id,
+                tenantId: widget.source.tenantId,
+              );
       // ignore: unused_result
       ref.refresh(dataSourceSyncProvider(widget.source.id));
       if (mounted) {
@@ -1535,14 +1575,16 @@ class _TenantDataSourceRowState extends ConsumerState<_TenantDataSourceRow> {
         );
       }
     } finally {
-      if (mounted) setState(() => _refreshing = false);
+      if (mounted) setState(() { _refreshing = false; _refreshStartedAt = null; });
     }
   }
 
   Future<void> _pollUntilDone() async {
     for (var i = 0; i < 120; i++) {
       await Future<void>.delayed(const Duration(seconds: 5));
-      if (!mounted) return;
+      // Stop polling if the widget is gone OR if refreshing was externally
+      // cleared (e.g. cancel was pressed, widget rebuilt, etc.).
+      if (!mounted || !_refreshing) return;
       // ignore: unused_result
       ref.refresh(dataSourceSyncProvider(widget.source.id));
       // ignore: unused_result
@@ -1550,14 +1592,23 @@ class _TenantDataSourceRowState extends ConsumerState<_TenantDataSourceRow> {
       final row =
           await ref.read(repoProvider).getDataSourceSync(widget.source.id);
       final status = row?['last_sync_status'] as String?;
-      if (status == 'ok' || status == 'error' || status == 'cancelled' || status == 'partial') return;
+      if (status == 'ok' || status == 'error' || status == 'cancelled' || status == 'partial') {
+        // Sync is done — clear the local refreshing flag so the UI updates.
+        if (mounted) setState(() => _refreshing = false);
+        return;
+      }
     }
+    // Timeout — clear the flag so the UI doesn't stay stuck in "Syncing…".
+    if (mounted) setState(() => _refreshing = false);
   }
 
   Future<void> _cancelSync() async {
     setState(() => _cancelling = true);
     try {
-      await ref.read(repoProvider).cancelDataSourceSync(widget.source.id);
+      await ref.read(repoProvider).cancelDataSourceSync(
+            widget.source.id,
+            tenantId: widget.source.tenantId,
+          );
       // ignore: unused_result
       ref.refresh(dataSourceSyncProvider(widget.source.id));
       if (mounted) {
@@ -1572,7 +1623,7 @@ class _TenantDataSourceRowState extends ConsumerState<_TenantDataSourceRow> {
         );
       }
     } finally {
-      if (mounted) setState(() { _cancelling = false; _refreshing = false; });
+      if (mounted) setState(() { _cancelling = false; _refreshing = false; _refreshStartedAt = null; });
     }
   }
 
@@ -1608,7 +1659,13 @@ class _TenantDataSourceRowState extends ConsumerState<_TenantDataSourceRow> {
     try {
       final result = await ref
           .read(repoProvider)
-          .testDataSource(widget.source.id, kind: widget.source.kind);
+          .testDataSource(
+            widget.source.id,
+            kind: widget.source.kind,
+            // Always pass the data source's own tenant so bryzos-proxy does not
+            // reject the call with 403 when this is not the currently-active tenant.
+            tenantId: widget.source.tenantId,
+          );
       // ignore: unused_result
       ref.refresh(dataSourcesProvider);
       if (mounted) {
@@ -1619,6 +1676,17 @@ class _TenantDataSourceRowState extends ConsumerState<_TenantDataSourceRow> {
                   ? 'Connection OK${result['elapsed_ms'] != null ? ' (${result['elapsed_ms']} ms)' : ''}'
                   : 'Failed: ${result['error'] ?? 'unknown'}',
             ),
+          ),
+        );
+      }
+    } catch (e) {
+      // Surface errors (e.g. network failure, non-2xx from edge function) instead
+      // of silently swallowing them and leaving the button stuck in loading state.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Test failed: $e'),
+            backgroundColor: Colors.red.shade700,
           ),
         );
       }
@@ -1647,9 +1715,15 @@ class _TenantDataSourceRowState extends ConsumerState<_TenantDataSourceRow> {
     final progress = progressAsync.value;
 
     // Detect stale syncs: if 'running' for >3 min, the sync is likely orphaned.
+    // This covers both server-side running (lastAt is set) and client-side
+    // _refreshing that hung (lastAt may be null for never-synced sources).
+    final localRefreshStale = _refreshing &&
+        _refreshStartedAt != null &&
+        DateTime.now().difference(_refreshStartedAt!).inMinutes > 3;
     final bool isStaleSync = isSyncing &&
-        lastAt != null &&
-        DateTime.now().toUtc().difference(lastAt.toUtc()).inMinutes > 3;
+        (localRefreshStale ||
+            (lastAt != null &&
+                DateTime.now().toUtc().difference(lastAt.toUtc()).inMinutes > 3));
 
     String subtitle;
     Color subtitleColor = OpticsColors.textSecondary;
@@ -1674,6 +1748,10 @@ class _TenantDataSourceRowState extends ConsumerState<_TenantDataSourceRow> {
     } else if (lastStatus == 'error' && lastAt != null) {
       subtitle = 'Last sync failed ${_formatAgo(lastAt)}';
       subtitleColor = OpticsColors.danger;
+    } else if (lastStatus == null || lastAt == null) {
+      // Data source is configured but has never been synced yet.
+      subtitle = 'Never synced — press ↻ to sync now';
+      subtitleColor = OpticsColors.textMuted;
     } else {
       subtitle = s.summary;
     }
@@ -1835,6 +1913,7 @@ class _TenantDataSourceRowState extends ConsumerState<_TenantDataSourceRow> {
               if (updated == true) {
                 // ignore: unused_result
                 ref.refresh(dataSourcesProvider);
+                ref.invalidate(_tenantDataSourcesProvider(s.tenantId));
               }
             }),
             icon: const Icon(Icons.edit_outlined),

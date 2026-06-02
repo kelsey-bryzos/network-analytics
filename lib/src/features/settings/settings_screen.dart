@@ -19,27 +19,34 @@ import 'role_info_tooltip.dart';
 // independent of which tenant is currently "active" in the JWT.
 // ---------------------------------------------------------------------------
 
-/// Members list for a specific tenant (bypasses the global activeTenantProvider).
+/// Members list for a specific tenant — uses the settings-data Edge Function
+/// to bypass PostgREST schema cache entirely.
 final _tenantMembersProvider =
     FutureProvider.family<List<Map<String, dynamic>>, String>((ref, tenantId) async {
   final client = ref.watch(supabaseProvider);
-  final rows = await client.rpc('get_tenant_members', params: {'p_tid': tenantId});
-  return (rows as List).map((r) {
-    final m = r as Map<String, dynamic>;
-    final firstName = (m['first_name'] as String?)?.trim() ?? '';
-    final lastName  = (m['last_name']  as String?)?.trim() ?? '';
-    final fullName  = [firstName, lastName].where((s) => s.isNotEmpty).join(' ');
+  final res = await client.functions.invoke(
+    'settings-data',
+    body: {'query': 'members', 'tenant_id': tenantId},
+  );
+  final resData = (res.data as Map?)?.cast<String, dynamic>() ?? {};
+  if (resData['error'] != null) throw Exception(resData['error']);
+  final rows = (resData['data'] as List?) ?? [];
+  return rows.map((r) {
+    final m = (r as Map).cast<String, dynamic>();
+    final firstName   = (m['first_name']   as String?)?.trim() ?? '';
+    final lastName    = (m['last_name']    as String?)?.trim() ?? '';
+    final fullName    = [firstName, lastName].where((s) => s.isNotEmpty).join(' ');
     final displayName = (m['display_name'] as String?)?.trim() ?? '';
     return {
-      'role': m['role'],
-      'display_name': displayName.isNotEmpty
+      'role':            m['role'],
+      'display_name':    displayName.isNotEmpty
           ? displayName
           : (fullName.isNotEmpty ? fullName : 'Unknown User'),
-      'first_name': firstName,
-      'last_name': lastName,
-      'full_name': fullName.isNotEmpty ? fullName : null,
-      'email': (m['email'] as String?)?.trim() ?? '',
-      'user_id': m['user_id'],
+      'first_name':      firstName,
+      'last_name':       lastName,
+      'full_name':       fullName.isNotEmpty ? fullName : null,
+      'email':           (m['email'] as String?)?.trim() ?? '',
+      'user_id':         m['user_id'],
       'is_bryzos_staff': m['is_bryzos_staff'] ?? false,
     };
   }).toList();

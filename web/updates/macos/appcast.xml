@@ -104,5 +104,18 @@
         length="27790663"
         type="application/octet-stream" />
     </item>
+      <item>
+      <title>Version 1.0.110</title>
+      <pubDate>Thu, 04 Jun 2026 20:25:20 +0000</pubDate>
+      <sparkle:version>1000110</sparkle:version>
+      <sparkle:shortVersionString>1.0.110</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>10.15</sparkle:minimumSystemVersion>
+      <description><![CDATA[<p>See <a href="https://github.com/kelsey-bryzos/network-analytics/releases/tag/v1.0.110">release notes on GitHub</a>.</p>]]></description>
+      <enclosure
+        url="https://github.com/kelsey-bryzos/network-analytics/releases/download/v1.0.110/NetworkAnalytics-1.0.110.dmg"
+        sparkle:edSignature="PgD7xtiFoIMJgeVkwpuEkPIKW536L9QD6UiGp97Mw1ZgWga0pXysSJwUrCUZsLfNyBLByBZc7ZAFMEigOTasAg=="
+        length="27371516"
+        type="application/octet-stream" />
+    </item>
   </channel>
 </rss>

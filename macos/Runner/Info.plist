@@ -41,7 +41,7 @@
 	<key>SUScheduledCheckInterval</key>
 	<integer>86400</integer>
 	<key>SUAutomaticallyUpdate</key>
-	<true/>
+	<false/>
 	<key>SUPublicEDKey</key>
 	<string>yrqfBpw+m/j00C5QzOYltFbWuuQSkyb5nWyWtxvdX50=</string>
 

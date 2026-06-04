@@ -1,10 +1,10 @@
 {
-  "version": "0.0.0",
-  "build_number": 0,
-  "release_date": "2026-06-04T00:00:00Z",
-  "release_notes_html": "<p>No staging release yet.</p>",
-  "download_url": "",
-  "sha256": "",
+  "version": "1.0.109",
+  "build_number": 1000109,
+  "release_date": "2026-06-04T16:58:56Z",
+  "release_notes_html": "<p>See <a href=\"https://github.com/kelsey-bryzos/network-analytics/releases/tag/v1.0.109\">release notes on GitHub</a>.</p>",
+  "download_url": "https://github.com/kelsey-bryzos/network-analytics/releases/download/v1.0.109/NetworkAnalytics-1.0.109-windows-x64-Staging.zip",
+  "sha256": "7d9901be995760d9e271adb3a4cb23e6ee31a5c25e9e2acfb0844f9ec2f733bb",
   "minimum_os": "10.0.17763",
   "mandatory": false
 }

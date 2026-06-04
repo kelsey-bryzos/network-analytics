@@ -139,10 +139,39 @@ class _SecureErrorTextState extends ConsumerState<_SecureErrorText> {
 /// users see a sanitised message.
 void _showSecureErrorSnackBar(BuildContext context, WidgetRef ref, String generic, Object error) {
   final isBryzos = _isBryzosUser(ref);
-  final msg = isBryzos ? '$generic $error' : generic;
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(msg)),
-  );
+  if (isBryzos) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$generic $error'),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 5),
+        backgroundColor: OpticsColors.danger,
+      ),
+    );
+  } else {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(generic),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 8), // Give them time to click report
+        backgroundColor: OpticsColors.danger,
+        action: SnackBarAction(
+          label: 'Report Error',
+          textColor: OpticsColors.surfaceElevated,
+          onPressed: () {
+            ref.read(supabaseProvider).functions.invoke(
+              'send-error-report',
+              body: {
+                'message': generic,
+                'details': error.toString(),
+                'context': 'Settings Screen Snackbar',
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1022,9 +1051,9 @@ class _PendingInvitesList extends ConsumerWidget {
           child: CircularProgressIndicator(strokeWidth: 2),
         ),
       ),
-      error: (_, __) => const Text(
-        'Could not load pending invites.',
-        style: OpticsTextStyles.bodySm,
+      error: (e, _) => _SecureErrorText(
+        genericMessage: 'Could not load pending invites.',
+        error: e,
       ),
       data: (invites) {
         if (invites.isEmpty) {
@@ -1090,11 +1119,26 @@ class _PendingInviteRowState extends ConsumerState<_PendingInviteRow> {
         headers: tid == null ? {} : {'x-optics-tenant': tid},
       );
       final data = (res.data as Map?)?.cast<String, dynamic>() ?? {};
-      if (data['error'] != null) throw Exception(data['error']);
+      if (data['error'] != null) {
+        // If the invite is already gone, treat it as a success since the goal is achieved.
+        if (data['error'] == 'invite not found') {
+          // Do nothing, proceed to success block to invalidate UI
+        } else {
+          throw Exception(data['error']);
+        }
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Invite to $email revoked.')),
+          SnackBar(
+            content: Text(
+              'Invite to $email revoked.',
+              style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
+            ),
+            backgroundColor: OpticsColors.accentGreen,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
+        if (tid != null) ref.invalidate(_tenantPendingInvitesProvider(tid));
         ref.invalidate(activeTenantPendingInvitesProvider);
       }
     } catch (e) {

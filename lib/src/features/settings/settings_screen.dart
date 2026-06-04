@@ -14,6 +14,138 @@ import '../../design/theme.dart';
 import 'role_info_tooltip.dart';
 
 // ---------------------------------------------------------------------------
+// Secure error display helpers.
+//
+// CRITICAL SECURITY RULE: External users must NEVER see Supabase URLs,
+// stack traces, or any internal implementation details in error messages.
+// Only @bryzos.com users get verbose/debug errors.
+// ---------------------------------------------------------------------------
+
+/// Returns true if the currently signed-in user has an @bryzos.com email.
+bool _isBryzosUser(WidgetRef ref) {
+  final email = ref.read(supabaseProvider).auth.currentUser?.email ?? '';
+  return email.toLowerCase().endsWith('@bryzos.com');
+}
+
+/// Sanitises an error message for external users. Strips anything that looks
+/// like an internal URL, stack trace, or implementation detail.
+String _sanitiseError(Object error) {
+  final raw = error.toString();
+  // Remove Supabase URLs, stack traces, and "ClientException:" prefixes
+  return raw
+      .replaceAll(RegExp(r'https?://[^\s,]+'), '[redacted]')
+      .replaceAll(RegExp(r'ClientException:\s*'), '')
+      .replaceAll(RegExp(r'Exception:\s*'), '')
+      .trim();
+}
+
+/// A widget that displays an error message.
+/// - Bryzos users see the full verbose error.
+/// - External users see a clean generic message + a "Report Error" button
+///   that silently emails the error details to kelsey@bryzos.com.
+class _SecureErrorText extends ConsumerStatefulWidget {
+  final String genericMessage; // e.g. "Error loading data sources."
+  final Object error;
+
+  const _SecureErrorText({
+    required this.genericMessage,
+    required this.error,
+  });
+
+  @override
+  ConsumerState<_SecureErrorText> createState() => _SecureErrorTextState();
+}
+
+class _SecureErrorTextState extends ConsumerState<_SecureErrorText> {
+  bool _reported = false;
+  bool _reporting = false;
+
+  Future<void> _reportError() async {
+    setState(() => _reporting = true);
+    try {
+      final client = ref.read(supabaseProvider);
+      final userEmail = client.auth.currentUser?.email ?? 'unknown';
+      await client.functions.invoke(
+        'send-error-report',
+        body: {
+          'user_email': userEmail,
+          'error_detail': widget.error.toString(),
+          'context': widget.genericMessage,
+        },
+      );
+      if (mounted) setState(() => _reported = true);
+    } catch (_) {
+      // Silently fail — we don't want the error reporting to itself show errors
+      if (mounted) setState(() => _reported = true);
+    } finally {
+      if (mounted) setState(() => _reporting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isBryzos = _isBryzosUser(ref);
+
+    if (isBryzos) {
+      // Verbose error for Bryzos staff
+      return Text(
+        '${widget.genericMessage} ${widget.error}',
+        style: OpticsTextStyles.bodySm.copyWith(color: OpticsColors.danger),
+      );
+    }
+
+    // Clean error for external users
+    return Row(
+      children: [
+        Flexible(
+          child: Text(
+            widget.genericMessage,
+            style: OpticsTextStyles.bodySm.copyWith(color: OpticsColors.danger),
+          ),
+        ),
+        const SizedBox(width: 8),
+        if (_reported)
+          Text(
+            'Reported ✓',
+            style: OpticsTextStyles.bodySm.copyWith(
+              color: OpticsColors.success,
+              fontSize: 11,
+            ),
+          )
+        else
+          TextButton.icon(
+            onPressed: _reporting ? null : _reportError,
+            icon: _reporting
+                ? const SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(strokeWidth: 1.5),
+                  )
+                : const Icon(Icons.flag_outlined, size: 14),
+            label: const Text('Report Error', style: TextStyle(fontSize: 11)),
+            style: TextButton.styleFrom(
+              foregroundColor: OpticsColors.textSecondary,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Shows a SnackBar with error info. Bryzos users see full detail; external
+/// users see a sanitised message.
+void _showSecureErrorSnackBar(BuildContext context, WidgetRef ref, String generic, Object error) {
+  final isBryzos = _isBryzosUser(ref);
+  final msg = isBryzos ? '$generic $error' : generic;
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text(msg)),
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Tenant-scoped providers for the settings screen.
 // These are keyed by tenantId so each org card always queries its own data,
 // independent of which tenant is currently "active" in the JWT.
@@ -211,7 +343,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           if (_loading)
             const Center(child: CircularProgressIndicator())
           else if (_err != null)
-            Text('Error loading organizations: $_err', style: const TextStyle(color: OpticsColors.danger))
+            Consumer(builder: (ctx, ref, _) {
+              return _SecureErrorText(
+                genericMessage: 'Error loading organizations.',
+                error: _err!,
+              );
+            })
           else if (_tenants == null || _tenants!.isEmpty)
             const Text('No organizations found.', style: OpticsTextStyles.body)
           else
@@ -426,7 +563,7 @@ class _ActiveTenantCardState extends ConsumerState<_ActiveTenantCard> {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Organization details saved')));
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) _showSecureErrorSnackBar(context, ref, 'Could not save details.', e);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -445,7 +582,7 @@ class _ActiveTenantCardState extends ConsumerState<_ActiveTenantCard> {
       ref.invalidate(activeTenantObjectProvider);
       if (mounted) setState(() {});
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Logo save failed: $e')));
+      if (mounted) _showSecureErrorSnackBar(context, ref, 'Logo save failed.', e);
     }
   }
 
@@ -859,9 +996,9 @@ class _TeamList extends ConsumerWidget {
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Text(
-        'Could not load members: $e',
-        style: OpticsTextStyles.bodySm.copyWith(color: OpticsColors.danger),
+      error: (e, _) => _SecureErrorText(
+        genericMessage: 'Could not load members.',
+        error: e,
       ),
     );
   }
@@ -962,9 +1099,7 @@ class _PendingInviteRowState extends ConsumerState<_PendingInviteRow> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Revoke failed: $e')),
-        );
+        _showSecureErrorSnackBar(context, ref, 'Revoke failed.', e);
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -1143,7 +1278,7 @@ class _InvitePanelState extends ConsumerState<_InvitePanel> {
         ref.invalidate(activeTenantPendingInvitesProvider);
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) _showSecureErrorSnackBar(context, ref, 'Could not send invite.', e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -1376,7 +1511,7 @@ class _LogoUploaderState extends ConsumerState<_LogoUploader> {
       widget.onChanged(url);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
+        _showSecureErrorSnackBar(context, ref, 'Upload failed.', e);
       }
     } finally {
       if (mounted) setState(() => _uploading = false);
@@ -1395,7 +1530,7 @@ class _LogoUploaderState extends ConsumerState<_LogoUploader> {
       await _uploadBytes(file.bytes!, file.name);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
+        _showSecureErrorSnackBar(context, ref, 'Upload failed.', e);
       }
     }
   }
@@ -1535,9 +1670,9 @@ class _TenantDataSourcesList extends ConsumerWidget {
           child: CircularProgressIndicator(strokeWidth: 2),
         ),
       ),
-      error: (e, _) => Text(
-        'Error loading data sources: $e',
-        style: const TextStyle(color: OpticsColors.danger, fontSize: 12),
+      error: (e, _) => _SecureErrorText(
+        genericMessage: 'Error loading data sources.',
+        error: e,
       ),
       data: (items) {
         if (items.isEmpty) {
@@ -1633,9 +1768,7 @@ class _TenantDataSourceRowState extends ConsumerState<_TenantDataSourceRow> {
       // Only reached on exception from requestDataSourceSync itself.
       if (mounted) {
         setState(() { _refreshing = false; _refreshStartedAt = null; });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Refresh failed: $e')),
-        );
+        _showSecureErrorSnackBar(context, ref, 'Refresh failed.', e);
       }
     }
   }
@@ -1679,9 +1812,7 @@ class _TenantDataSourceRowState extends ConsumerState<_TenantDataSourceRow> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Cancel failed: $e')),
-        );
+        _showSecureErrorSnackBar(context, ref, 'Cancel failed.', e);
       }
     } finally {
       if (mounted) setState(() { _cancelling = false; _refreshing = false; _refreshStartedAt = null; });
@@ -1708,9 +1839,7 @@ class _TenantDataSourceRowState extends ConsumerState<_TenantDataSourceRow> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not update cadence: $e')),
-        );
+        _showSecureErrorSnackBar(context, ref, 'Could not update cadence.', e);
       }
     }
   }
@@ -1744,12 +1873,7 @@ class _TenantDataSourceRowState extends ConsumerState<_TenantDataSourceRow> {
       // Surface errors (e.g. network failure, non-2xx from edge function) instead
       // of silently swallowing them and leaving the button stuck in loading state.
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Test failed: $e'),
-            backgroundColor: Colors.red.shade700,
-          ),
-        );
+        _showSecureErrorSnackBar(context, ref, 'Connection test failed.', e);
       }
     } finally {
       if (mounted) setState(() => _testing = false);
@@ -2023,7 +2147,7 @@ class _TenantDataSourceRowState extends ConsumerState<_TenantDataSourceRow> {
               } catch (e) {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Delete failed: $e')),
+                    SnackBar(content: Text(_isBryzosUser(ref) ? 'Delete failed: $e' : 'Delete failed.')),
                   );
                 }
               }
@@ -2181,10 +2305,13 @@ class _DataSourceDialogState extends ConsumerState<_DataSourceDialog> {
             ),
             if (_err != null) ...[
               const SizedBox(height: 12),
-              Text(
-                _err!,
-                style: const TextStyle(color: OpticsColors.danger, fontSize: 12),
-              ),
+              Consumer(builder: (ctx, ref, _) {
+                final isBryzos = _isBryzosUser(ref);
+                return Text(
+                  isBryzos ? _err! : 'Could not save data source.',
+                  style: const TextStyle(color: OpticsColors.danger, fontSize: 12),
+                );
+              }),
             ],
           ],
         ),

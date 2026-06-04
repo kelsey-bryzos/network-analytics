@@ -116,10 +116,22 @@ jobs:
         run: |
           VERSION="${{ steps.ver.outputs.version }}"
           BUILD="${{ steps.ver.outputs.build }}"
+          ENV_NAME="${{ github.event.inputs.environment || 'prod' }}"
           ZIP_NAME=$(basename "$ZIP")
           URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/${ZIP_NAME}"
           DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          cat > web/updates/windows/latest.json <<EOF
+
+          # Write to the environment-specific manifest
+          if [ "$ENV_NAME" = "staging" ]; then
+            MANIFEST="web/updates/windows/staging/latest.json"
+          elif [ "$ENV_NAME" = "demo" ]; then
+            MANIFEST="web/updates/windows/demo/latest.json"
+          else
+            MANIFEST="web/updates/windows/latest.json"
+          fi
+          mkdir -p "$(dirname $MANIFEST)"
+
+          cat > "$MANIFEST" <<EOF
           {
             "version": "${VERSION}",
             "build_number": ${BUILD},
@@ -131,22 +143,33 @@ jobs:
             "mandatory": false
           }
           EOF
-          cat web/updates/windows/latest.json
+          echo "Wrote $MANIFEST for env=$ENV_NAME"
+          cat "$MANIFEST"
 
       - name: Commit & push updated latest.json
         shell: bash
         run: |
+          ENV_NAME="${{ github.event.inputs.environment || 'prod' }}"
+          if [ "$ENV_NAME" = "staging" ]; then
+            MANIFEST="web/updates/windows/staging/latest.json"
+          elif [ "$ENV_NAME" = "demo" ]; then
+            MANIFEST="web/updates/windows/demo/latest.json"
+          else
+            MANIFEST="web/updates/windows/latest.json"
+          fi
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           # Save the modified file before switching branches
-          cp web/updates/windows/latest.json /tmp/latest_updated.json
+          cp "$MANIFEST" /tmp/latest_updated.json
           # Reset any local changes so rebase doesn't fail with "unstaged changes"
           git checkout -- .
           # Switch to main so we commit on the right branch (not detached HEAD at tag)
           git fetch origin main
           git checkout main
           git pull --rebase origin main
-          cp /tmp/latest_updated.json web/updates/windows/latest.json
-          git add web/updates/windows/latest.json
-          git commit -m "release(windows): bump latest.json to v${{ steps.ver.outputs.version }}" || echo "no changes"
+          mkdir -p "$(dirname $MANIFEST)"
+          cp /tmp/latest_updated.json "$MANIFEST"
+          git add "$MANIFEST"
+          git commit -m "release(windows-${ENV_NAME}): bump latest.json to v${{ steps.ver.outputs.version }}" || echo "no changes"
           for i in {1..10}; do git push origin main && break || sleep 5; done

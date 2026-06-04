@@ -22,8 +22,20 @@ import 'package:url_launcher/url_launcher.dart';
 class UpdateChecker {
   UpdateChecker._();
 
-  static const String _windowsManifestUrl =
-      'https://analytics.bryzos.com/updates/windows/latest.json';
+  /// Per-environment Windows update manifests.
+  /// All feeds are served from the Prod Cloudflare Pages site under different
+  /// sub-paths so a single `main` branch commit keeps every feed up to date.
+  static String get _windowsManifestUrl {
+    const env = String.fromEnvironment('APP_ENV', defaultValue: 'prod');
+    switch (env) {
+      case 'staging':
+        return 'https://analytics.bryzos.com/updates/windows/staging/latest.json';
+      case 'demo':
+        return 'https://analytics.bryzos.com/updates/windows/demo/latest.json';
+      default:
+        return 'https://analytics.bryzos.com/updates/windows/latest.json';
+    }
+  }
 
   /// Call once after the app has rendered its first frame.
   /// Safe to call on every platform; only does work on Windows.

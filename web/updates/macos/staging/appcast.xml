@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Network Analytics Staging — macOS Updates</title>
+    <link>https://analytics.bryzos.com/updates/macos/staging/appcast.xml</link>
+    <description>Silent auto-update feed for the Network Analytics Staging macOS desktop app.</description>
+    <language>en</language>
+    <!-- Items appended by release-macos.yml when environment=staging -->
+  </channel>
+</rss>

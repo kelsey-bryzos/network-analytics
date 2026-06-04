@@ -677,6 +677,53 @@ class _ActiveTenantCardState extends ConsumerState<_ActiveTenantCard> {
   }
 }
 
+class _DomainTagInfo {
+  final String label;
+  final Color color;
+  _DomainTagInfo(this.label, this.color);
+}
+
+_DomainTagInfo? _getDomainTag(String email, bool isBryzosStaff) {
+  if (isBryzosStaff) return _DomainTagInfo('BRYZOS', const Color(0xFF7C3AED));
+  if (email.isEmpty) return null;
+  final parts = email.split('@');
+  if (parts.length != 2) return null;
+  final domain = parts[1].toLowerCase();
+  
+  if (domain == 'bryzos.com') {
+    return _DomainTagInfo('BRYZOS', const Color(0xFF7C3AED));
+  } else if (domain == 'ryerson.com') {
+    return _DomainTagInfo('RYERSON', const Color(0xFF3B82F6)); // Blue
+  } else if (domain == 'centralsteel.com' || domain == 'csw.com') {
+    return _DomainTagInfo('CSW', const Color(0xFFEAB308)); // Yellow/Gold
+  } else if (domain == 'steelnow.com') {
+    return _DomainTagInfo('STEELNOW', const Color(0xFF10B981)); // Green
+  } else if (domain == 'sunbeltgroup.com' || domain == 'sunbelt.com') {
+    return _DomainTagInfo('SUNBELT', const Color(0xFFF97316)); // Orange
+  } else {
+    // Exclude common free email providers from getting a company tag
+    const generic = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'me.com', 'mac.com'];
+    if (generic.contains(domain)) return null;
+    
+    // Dynamically generate a tag and color for other B2B domains
+    final company = domain.split('.').first.toUpperCase();
+    if (company.isEmpty) return null;
+    
+    // Simple hash to pick a consistent color from a predefined list
+    final colors = [
+      const Color(0xFF14B8A6), // Teal
+      const Color(0xFF8B5CF6), // Violet
+      const Color(0xFFF43F5E), // Rose
+      const Color(0xFF06B6D4), // Cyan
+      const Color(0xFFD946EF), // Fuchsia
+      const Color(0xFF84CC16), // Lime
+      const Color(0xFFEAB308), // Yellow
+    ];
+    final color = colors[company.hashCode.abs() % colors.length];
+    return _DomainTagInfo(company, color);
+  }
+}
+
 class _TeamList extends ConsumerWidget {
   final String tenantId;
   const _TeamList({required this.tenantId});
@@ -707,6 +754,8 @@ class _TeamList extends ConsumerWidget {
                 ? fullName[0].toUpperCase()
                 : (email.isNotEmpty ? email[0].toUpperCase() : '?');
 
+            final domainTag = _getDomainTag(email, isBryzosStaff);
+
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: Row(
@@ -717,12 +766,12 @@ class _TeamList extends ConsumerWidget {
                     width: 32,
                     height: 32,
                     decoration: BoxDecoration(
-                      color: isBryzosStaff
-                          ? const Color(0xFF7C3AED).withValues(alpha: 0.18)
+                      color: domainTag != null
+                          ? domainTag.color.withValues(alpha: 0.18)
                           : OpticsColors.surfaceElevated,
                       shape: BoxShape.circle,
-                      border: isBryzosStaff
-                          ? Border.all(color: const Color(0xFF7C3AED).withValues(alpha: 0.5), width: 1)
+                      border: domainTag != null
+                          ? Border.all(color: domainTag.color.withValues(alpha: 0.5), width: 1)
                           : null,
                     ),
                     alignment: Alignment.center,
@@ -731,8 +780,8 @@ class _TeamList extends ConsumerWidget {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.bold,
-                        color: isBryzosStaff
-                            ? const Color(0xFFA78BFA)
+                        color: domainTag != null
+                            ? domainTag.color.withValues(alpha: 0.9)
                             : OpticsColors.textSecondary,
                       ),
                     ),
@@ -747,23 +796,23 @@ class _TeamList extends ConsumerWidget {
                           children: [
                             if (fullName.isNotEmpty)
                               Text(fullName, style: OpticsTextStyles.body),
-                            if (isBryzosStaff) ...[
+                            if (domainTag != null) ...[
                               const SizedBox(width: 6),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF7C3AED).withValues(alpha: 0.15),
+                                  color: domainTag.color.withValues(alpha: 0.15),
                                   borderRadius: BorderRadius.circular(3),
                                   border: Border.all(
-                                    color: const Color(0xFF7C3AED).withValues(alpha: 0.4),
+                                    color: domainTag.color.withValues(alpha: 0.4),
                                   ),
                                 ),
-                                child: const Text(
-                                  'BRYZOS',
+                                child: Text(
+                                  domainTag.label,
                                   style: TextStyle(
                                     fontSize: 9,
                                     fontWeight: FontWeight.w700,
-                                    color: Color(0xFFA78BFA),
+                                    color: domainTag.color.withValues(alpha: 0.9),
                                     letterSpacing: 0.8,
                                   ),
                                 ),

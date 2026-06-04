@@ -1,10 +1,10 @@
 {
-  "version": "1.0.110",
-  "build_number": 1110,
-  "release_date": "2026-06-04T20:27:13Z",
-  "release_notes_html": "<p>See <a href=\"https://github.com/kelsey-bryzos/network-analytics/releases/tag/v1.0.110\">release notes on GitHub</a>.</p>",
-  "download_url": "https://github.com/kelsey-bryzos/network-analytics/releases/download/v1.0.110/NetworkAnalytics-1.0.110-windows-x64-Demo.zip",
-  "sha256": "baca4756929a47a191461bc0630328558ea8fe1bafb169713d797a461cd877dd",
+  "version": "1.0.111",
+  "build_number": 1000111,
+  "release_date": "2026-06-04T21:02:10Z",
+  "release_notes_html": "<p>See <a href=\"https://github.com/kelsey-bryzos/network-analytics/releases/tag/v1.0.111\">release notes on GitHub</a>.</p>",
+  "download_url": "https://github.com/kelsey-bryzos/network-analytics/releases/download/v1.0.111/NetworkAnalytics-1.0.111-windows-x64-Demo.zip",
+  "sha256": "688b286ee2fec93198d4444574f4e23dbcbd5fe45f4c573bb5182eb0143715a8",
   "minimum_os": "10.0.17763",
   "mandatory": false
 }

@@ -109,27 +109,26 @@ class V2ReportView extends ConsumerWidget {
   }
 
   Widget _table(List<Map<String, dynamic>> rows) {
-    // Render the v2 "Table" viz with the same visual language used by the
-    // dashboard widget table (see widget_renderer._singleSeriesTable):
-    //   • Rank column ("#")
-    //   • Label column with a colored palette dot
-    //   • Numeric columns right-aligned, colored by the row's palette index
-    //   • Trailing "Share" column derived from the first numeric column
-    //   • Alternating row backgrounds, uppercase header row
-    //
-    // This keeps Table behavior consistent regardless of whether the report
-    // came from the legacy widget pipeline or the v2 wizard.
-    final headers = rows.first.keys.toList();
+    // Use the column order from query.columns (payload-defined order).
+    // The alias is the display header; the column field is the row key.
+    // Falls back to rows.first.keys if no columns defined (legacy reports).
+    final List<String> displayHeaders;
+    final List<String> lookupKeys;
+    if (query.columns.isNotEmpty) {
+      displayHeaders = query.columns.map((c) => c.alias).toList();
+      lookupKeys = query.columns.map((c) => c.column).toList();
+    } else {
+      displayHeaders = rows.first.keys.toList();
+      lookupKeys = displayHeaders;
+    }
 
-    // Identify which columns are numeric so we can right-align them and pick
-    // a "primary numeric" for the Share computation.
+    // Identify numeric columns by lookup key.
     final numericCols = <String>{};
-    for (final h in headers) {
-      // A column is numeric if every non-null value parses to a number.
+    for (final key in lookupKeys) {
       var hasValue = false;
       var allNum = true;
       for (final r in rows) {
-        final v = r[h];
+        final v = r[key];
         if (v == null) continue;
         hasValue = true;
         if (_toDouble(v) == null) {
@@ -137,18 +136,25 @@ class V2ReportView extends ConsumerWidget {
           break;
         }
       }
-      if (hasValue && allNum) numericCols.add(h);
+      if (hasValue && allNum) numericCols.add(key);
     }
 
-    final primaryNumeric =
-        headers.firstWhere(numericCols.contains, orElse: () => '');
+    final primaryNumericKey =
+        lookupKeys.firstWhere(numericCols.contains, orElse: () => '');
     double grandTotal = 0;
-    if (primaryNumeric.isNotEmpty) {
+    if (primaryNumericKey.isNotEmpty) {
       for (final r in rows) {
-        grandTotal += _toDouble(r[primaryNumeric]) ?? 0;
+        grandTotal += _toDouble(r[primaryNumericKey]) ?? 0;
       }
     }
-    final showShare = primaryNumeric.isNotEmpty && grandTotal > 0;
+    final showShare = primaryNumericKey.isNotEmpty && grandTotal > 0;
+
+    // Give the widest column ("Searched Product" or any long-label col) more flex.
+    int colFlex(int i) {
+      final label = displayHeaders[i].toLowerCase();
+      if (label.contains('product') || label.contains('description')) return 5;
+      return 2;
+    }
 
     Widget headerCell(String text, {bool rightAlign = false}) => Text(
           text,
@@ -167,8 +173,7 @@ class V2ReportView extends ConsumerWidget {
         children: [
           // Header bar
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: OpticsColors.surfaceElevated,
               borderRadius:
@@ -177,12 +182,12 @@ class V2ReportView extends ConsumerWidget {
             child: Row(
               children: [
                 SizedBox(width: 24, child: headerCell('#')),
-                for (int i = 0; i < headers.length; i++)
+                for (int i = 0; i < displayHeaders.length; i++)
                   Expanded(
-                    flex: i == 0 ? 3 : 2,
+                    flex: colFlex(i),
                     child: headerCell(
-                      headers[i],
-                      rightAlign: numericCols.contains(headers[i]),
+                      displayHeaders[i],
+                      rightAlign: numericCols.contains(lookupKeys[i]),
                     ),
                   ),
                 if (showShare)
@@ -201,11 +206,13 @@ class V2ReportView extends ConsumerWidget {
                     _tableRow(
                       rank: rank,
                       row: rows[rank],
-                      headers: headers,
+                      displayHeaders: displayHeaders,
+                      lookupKeys: lookupKeys,
                       numericCols: numericCols,
-                      primaryNumeric: primaryNumeric,
+                      primaryNumericKey: primaryNumericKey,
                       grandTotal: grandTotal,
                       showShare: showShare,
+                      colFlex: colFlex,
                     ),
                 ],
               ),
@@ -219,17 +226,19 @@ class V2ReportView extends ConsumerWidget {
   Widget _tableRow({
     required int rank,
     required Map<String, dynamic> row,
-    required List<String> headers,
+    required List<String> displayHeaders,
+    required List<String> lookupKeys,
     required Set<String> numericCols,
-    required String primaryNumeric,
+    required String primaryNumericKey,
     required double grandTotal,
     required bool showShare,
+    required int Function(int) colFlex,
   }) {
     final palette = OpticsColors.chartPalette;
     final rowColor = palette[rank % palette.length];
     final isOdd = rank % 2 == 1;
     final share = showShare
-        ? ((_toDouble(row[primaryNumeric]) ?? 0) / grandTotal * 100)
+        ? ((_toDouble(row[primaryNumericKey]) ?? 0) / grandTotal * 100)
         : 0.0;
 
     return Container(
@@ -249,9 +258,9 @@ class V2ReportView extends ConsumerWidget {
               ),
             ),
           ),
-          for (int i = 0; i < headers.length; i++)
+          for (int i = 0; i < displayHeaders.length; i++)
             Expanded(
-              flex: i == 0 ? 3 : 2,
+              flex: colFlex(i),
               child: i == 0
                   ? Row(
                       children: [
@@ -266,7 +275,7 @@ class V2ReportView extends ConsumerWidget {
                         ),
                         Expanded(
                           child: Text(
-                            row[headers[i]]?.toString() ?? '',
+                            row[lookupKeys[i]]?.toString() ?? '',
                             style: const TextStyle(
                               fontSize: 12,
                               color: OpticsColors.textPrimary,
@@ -277,17 +286,17 @@ class V2ReportView extends ConsumerWidget {
                       ],
                     )
                   : Text(
-                      row[headers[i]]?.toString() ?? '',
+                      row[lookupKeys[i]]?.toString() ?? '',
                       style: TextStyle(
                         fontSize: 12,
-                        fontWeight: numericCols.contains(headers[i])
+                        fontWeight: numericCols.contains(lookupKeys[i])
                             ? FontWeight.w600
                             : FontWeight.w400,
-                        color: numericCols.contains(headers[i])
+                        color: numericCols.contains(lookupKeys[i])
                             ? rowColor
                             : OpticsColors.textSecondary,
                       ),
-                      textAlign: numericCols.contains(headers[i])
+                      textAlign: numericCols.contains(lookupKeys[i])
                           ? TextAlign.right
                           : TextAlign.left,
                       overflow: TextOverflow.ellipsis,

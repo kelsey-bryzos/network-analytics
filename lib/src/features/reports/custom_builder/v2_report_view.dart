@@ -509,8 +509,8 @@ class V2ReportView extends ConsumerWidget {
 int _colFlex(String header, int index) {
   const flexMap = {
     'Source':           2,
-    'Company':          3,
-    'Buyer':            3,
+    'Company':          4,
+    'Buyer':            2,
     'Searched Product': 8,
     'Price':            2,
     'Date':             2,

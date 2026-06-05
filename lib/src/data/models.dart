@@ -71,6 +71,21 @@ enum WidgetKind {
   map,
   markdown;
 
+  /// The type string accepted by the `widgets.type` DB check constraint.
+  /// `barVertical`, `barHorizontal`, `barStacked`, `barGrouped` all map to
+  /// `'bar'` — the constraint does not distinguish bar sub-types.
+  String get dbTypeName {
+    switch (this) {
+      case WidgetKind.barVertical:
+      case WidgetKind.barHorizontal:
+      case WidgetKind.barStacked:
+      case WidgetKind.barGrouped:
+        return 'bar';
+      default:
+        return name;
+    }
+  }
+
   static WidgetKind fromString(String s) {
     // Accept both enum names (e.g. "barHorizontal") and the snake_case /
     // shorthand variants used in the canned-library payloads
@@ -190,7 +205,7 @@ class WidgetModel {
 
   Map<String, dynamic> toUpdateMap() => {
         'title': title,
-        'type': kind.name,
+        'type': kind.dbTypeName,
         'layout': {'x': x, 'y': y, 'w': w, 'h': h},
         'data_binding': binding,
         'settings': settings,

@@ -119,12 +119,22 @@ class V2ReportView extends ConsumerWidget {
     final List<String> lookupKeys;
 
     if (query.columns.isNotEmpty) {
+      // rds_execute_query returns rows keyed by alias (e.g. "Source", "Buyer")
+      // because the SQL uses: SELECT t.source as "Source", ...
+      // So both the display header AND the lookup key must use c.alias.
       final available = rows.first.keys.toSet();
       final cols = query.columns
-          .where((c) => available.contains(c.column))
+          .where((c) => available.contains(c.alias))
           .toList();
-      headers    = cols.map((c) => c.alias).toList();
-      lookupKeys = cols.map((c) => c.column).toList();
+      if (cols.isNotEmpty) {
+        headers    = cols.map((c) => c.alias).toList();
+        lookupKeys = cols.map((c) => c.alias).toList();
+      } else {
+        // Fallback: no alias matches — use raw row key order
+        final keys = rows.first.keys.toList();
+        headers    = keys;
+        lookupKeys = keys;
+      }
     } else {
       // Legacy reports with no columns spec — fall back to row key order.
       final keys = rows.first.keys.toList();

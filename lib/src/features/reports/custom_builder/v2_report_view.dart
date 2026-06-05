@@ -119,7 +119,22 @@ class V2ReportView extends ConsumerWidget {
     //
     // This keeps Table behavior consistent regardless of whether the report
     // came from the legacy widget pipeline or the v2 wizard.
-    final headers = rows.first.keys.toList();
+    //
+    // Column order: use query.columns alias order (from payload) so we honour
+    // the intended display order rather than the alphabetical key order that
+    // Postgres jsonb returns. Fall back to row key order for legacy reports.
+    final payloadAliases = query.columns.map((c) => c.alias).toList();
+    final rowKeys = rows.first.keys.toSet();
+    final orderedAliases =
+        payloadAliases.where(rowKeys.contains).toList();
+    // Append any keys that exist in rows but weren't in the payload columns
+    // (e.g. internal sort columns the view adds).
+    for (final k in rows.first.keys) {
+      if (!orderedAliases.contains(k)) orderedAliases.add(k);
+    }
+    final headers = orderedAliases.isNotEmpty
+        ? orderedAliases
+        : rows.first.keys.toList();
 
     // Identify which columns are numeric so we can right-align them and pick
     // a "primary numeric" for the Share computation.
@@ -179,7 +194,7 @@ class V2ReportView extends ConsumerWidget {
                 SizedBox(width: 24, child: headerCell('#')),
                 for (int i = 0; i < headers.length; i++)
                   Expanded(
-                    flex: i == 0 ? 3 : 2,
+                    flex: _colFlex(headers[i], i),
                     child: headerCell(
                       headers[i],
                       rightAlign: numericCols.contains(headers[i]),
@@ -251,7 +266,7 @@ class V2ReportView extends ConsumerWidget {
           ),
           for (int i = 0; i < headers.length; i++)
             Expanded(
-              flex: i == 0 ? 3 : 2,
+              flex: _colFlex(headers[i], i),
               child: i == 0
                   ? Row(
                       children: [
@@ -473,6 +488,23 @@ class V2ReportView extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Returns the flex weight for a table column.
+/// "Searched Product" and similar long-text columns get extra width;
+/// short fixed-format columns (Date, Price, Source, etc.) stay compact.
+int _colFlex(String header, int index) {
+  const wideColumns = {
+    'Searched Product',
+    'Product',
+    'Description',
+    'Item Description',
+    'Notes',
+    'Comment',
+  };
+  if (wideColumns.contains(header)) return 5;
+  if (index == 0) return 3;
+  return 2;
 }
 
 double? _toDouble(dynamic v) {

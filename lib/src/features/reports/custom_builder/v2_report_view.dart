@@ -120,21 +120,38 @@ class V2ReportView extends ConsumerWidget {
     // This keeps Table behavior consistent regardless of whether the report
     // came from the legacy widget pipeline or the v2 wizard.
     //
-    // Column order: use query.columns alias order (from payload) so we honour
-    // the intended display order rather than the alphabetical key order that
-    // Postgres jsonb returns. Fall back to row key order for legacy reports.
-    final payloadAliases = query.columns.map((c) => c.alias).toList();
-    final rowKeys = rows.first.keys.toSet();
-    final orderedAliases =
-        payloadAliases.where(rowKeys.contains).toList();
-    // Append any keys that exist in rows but weren't in the payload columns
-    // (e.g. internal sort columns the view adds).
-    for (final k in rows.first.keys) {
-      if (!orderedAliases.contains(k)) orderedAliases.add(k);
+    // Column order: use query.columns to drive both the display order and the
+    // header labels.  Postgres jsonb always returns keys alphabetically, so we
+    // cannot rely on row key order.
+    //
+    // query.columns[i].column  = the actual row-key name  (e.g. "source")
+    // query.columns[i].alias   = the display header label  (e.g. "Source")
+    //
+    // Build parallel lists: headers (display names) and rowKeys (lookup keys).
+    final List<String> headers;      // display names shown in the header row
+    final List<String> lookupKeys;   // keys used to read values from each row
+
+    if (query.columns.isNotEmpty) {
+      final available = rows.first.keys.toSet();
+      final cols = query.columns
+          .where((c) => available.contains(c.column))
+          .toList();
+      headers   = cols.map((c) => c.alias).toList();
+      lookupKeys = cols.map((c) => c.column).toList();
+      // Append any extra keys from the row that aren't in the payload columns
+      // (e.g. internal sort helpers the view adds).
+      for (final k in rows.first.keys) {
+        if (!lookupKeys.contains(k)) {
+          lookupKeys.add(k);
+          headers.add(k);
+        }
+      }
+    } else {
+      // Legacy reports with no columns spec — fall back to row key order.
+      final keys = rows.first.keys.toList();
+      headers    = keys;
+      lookupKeys = keys;
     }
-    final headers = orderedAliases.isNotEmpty
-        ? orderedAliases
-        : rows.first.keys.toList();
 
     // Identify which columns are numeric so we can right-align them and pick
     // a "primary numeric" for the Share computation.
@@ -163,7 +180,7 @@ class V2ReportView extends ConsumerWidget {
         grandTotal += _toDouble(r[primaryNumeric]) ?? 0;
       }
     }
-    final showShare = primaryNumeric.isNotEmpty && grandTotal > 0;
+    final showShare = primaryNumericKey.isNotEmpty && grandTotal > 0;
 
     Widget headerCell(String text, {bool rightAlign = false}) => Text(
           text,
@@ -217,8 +234,9 @@ class V2ReportView extends ConsumerWidget {
                       rank: rank,
                       row: rows[rank],
                       headers: headers,
+                      lookupKeys: lookupKeys,
                       numericCols: numericCols,
-                      primaryNumeric: primaryNumeric,
+                      primaryNumericKey: primaryNumericKey,
                       grandTotal: grandTotal,
                       showShare: showShare,
                     ),
@@ -235,8 +253,9 @@ class V2ReportView extends ConsumerWidget {
     required int rank,
     required Map<String, dynamic> row,
     required List<String> headers,
+    required List<String> lookupKeys,
     required Set<String> numericCols,
-    required String primaryNumeric,
+    required String primaryNumericKey,
     required double grandTotal,
     required bool showShare,
   }) {
@@ -244,7 +263,7 @@ class V2ReportView extends ConsumerWidget {
     final rowColor = palette[rank % palette.length];
     final isOdd = rank % 2 == 1;
     final share = showShare
-        ? ((_toDouble(row[primaryNumeric]) ?? 0) / grandTotal * 100)
+        ? ((_toDouble(row[primaryNumericKey]) ?? 0) / grandTotal * 100)
         : 0.0;
 
     return Container(
@@ -281,7 +300,7 @@ class V2ReportView extends ConsumerWidget {
                         ),
                         Expanded(
                           child: Text(
-                            row[headers[i]]?.toString() ?? '',
+                            row[lookupKeys[i]]?.toString() ?? '',
                             style: const TextStyle(
                               fontSize: 12,
                               color: OpticsColors.textPrimary,
@@ -292,7 +311,7 @@ class V2ReportView extends ConsumerWidget {
                       ],
                     )
                   : Text(
-                      row[headers[i]]?.toString() ?? '',
+                      row[lookupKeys[i]]?.toString() ?? '',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: numericCols.contains(headers[i])

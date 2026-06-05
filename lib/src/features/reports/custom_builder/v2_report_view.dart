@@ -109,43 +109,22 @@ class V2ReportView extends ConsumerWidget {
   }
 
   Widget _table(List<Map<String, dynamic>> rows) {
-    // Render the v2 "Table" viz with the same visual language used by the
-    // dashboard widget table (see widget_renderer._singleSeriesTable):
-    //   • Rank column ("#")
-    //   • Label column with a colored palette dot
-    //   • Numeric columns right-aligned, colored by the row's palette index
-    //   • Trailing "Share" column derived from the first numeric column
-    //   • Alternating row backgrounds, uppercase header row
+    // Column order is driven by query.columns (the payload's explicit list).
+    // Postgres jsonb always returns keys in alphabetical order, so we MUST NOT
+    // use rows.first.keys for ordering.
     //
-    // This keeps Table behavior consistent regardless of whether the report
-    // came from the legacy widget pipeline or the v2 wizard.
-    //
-    // Column order: use query.columns to drive both the display order and the
-    // header labels.  Postgres jsonb always returns keys alphabetically, so we
-    // cannot rely on row key order.
-    //
-    // query.columns[i].column  = the actual row-key name  (e.g. "source")
-    // query.columns[i].alias   = the display header label  (e.g. "Source")
-    //
-    // Build parallel lists: headers (display names) and rowKeys (lookup keys).
-    final List<String> headers;      // display names shown in the header row
-    final List<String> lookupKeys;   // keys used to read values from each row
+    // headers[i]    = display label shown in the header row  (alias, e.g. "Source")
+    // lookupKeys[i] = actual row-key used to read the value  (column, e.g. "source")
+    final List<String> headers;
+    final List<String> lookupKeys;
 
     if (query.columns.isNotEmpty) {
       final available = rows.first.keys.toSet();
       final cols = query.columns
           .where((c) => available.contains(c.column))
           .toList();
-      headers   = cols.map((c) => c.alias).toList();
+      headers    = cols.map((c) => c.alias).toList();
       lookupKeys = cols.map((c) => c.column).toList();
-      // Append any extra keys from the row that aren't in the payload columns
-      // (e.g. internal sort helpers the view adds).
-      for (final k in rows.first.keys) {
-        if (!lookupKeys.contains(k)) {
-          lookupKeys.add(k);
-          headers.add(k);
-        }
-      }
     } else {
       // Legacy reports with no columns spec — fall back to row key order.
       final keys = rows.first.keys.toList();
@@ -153,15 +132,15 @@ class V2ReportView extends ConsumerWidget {
       lookupKeys = keys;
     }
 
-    // Identify which columns are numeric so we can right-align them and pick
-    // a "primary numeric" for the Share computation.
+    // Identify numeric columns using lookupKeys (the actual row keys).
+    // numericCols stores the DISPLAY HEADER name so the header row can check it.
     final numericCols = <String>{};
-    for (final h in headers) {
-      // A column is numeric if every non-null value parses to a number.
+    for (int i = 0; i < lookupKeys.length; i++) {
+      final key = lookupKeys[i];
       var hasValue = false;
       var allNum = true;
       for (final r in rows) {
-        final v = r[h];
+        final v = r[key];
         if (v == null) continue;
         hasValue = true;
         if (_toDouble(v) == null) {
@@ -169,15 +148,20 @@ class V2ReportView extends ConsumerWidget {
           break;
         }
       }
-      if (hasValue && allNum) numericCols.add(h);
+      if (hasValue && allNum) numericCols.add(headers[i]);
     }
 
+    // primaryNumeric = display header of first numeric column.
+    // primaryNumericKey = lookup key for that column (used to read row values).
     final primaryNumeric =
         headers.firstWhere(numericCols.contains, orElse: () => '');
+    final primaryNumericKey = primaryNumeric.isNotEmpty
+        ? lookupKeys[headers.indexOf(primaryNumeric)]
+        : '';
     double grandTotal = 0;
-    if (primaryNumeric.isNotEmpty) {
+    if (primaryNumericKey.isNotEmpty) {
       for (final r in rows) {
-        grandTotal += _toDouble(r[primaryNumeric]) ?? 0;
+        grandTotal += _toDouble(r[primaryNumericKey]) ?? 0;
       }
     }
     final showShare = primaryNumericKey.isNotEmpty && grandTotal > 0;

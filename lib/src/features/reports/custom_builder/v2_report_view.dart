@@ -504,20 +504,24 @@ class V2ReportView extends ConsumerWidget {
 }
 
 /// Returns the flex weight for a table column.
-/// "Searched Product" and similar long-text columns get extra width;
-/// short fixed-format columns (Date, Price, Source, etc.) stay compact.
+/// Widths are tuned to match the Price Search Live Feed layout:
+///   Source (narrow) | Company | Buyer | Searched Product (very wide) | Price | Date
 int _colFlex(String header, int index) {
-  const wideColumns = {
-    'Searched Product',
-    'Product',
-    'Description',
-    'Item Description',
-    'Notes',
-    'Comment',
+  const flexMap = {
+    'Source':           2,
+    'Company':          3,
+    'Buyer':            3,
+    'Searched Product': 8,
+    'Price':            2,
+    'Date':             2,
+    // Generic fallbacks for other reports
+    'Product':          8,
+    'Description':      8,
+    'Item Description': 8,
+    'Notes':            6,
+    'Comment':          6,
   };
-  if (wideColumns.contains(header)) return 5;
-  if (index == 0) return 3;
-  return 2;
+  return flexMap[header] ?? (index == 0 ? 2 : 2);
 }
 
 double? _toDouble(dynamic v) {

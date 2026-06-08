@@ -544,22 +544,18 @@ int _colFlex(String header, int index) {
     'Delivery Date':    4,
     'Order#':           3,
     'Company':          6,
-    'Buyer':            4,
     'Deliver To':       6,
     'Order Value':      3,
     // Orders in Dispute
     'Dispute Type':     6,
     'Buyer Company':    6,
-    'Seller Company':   6,
-    'Seller':           3,
     'Status':           7,
-    // All Buyers
+    // All Buyers / All Sellers (Buyer and Seller flex used across multiple reports)
     'Buyer':            5,
     "Buyer's Email":    6,
     'Purchases':        3,
     'AOV':              4,
     'Total Purchases':  5,
-    // All Sellers
     'Seller':           5,
     "Seller's Email":   6,
     'Seller Company':   6,

@@ -98,8 +98,7 @@ class V2ReportView extends ConsumerWidget {
 
   Widget _shell({required Widget child}) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(
-          OpticsSpacing.lg, OpticsSpacing.lg, OpticsSpacing.xs, OpticsSpacing.lg),
+      padding: const EdgeInsets.all(OpticsSpacing.lg),
       decoration: BoxDecoration(
         color: OpticsColors.surface,
         border: Border.all(color: OpticsColors.border),
@@ -514,12 +513,12 @@ int _colFlex(String header, int index) {
     'Date':             2,
     // Unclaimed Orders
     'Purchase Date':    3,
-    'Delivery Date':    1,
-    'Order#':           1,
+    'Delivery Date':    2,
+    'Order#':           2,
     'Company':          7,
     'Buyer':            5,
     'Deliver To':       7,
-    'Order Value':      1,
+    'Order Value':      2,
     // Generic fallbacks for other reports
     'Product':          8,
     'Description':      8,

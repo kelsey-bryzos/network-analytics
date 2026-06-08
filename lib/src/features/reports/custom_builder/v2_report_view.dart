@@ -515,9 +515,9 @@ int _colFlex(String header, int index) {
     'Purchase Date':    3,
     'Delivery Date':    2,
     'Order#':           2,
-    'Company':          5,
+    'Company':          7,
     'Buyer':            5,
-    'Deliver To':       5,
+    'Deliver To':       7,
     'Order Value':      2,
     // Generic fallbacks for other reports
     'Product':          8,

@@ -527,55 +527,7 @@ String _formatCellValue(String header, dynamic value) {
         count++;
       }
       final formatted = buffer.toString().split('').reversed.join();
-      return r'
-
-/// Returns the flex weight for a table column.
-int _colFlex(String header, int index) {
-  const flexMap = {
-    // Price Search Live Feed
-    'Source':           2,
-    'Searched Product': 8,
-    'Price':            2,
-    'Date':             2,
-    // Unclaimed Orders
-    'Purchase Date':    4,
-    'Delivery Date':    4,
-    'Order#':           3,
-    'Company':          6,
-    'Deliver To':       6,
-    'Order Value':      3,
-    // Orders in Dispute
-    'Dispute Type':     6,
-    'Buyer Company':    6,
-    'Status':           7,
-    // All Buyers / All Sellers (Buyer and Seller flex used across multiple reports)
-    'Buyer':            5,
-    'Buyer Email':      11,
-    'Purchases':        3,
-    'AOV':              4,
-    'Total Purchases':  5,
-    'Date Joined':      4,
-    'Seller':           5,
-    'Seller Email':     11,
-    'Seller Company':   6,
-    'Sales':            3,
-    'Total Sales':      5,
-    // Generic fallbacks for other reports
-    'Product':          8,
-    'Description':      8,
-    'Item Description': 8,
-    'Notes':            6,
-    'Comment':          6,
-  };
-  return flexMap[header] ?? (index == 0 ? 2 : 2);
-}
-
-double? _toDouble(dynamic v) {
-  if (v == null) return null;
-  if (v is num) return v.toDouble();
-  return double.tryParse(v.toString());
-}
- + formatted + '.' + decPart;
+      return r'$' + formatted + '.' + decPart;
     }
   }
   // ISO date/timestamp → M-D-YY
@@ -605,7 +557,7 @@ int _colFlex(String header, int index) {
     'Dispute Type':     6,
     'Buyer Company':    6,
     'Status':           7,
-    // All Buyers / All Sellers (Buyer and Seller flex used across multiple reports)
+    // All Buyers / All Sellers
     'Buyer':            5,
     'Buyer Email':      11,
     'Purchases':        3,
@@ -617,7 +569,7 @@ int _colFlex(String header, int index) {
     'Seller Company':   6,
     'Sales':            3,
     'Total Sales':      5,
-    // Generic fallbacks for other reports
+    // Generic fallbacks
     'Product':          8,
     'Description':      8,
     'Item Description': 8,

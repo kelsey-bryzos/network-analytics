@@ -1520,6 +1520,7 @@ class _WidgetRendererCore extends StatelessWidget {
               ),
               for (int c = 0; c < cols.length; c++)
                 Expanded(
+                  flex: _flexForCol(cols[c]),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     child: Text(
@@ -1557,6 +1558,7 @@ class _WidgetRendererCore extends StatelessWidget {
                         ),
                         for (int c = 0; c < cols.length; c++)
                           Expanded(
+                            flex: _flexForCol(cols[c]),
                             child: Padding(
                               padding:
                                   const EdgeInsets.symmetric(horizontal: 4),
@@ -1602,8 +1604,35 @@ class _WidgetRendererCore extends StatelessWidget {
     return total > 0 && nums * 2 > total;
   }
 
+  int _flexForCol(String key) {
+    const m = {
+      // Orders in Dispute
+      'buyer_po_number': 3,
+      'event':           4,
+      'buyer_company':   6,
+      'buyer':           4,
+      'seller_company':  6,
+      'seller':          4,
+      'status':          9,
+    };
+    return m[key] ?? 5;
+  }
+
   String _formatCell(String key, dynamic v) {
     if (v == null) return '';
+    // Dispute Type event codes → friendly labels
+    if (key == 'event') {
+      const labels = {
+        'edit_line':    'Qty Change',
+        'cancel_order': 'Order Cancel',
+        'cancel_line':  'Line Cancel',
+        'add_line':     'Line Added',
+        'deliver_by':   'Delivery Date Change',
+        'deliver_to':   'Destination Change',
+        'destination':  'Destination Change',
+      };
+      return labels[v?.toString()] ?? v?.toString() ?? '';
+    }
     if (v is num) {
       final isMoney = _looksLikeMoneyKey(key);
       if (isMoney) return _fmtSmartMoney(v.toDouble());

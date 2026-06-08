@@ -1614,6 +1614,14 @@ class _WidgetRendererCore extends StatelessWidget {
       'Seller Company':  6,
       'Seller':          4,
       'Status':          9,
+      // All Buyers
+      'Buyer Company':   6,
+      'Purchases':       3,
+      'AOV':             4,
+      'Total Purchases': 5,
+      // All Sellers
+      'Sales':           3,
+      'Total Sales':     5,
     };
     return m[key] ?? 5;
   }

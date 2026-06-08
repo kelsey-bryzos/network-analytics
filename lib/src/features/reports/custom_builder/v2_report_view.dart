@@ -513,12 +513,12 @@ int _colFlex(String header, int index) {
     'Date':             2,
     // Unclaimed Orders
     'Purchase Date':    3,
-    'Delivery Date':    2,
-    'Order#':           2,
+    'Delivery Date':    1,
+    'Order#':           1,
     'Company':          7,
     'Buyer':            5,
     'Deliver To':       7,
-    'Order Value':      2,
+    'Order Value':      1,
     // Generic fallbacks for other reports
     'Product':          8,
     'Description':      8,

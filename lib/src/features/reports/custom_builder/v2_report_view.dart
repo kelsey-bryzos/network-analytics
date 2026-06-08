@@ -513,7 +513,7 @@ int _colFlex(String header, int index) {
     'Date':             2,
     // Unclaimed Orders
     'Purchase Date':    4,
-    'Delivery Date':    3,
+    'Delivery Date':    4,
     'Order#':           3,
     'Company':          6,
     'Buyer':            5,

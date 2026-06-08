@@ -1502,7 +1502,7 @@ class _WidgetRendererCore extends StatelessWidget {
         _chartHeader(),
         // Frozen header
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
           decoration: BoxDecoration(
             color: _wt.headerBg,
             borderRadius:
@@ -1543,8 +1543,7 @@ class _WidgetRendererCore extends StatelessWidget {
               children: [
                 for (int i = 0; i < rows.length; i++)
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 7),
+                    padding: const EdgeInsets.fromLTRB(12, 7, 4, 7),
                     color: i.isOdd
                         ? _wt.headerBg.withValues(alpha: 0.3)
                         : Colors.transparent,

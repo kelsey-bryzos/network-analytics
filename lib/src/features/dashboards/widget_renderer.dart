@@ -1492,8 +1492,7 @@ class _WidgetRendererCore extends StatelessWidget {
     final cols = rows.first.keys.toList();
     final headers = [for (final c in cols) _humanizeKey(c)];
     final aligns = <TextAlign>[
-      for (final c in cols)
-        _isNumericColumn(c, rows) ? TextAlign.right : TextAlign.left,
+      for (final c in cols) TextAlign.left,
     ];
 
     return Column(
@@ -1616,6 +1615,8 @@ class _WidgetRendererCore extends StatelessWidget {
       'Buyer Company':   6,
       'Seller Company':  6,
       // All Buyers / All Sellers
+      'Buyer Email':     8,
+      'Seller Email':    8,
       'Purchases':       3,
       'AOV':             4,
       'Total Purchases': 5,
@@ -1657,7 +1658,8 @@ class _WidgetRendererCore extends StatelessWidget {
 
   bool _looksLikeMoneyKey(String key) {
     final k = key.toLowerCase();
-    return k.contains('price') ||
+    return k == 'aov' ||
+        k.contains('price') ||
         k.contains('revenue') ||
         k.contains('total') ||
         k.contains('value') ||

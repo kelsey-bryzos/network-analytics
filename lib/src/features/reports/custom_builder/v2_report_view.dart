@@ -98,7 +98,8 @@ class V2ReportView extends ConsumerWidget {
 
   Widget _shell({required Widget child}) {
     return Container(
-      padding: const EdgeInsets.all(OpticsSpacing.lg),
+      padding: const EdgeInsets.fromLTRB(
+          OpticsSpacing.lg, OpticsSpacing.lg, OpticsSpacing.xs, OpticsSpacing.lg),
       decoration: BoxDecoration(
         color: OpticsColors.surface,
         border: Border.all(color: OpticsColors.border),

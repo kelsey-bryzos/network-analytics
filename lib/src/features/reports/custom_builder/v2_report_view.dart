@@ -7,6 +7,7 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../data/supabase_repo.dart';
 import '../../../design/theme.dart';
@@ -526,8 +527,61 @@ String _formatCellValue(String header, dynamic value) {
         count++;
       }
       final formatted = buffer.toString().split('').reversed.join();
-      return r'$' + formatted + '.' + decPart;
+      return r'
+
+/// Returns the flex weight for a table column.
+int _colFlex(String header, int index) {
+  const flexMap = {
+    // Price Search Live Feed
+    'Source':           2,
+    'Searched Product': 8,
+    'Price':            2,
+    'Date':             2,
+    // Unclaimed Orders
+    'Purchase Date':    4,
+    'Delivery Date':    4,
+    'Order#':           3,
+    'Company':          6,
+    'Deliver To':       6,
+    'Order Value':      3,
+    // Orders in Dispute
+    'Dispute Type':     6,
+    'Buyer Company':    6,
+    'Status':           7,
+    // All Buyers / All Sellers (Buyer and Seller flex used across multiple reports)
+    'Buyer':            5,
+    'Buyer Email':      11,
+    'Purchases':        3,
+    'AOV':              4,
+    'Total Purchases':  5,
+    'Date Joined':      4,
+    'Seller':           5,
+    'Seller Email':     11,
+    'Seller Company':   6,
+    'Sales':            3,
+    'Total Sales':      5,
+    // Generic fallbacks for other reports
+    'Product':          8,
+    'Description':      8,
+    'Item Description': 8,
+    'Notes':            6,
+    'Comment':          6,
+  };
+  return flexMap[header] ?? (index == 0 ? 2 : 2);
+}
+
+double? _toDouble(dynamic v) {
+  if (v == null) return null;
+  if (v is num) return v.toDouble();
+  return double.tryParse(v.toString());
+}
+ + formatted + '.' + decPart;
     }
+  }
+  // ISO date/timestamp → M-D-YY
+  if (raw.length >= 10 && RegExp(r'^\d{4}-\d{2}-\d{2}').hasMatch(raw)) {
+    final d = DateTime.tryParse(raw);
+    if (d != null) return DateFormat('M-d-yy').format(d.toLocal());
   }
   return raw;
 }

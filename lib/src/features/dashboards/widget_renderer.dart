@@ -1651,7 +1651,7 @@ class _WidgetRendererCore extends StatelessWidget {
     // ISO timestamp → short date
     if (_looksLikeIsoDate(s)) {
       final d = DateTime.tryParse(s);
-      if (d != null) return DateFormat('yyyy-MM-dd').format(d.toLocal());
+      if (d != null) return DateFormat('M-d-yy').format(d.toLocal());
     }
     return s;
   }

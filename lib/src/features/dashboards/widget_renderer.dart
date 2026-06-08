@@ -1609,17 +1609,16 @@ class _WidgetRendererCore extends StatelessWidget {
       // Orders in Dispute (Edge Function returns aliased keys)
       'Order#':          3,
       'Dispute Type':    5,
-      'Buyer Company':   6,
       'Buyer':           4,
-      'Seller Company':  6,
       'Seller':          4,
       'Status':          9,
-      // All Buyers
+      // Shared across Orders in Dispute + All Buyers + All Sellers
       'Buyer Company':   6,
+      'Seller Company':  6,
+      // All Buyers / All Sellers
       'Purchases':       3,
       'AOV':             4,
       'Total Purchases': 5,
-      // All Sellers
       'Sales':           3,
       'Total Sales':     5,
     };

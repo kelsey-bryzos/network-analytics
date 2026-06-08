@@ -513,6 +513,7 @@ String _formatCellValue(String header, dynamic value) {
       'cancel_line':  'Line Cancel',
       'add_line':     'Line Added',
       'deliver_by':   'Delivery Date Change',
+      'deliver_to':   'Destination Change',
       'destination':  'Destination Change',
     };
     return eventLabels[raw] ?? raw;
@@ -533,14 +534,14 @@ int _colFlex(String header, int index) {
     'Delivery Date':    4,
     'Order#':           3,
     'Company':          6,
-    'Buyer':            5,
+    'Buyer':            4,
     'Deliver To':       6,
     'Order Value':      3,
     // Orders in Dispute
-    'Dispute Type':     4,
+    'Dispute Type':     6,
     'Buyer Company':    6,
     'Seller Company':   6,
-    'Seller':           4,
+    'Seller':           3,
     'Status':           7,
     // Generic fallbacks for other reports
     'Product':          8,

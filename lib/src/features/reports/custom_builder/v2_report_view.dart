@@ -525,7 +525,8 @@ String _formatCellValue(String header, dynamic value) {
         buffer.write(intPart[j]);
         count++;
       }
-      return '\${buffer.toString().split('').reversed.join()}.$decPart';
+      final formatted = buffer.toString().split('').reversed.join();
+      return r'$' + formatted + '.' + decPart;
     }
   }
   return raw;

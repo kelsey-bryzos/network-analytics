@@ -206,10 +206,7 @@ class V2ReportView extends ConsumerWidget {
                 for (int i = 0; i < headers.length; i++)
                   Expanded(
                     flex: _colFlex(headers[i], i),
-                    child: headerCell(
-                      headers[i],
-                      rightAlign: numericCols.contains(headers[i]),
-                    ),
+                    child: headerCell(headers[i]),
                   ),
                 if (showShare)
                   SizedBox(
@@ -306,18 +303,12 @@ class V2ReportView extends ConsumerWidget {
                     )
                   : Text(
                       _formatCellValue(headers[i], row[lookupKeys[i]]),
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 12,
-                        fontWeight: numericCols.contains(headers[i])
-                            ? FontWeight.w600
-                            : FontWeight.w400,
-                        color: numericCols.contains(headers[i])
-                            ? rowColor
-                            : OpticsColors.textSecondary,
+                        fontWeight: FontWeight.w400,
+                        color: OpticsColors.textPrimary,
                       ),
-                      textAlign: numericCols.contains(headers[i])
-                          ? TextAlign.right
-                          : TextAlign.left,
+                      textAlign: TextAlign.left,
                       overflow: TextOverflow.ellipsis,
                     ),
             ),
@@ -503,6 +494,9 @@ class V2ReportView extends ConsumerWidget {
   }
 }
 
+/// Columns that should be rendered as $xx,xxx.xx currency values.
+const _moneyHeaders = {'AOV', 'Total Purchases', 'Total Sales'};
+
 /// Maps raw DB values to display-friendly labels for specific columns.
 String _formatCellValue(String header, dynamic value) {
   final raw = value?.toString() ?? '';
@@ -517,6 +511,22 @@ String _formatCellValue(String header, dynamic value) {
       'destination':  'Destination Change',
     };
     return eventLabels[raw] ?? raw;
+  }
+  if (_moneyHeaders.contains(header)) {
+    final n = double.tryParse(raw.replaceAll(RegExp(r'[^\d.]'), ''));
+    if (n != null) {
+      final parts = n.toStringAsFixed(2).split('.');
+      final intPart = parts[0];
+      final decPart = parts[1];
+      final buffer = StringBuffer();
+      int count = 0;
+      for (int j = intPart.length - 1; j >= 0; j--) {
+        if (count > 0 && count % 3 == 0) buffer.write(',');
+        buffer.write(intPart[j]);
+        count++;
+      }
+      return '\${buffer.toString().split('').reversed.join()}.$decPart';
+    }
   }
   return raw;
 }

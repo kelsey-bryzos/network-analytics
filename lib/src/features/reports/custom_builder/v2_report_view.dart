@@ -519,6 +519,12 @@ int _colFlex(String header, int index) {
     'Buyer':            5,
     'Deliver To':       6,
     'Order Value':      3,
+    // Orders in Dispute
+    'Dispute Type':     4,
+    'Buyer Company':    5,
+    'Seller Company':   5,
+    'Seller':           4,
+    'Status':           4,
     // Generic fallbacks for other reports
     'Product':          8,
     'Description':      8,

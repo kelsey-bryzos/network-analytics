@@ -504,16 +504,21 @@ class V2ReportView extends ConsumerWidget {
 }
 
 /// Returns the flex weight for a table column.
-/// Widths are tuned to match the Price Search Live Feed layout:
-///   Source (narrow) | Company | Buyer | Searched Product (very wide) | Price | Date
 int _colFlex(String header, int index) {
   const flexMap = {
+    // Price Search Live Feed
     'Source':           2,
     'Company':          4,
     'Buyer':            2,
     'Searched Product': 8,
     'Price':            2,
     'Date':             2,
+    // Unclaimed Orders
+    'Purchase Date':    3,
+    'Delivery Date':    3,
+    'Order#':           3,
+    'Deliver To':       4,
+    'Order Value':      2,
     // Generic fallbacks for other reports
     'Product':          8,
     'Description':      8,

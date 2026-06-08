@@ -1606,14 +1606,14 @@ class _WidgetRendererCore extends StatelessWidget {
 
   int _flexForCol(String key) {
     const m = {
-      // Orders in Dispute
-      'buyer_po_number': 3,
-      'event':           4,
-      'buyer_company':   6,
-      'buyer':           4,
-      'seller_company':  6,
-      'seller':          4,
-      'status':          9,
+      // Orders in Dispute (Edge Function returns aliased keys)
+      'Order#':          3,
+      'Dispute Type':    5,
+      'Buyer Company':   6,
+      'Buyer':           4,
+      'Seller Company':  6,
+      'Seller':          4,
+      'Status':          9,
     };
     return m[key] ?? 5;
   }
@@ -1621,7 +1621,7 @@ class _WidgetRendererCore extends StatelessWidget {
   String _formatCell(String key, dynamic v) {
     if (v == null) return '';
     // Dispute Type event codes → friendly labels
-    if (key == 'event') {
+    if (key == 'event' || key == 'Dispute Type') {
       const labels = {
         'edit_line':    'Qty Change',
         'cancel_order': 'Order Cancel',

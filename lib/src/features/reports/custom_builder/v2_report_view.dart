@@ -294,7 +294,7 @@ class V2ReportView extends ConsumerWidget {
                         ),
                         Expanded(
                           child: Text(
-                            row[lookupKeys[i]]?.toString() ?? '',
+                            _formatCellValue(headers[i], row[lookupKeys[i]]),
                             style: const TextStyle(
                               fontSize: 12,
                               color: OpticsColors.textPrimary,
@@ -305,7 +305,7 @@ class V2ReportView extends ConsumerWidget {
                       ],
                     )
                   : Text(
-                      row[lookupKeys[i]]?.toString() ?? '',
+                      _formatCellValue(headers[i], row[lookupKeys[i]]),
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: numericCols.contains(headers[i])
@@ -501,6 +501,23 @@ class V2ReportView extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Maps raw DB values to display-friendly labels for specific columns.
+String _formatCellValue(String header, dynamic value) {
+  final raw = value?.toString() ?? '';
+  if (header == 'Dispute Type') {
+    const eventLabels = {
+      'edit_line':    'Qty Change',
+      'cancel_order': 'Order Cancel',
+      'cancel_line':  'Line Cancel',
+      'add_line':     'Line Added',
+      'deliver_by':   'Delivery Date Change',
+      'destination':  'Destination Change',
+    };
+    return eventLabels[raw] ?? raw;
+  }
+  return raw;
 }
 
 /// Returns the flex weight for a table column.

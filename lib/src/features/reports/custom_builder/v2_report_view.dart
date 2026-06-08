@@ -506,20 +506,19 @@ class V2ReportView extends ConsumerWidget {
 /// Returns the flex weight for a table column.
 int _colFlex(String header, int index) {
   const flexMap = {
-    // Shared columns (used across multiple reports)
-    'Company':          4,
-    'Buyer':            3,
     // Price Search Live Feed
     'Source':           2,
     'Searched Product': 8,
     'Price':            2,
     'Date':             2,
     // Unclaimed Orders
-    'Purchase Date':    4,
-    'Delivery Date':    3,
+    'Purchase Date':    3,
+    'Delivery Date':    2,
     'Order#':           2,
+    'Company':          5,
+    'Buyer':            5,
     'Deliver To':       5,
-    'Order Value':      3,
+    'Order Value':      2,
     // Generic fallbacks for other reports
     'Product':          8,
     'Description':      8,

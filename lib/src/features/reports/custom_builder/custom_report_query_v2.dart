@@ -207,6 +207,7 @@ class CustomReportQueryV2 {
   final List<OrderBySpec> orderBy;
   int? limit;
   VizSpec viz;
+  bool showShare;
 
   CustomReportQueryV2({
     this.primaryTable,
@@ -218,6 +219,7 @@ class CustomReportQueryV2 {
     List<OrderBySpec>? orderBy,
     this.limit,
     VizSpec? viz,
+    this.showShare = true,
   })  : joins = joins ?? [],
         columns = columns ?? [],
         filters = filters ?? [],
@@ -237,6 +239,7 @@ class CustomReportQueryV2 {
         'order_by': orderBy.map((o) => o.toJson()).toList(),
         if (limit != null) 'limit': limit,
         'viz': viz.toJson(),
+        if (!showShare) 'show_share': false,
       };
 
   static CustomReportQueryV2 fromJson(Map<String, dynamic> j) =>
@@ -270,6 +273,7 @@ class CustomReportQueryV2 {
         viz: j['viz'] is Map<String, dynamic>
             ? VizSpec.fromJson(j['viz'] as Map<String, dynamic>)
             : VizSpec(),
+        showShare: j['show_share'] is bool ? j['show_share'] as bool : true,
       );
 
   /// All tables referenced in this query (primary + joins).

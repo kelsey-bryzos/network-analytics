@@ -174,7 +174,7 @@ class V2ReportView extends ConsumerWidget {
         grandTotal += _toDouble(r[primaryNumericKey]) ?? 0;
       }
     }
-    final showShare = primaryNumericKey.isNotEmpty && grandTotal > 0;
+    final showShare = query.showShare && primaryNumericKey.isNotEmpty && grandTotal > 0;
 
     Widget headerCell(String text, {bool rightAlign = false}) => Text(
           text,

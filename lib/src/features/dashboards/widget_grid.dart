@@ -99,15 +99,38 @@ class _WidgetGridState extends State<WidgetGrid> {
           return aActive ? 1 : -1;
         });
 
+        // Reserve a right-side gutter so the canvas content and widget
+        // resize handles never sit under the page scrollbar.  The scrollbar
+        // on most platforms is 12–16 px wide; 16 px gives a comfortable gap
+        // regardless of OS/browser.
+        const double _scrollbarGutter = 16.0;
+        final canvasWidth = constraints.maxWidth - _scrollbarGutter;
+        // Recompute cellW against the safe canvas width so column math stays
+        // consistent (widgets do not drift right as the gutter is applied).
+        final safeCellW = canvasWidth / widget.columns;
+
         return SingleChildScrollView(
           child: SizedBox(
             width: constraints.maxWidth,
             height: canvasHeight,
-            child: Stack(
-              clipBehavior: Clip.none,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (final w in ordered)
-                  _buildWidget(w, cellW, cellH, canvasHeight),
+                // ── Safe canvas area (widgets + resize handles live here) ──
+                SizedBox(
+                  width: canvasWidth,
+                  height: canvasHeight,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      for (final w in ordered)
+                        _buildWidget(w, safeCellW, cellH, canvasHeight),
+                    ],
+                  ),
+                ),
+                // ── Scrollbar gutter — empty, touch/click falls through to
+                //    the native page scrollbar without hitting any widget ──
+                const SizedBox(width: _scrollbarGutter),
               ],
             ),
           ),

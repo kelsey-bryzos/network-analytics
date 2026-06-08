@@ -557,6 +557,7 @@ int _colFlex(String header, int index) {
     'Purchases':        3,
     'AOV':              4,
     'Total Purchases':  5,
+    'Date Joined':      4,
     'Seller':           5,
     'Seller Email':     11,
     'Seller Company':   6,

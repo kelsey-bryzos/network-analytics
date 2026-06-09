@@ -1515,7 +1515,7 @@ class _WidgetRendererCore extends StatelessWidget {
           child: Row(
             children: [
               SizedBox(
-                width: 24,
+                width: 32,
                 child: Text('#',
                     style: TextStyle(
                         fontSize: 11,
@@ -1555,7 +1555,7 @@ class _WidgetRendererCore extends StatelessWidget {
                     child: Row(
                       children: [
                         SizedBox(
-                          width: 24,
+                          width: 32,
                           child: Text('${i + 1}',
                               style: TextStyle(
                                   fontSize: 11, color: _wt.mutedText)),
@@ -1706,7 +1706,7 @@ class _WidgetRendererCore extends StatelessWidget {
             borderRadius: const BorderRadius.vertical(top: Radius.circular(6))),
           child: Row(
             children: [
-              SizedBox(width: 24,
+              SizedBox(width: 32,
                   child: Text('#', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText))),
               Expanded(flex: 3,
                   child: Text(col1Header, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText))),
@@ -1742,7 +1742,7 @@ class _WidgetRendererCore extends StatelessWidget {
       color: isOdd ? _wt.headerBg.withValues(alpha: 0.3) : Colors.transparent,
       child: Row(
         children: [
-          SizedBox(width: 24,
+          SizedBox(width: 32,
               child: Text('${rank + 1}', style: TextStyle(fontSize: 11, color: _wt.mutedText))),
           Expanded(flex: 3,
               child: Row(
@@ -1807,7 +1807,7 @@ class _WidgetRendererCore extends StatelessWidget {
             borderRadius: const BorderRadius.vertical(top: Radius.circular(6))),
           child: Row(
             children: [
-              SizedBox(width: 24,
+              SizedBox(width: 32,
                   child: Text('#', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText))),
               Expanded(flex: 3,
                   child: Text('Name', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText))),
@@ -1873,7 +1873,7 @@ class _WidgetRendererCore extends StatelessWidget {
       color: rank % 2 == 1 ? _wt.headerBg.withValues(alpha: 0.3) : Colors.transparent,
       child: Row(
         children: [
-          SizedBox(width: 24,
+          SizedBox(width: 32,
               child: Text('${rank + 1}', style: TextStyle(fontSize: 11, color: _wt.mutedText))),
           Expanded(flex: 3,
               child: Row(

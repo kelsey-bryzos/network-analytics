@@ -203,7 +203,7 @@ class V2ReportView extends ConsumerWidget {
             ),
             child: Row(
               children: [
-                SizedBox(width: 24, child: headerCell('#')),
+                SizedBox(width: 32, child: headerCell('#')),
                 for (int i = 0; i < headers.length; i++)
                   Expanded(
                     flex: _colFlex(headers[i], i),
@@ -266,7 +266,7 @@ class V2ReportView extends ConsumerWidget {
       child: Row(
         children: [
           SizedBox(
-            width: 24,
+            width: 32,
             child: Text(
               '${rank + 1}',
               style: const TextStyle(

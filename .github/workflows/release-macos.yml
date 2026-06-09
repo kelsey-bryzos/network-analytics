@@ -95,6 +95,15 @@ jobs:
             echo "DMG_SUFFIX=" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Inject OPTICS_APP_ENV into xcconfig
+        run: |
+          ENV_NAME="${{ github.event.inputs.environment || 'prod' }}"
+          XCCONFIG="macos/Runner/Configs/Release.xcconfig"
+          # Replace the default "OPTICS_APP_ENV = prod" with the target env.
+          sed -i '' "s/^OPTICS_APP_ENV = .*/OPTICS_APP_ENV = ${ENV_NAME}/" "$XCCONFIG"
+          echo "Set OPTICS_APP_ENV = ${ENV_NAME} in $XCCONFIG"
+          cat "$XCCONFIG"
+
       - name: Build macOS app (release)
         env:
           FLUTTER_BUILD_NAME: ${{ steps.ver.outputs.version }}
@@ -197,30 +206,50 @@ jobs:
 
       - name: Append item to appcast.xml
         env:
-          APPCAST_PATH: web/updates/macos/appcast.xml
           VERSION: ${{ steps.ver.outputs.version }}
           BUILD: ${{ steps.ver.outputs.build }}
           SIG: ${{ steps.sign.outputs.sig }}
           LEN: ${{ steps.sign.outputs.len }}
           REPO: ${{ github.repository }}
         run: |
+          ENV_NAME="${{ github.event.inputs.environment || 'prod' }}"
           DMG_NAME=$(basename "$DMG")
           export DMG_URL="https://github.com/${REPO}/releases/download/v${VERSION}/${DMG_NAME}"
+
+          # Write to the environment-specific appcast
+          if [ "$ENV_NAME" = "staging" ]; then
+            export APPCAST_PATH="web/updates/macos/staging/appcast.xml"
+          elif [ "$ENV_NAME" = "demo" ]; then
+            export APPCAST_PATH="web/updates/macos/demo/appcast.xml"
+          else
+            export APPCAST_PATH="web/updates/macos/appcast.xml"
+          fi
+          echo "Appending to $APPCAST_PATH for env=$ENV_NAME"
           python3 .github/scripts/append_appcast_item.py
 
       - name: Commit & push updated appcast
         run: |
+          ENV_NAME="${{ github.event.inputs.environment || 'prod' }}"
+          if [ "$ENV_NAME" = "staging" ]; then
+            APPCAST_FILE="web/updates/macos/staging/appcast.xml"
+          elif [ "$ENV_NAME" = "demo" ]; then
+            APPCAST_FILE="web/updates/macos/demo/appcast.xml"
+          else
+            APPCAST_FILE="web/updates/macos/appcast.xml"
+          fi
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           # Save the modified appcast before switching branches
-          cp web/updates/macos/appcast.xml /tmp/appcast_updated.xml
+          cp "$APPCAST_FILE" /tmp/appcast_updated.xml
           # Reset any local changes so rebase doesn't fail with "unstaged changes"
           git checkout -- .
           # Switch to main so we commit on the right branch (not detached HEAD at tag)
           git fetch origin main
           git checkout main
           git pull --rebase origin main
-          cp /tmp/appcast_updated.xml web/updates/macos/appcast.xml
-          git add web/updates/macos/appcast.xml
-          git commit -m "release(macos): append v${{ steps.ver.outputs.version }} to appcast" || echo "no changes"
+          mkdir -p "$(dirname $APPCAST_FILE)"
+          cp /tmp/appcast_updated.xml "$APPCAST_FILE"
+          git add "$APPCAST_FILE"
+          git commit -m "release(macos-${ENV_NAME}): append v${{ steps.ver.outputs.version }} to appcast" || echo "no changes"
           for i in {1..10}; do git push origin main && break || sleep 5; done

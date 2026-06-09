@@ -37,6 +37,12 @@ class AppDelegate: FlutterAppDelegate {
   override func applicationDidFinishLaunching(_ notification: Notification) {
     super.applicationDidFinishLaunching(notification)
 
+    // Override Sparkle feed URL based on APP_ENV (injected via --dart-define
+    // and forwarded as a Dart string environment variable).
+    // The CI passes APP_ENV=staging|demo|prod; we read it from the Flutter
+    // engine's switches to pick the correct per-environment appcast.
+    overrideAppcastIfNeeded()
+
     // Touch the updater so it boots and begins its scheduled check cycle.
     _ = updaterController
 
@@ -52,6 +58,38 @@ class AppDelegate: FlutterAppDelegate {
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
       self.bringWindowForward()
     }
+  }
+
+  // MARK: – Per-environment Sparkle appcast
+
+  /// Reads `--dart-define=APP_ENV=…` from the process launch arguments (which
+  /// Flutter forwards as `--dart-define-APP_ENV=…`) and overrides the
+  /// `SUFeedURL` in UserDefaults so Sparkle fetches the right environment's
+  /// appcast.xml.
+  private func overrideAppcastIfNeeded() {
+    // Flutter CLI passes --dart-define values to the native process as
+    // command-line arguments in the format: --dart-define=KEY=VALUE
+    // After compilation, const String.fromEnvironment bakes them in,
+    // but we also need them on the native side.
+    //
+    // Strategy: the CI workflow also sets OPTICS_APP_ENV in the Xcode
+    // build settings (via xcconfig or env var). We read it from the
+    // Info.plist or fall back to a compile-time user-defined build setting.
+    let env = Bundle.main.object(forInfoDictionaryKey: "OPTICS_APP_ENV") as? String ?? "prod"
+
+    let feedUrl: String
+    switch env.lowercased() {
+    case "staging":
+      feedUrl = "https://analytics.bryzos.com/updates/macos/staging/appcast.xml"
+    case "demo":
+      feedUrl = "https://analytics.bryzos.com/updates/macos/demo/appcast.xml"
+    default:
+      // Prod — use the default from Info.plist, no override needed.
+      return
+    }
+
+    // Sparkle reads SUFeedURL from UserDefaults first, then Info.plist.
+    UserDefaults.standard.set(feedUrl, forKey: "SUFeedURL")
   }
 
   /// Triggered by the "Check for Updates…" menu item.

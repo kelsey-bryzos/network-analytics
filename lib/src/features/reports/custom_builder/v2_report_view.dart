@@ -7,6 +7,7 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../data/supabase_repo.dart';
 import '../../../design/theme.dart';
@@ -109,22 +110,44 @@ class V2ReportView extends ConsumerWidget {
   }
 
   Widget _table(List<Map<String, dynamic>> rows) {
-    // Use the column order from query.columns (payload-defined order).
-    // The alias is the display header; the column field is the row key.
-    // Falls back to rows.first.keys if no columns defined (legacy reports).
-    final List<String> displayHeaders;
+    // Column order is driven by query.columns (the payload's explicit list).
+    // Postgres jsonb always returns keys in alphabetical order, so we MUST NOT
+    // use rows.first.keys for ordering.
+    //
+    // headers[i]    = display label shown in the header row  (alias, e.g. "Source")
+    // lookupKeys[i] = actual row-key used to read the value  (column, e.g. "source")
+    final List<String> headers;
     final List<String> lookupKeys;
+
     if (query.columns.isNotEmpty) {
-      displayHeaders = query.columns.map((c) => c.alias).toList();
-      lookupKeys = query.columns.map((c) => c.column).toList();
+      // rds_execute_query returns rows keyed by alias (e.g. "Source", "Buyer")
+      // because the SQL uses: SELECT t.source as "Source", ...
+      // So both the display header AND the lookup key must use c.alias.
+      final available = rows.first.keys.toSet();
+      final cols = query.columns
+          .where((c) => available.contains(c.alias))
+          .toList();
+      if (cols.isNotEmpty) {
+        headers    = cols.map((c) => c.alias).toList();
+        lookupKeys = cols.map((c) => c.alias).toList();
+      } else {
+        // Fallback: no alias matches — use raw row key order
+        final keys = rows.first.keys.toList();
+        headers    = keys;
+        lookupKeys = keys;
+      }
     } else {
-      displayHeaders = rows.first.keys.toList();
-      lookupKeys = displayHeaders;
+      // Legacy reports with no columns spec — fall back to row key order.
+      final keys = rows.first.keys.toList();
+      headers    = keys;
+      lookupKeys = keys;
     }
 
-    // Identify numeric columns by lookup key.
+    // Identify numeric columns using lookupKeys (the actual row keys).
+    // numericCols stores the DISPLAY HEADER name so the header row can check it.
     final numericCols = <String>{};
-    for (final key in lookupKeys) {
+    for (int i = 0; i < lookupKeys.length; i++) {
+      final key = lookupKeys[i];
       var hasValue = false;
       var allNum = true;
       for (final r in rows) {
@@ -136,25 +159,23 @@ class V2ReportView extends ConsumerWidget {
           break;
         }
       }
-      if (hasValue && allNum) numericCols.add(key);
+      if (hasValue && allNum) numericCols.add(headers[i]);
     }
 
-    final primaryNumericKey =
-        lookupKeys.firstWhere(numericCols.contains, orElse: () => '');
+    // primaryNumeric = display header of first numeric column.
+    // primaryNumericKey = lookup key for that column (used to read row values).
+    final primaryNumeric =
+        headers.firstWhere(numericCols.contains, orElse: () => '');
+    final primaryNumericKey = primaryNumeric.isNotEmpty
+        ? lookupKeys[headers.indexOf(primaryNumeric)]
+        : '';
     double grandTotal = 0;
     if (primaryNumericKey.isNotEmpty) {
       for (final r in rows) {
         grandTotal += _toDouble(r[primaryNumericKey]) ?? 0;
       }
     }
-    final showShare = primaryNumericKey.isNotEmpty && grandTotal > 0;
-
-    // Give the widest column ("Searched Product" or any long-label col) more flex.
-    int colFlex(int i) {
-      final label = displayHeaders[i].toLowerCase();
-      if (label.contains('product') || label.contains('description')) return 5;
-      return 2;
-    }
+    final showShare = query.showShare && primaryNumericKey.isNotEmpty && grandTotal > 0;
 
     Widget headerCell(String text, {bool rightAlign = false}) => Text(
           text,
@@ -173,7 +194,8 @@ class V2ReportView extends ConsumerWidget {
         children: [
           // Header bar
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: OpticsColors.surfaceElevated,
               borderRadius:
@@ -181,14 +203,11 @@ class V2ReportView extends ConsumerWidget {
             ),
             child: Row(
               children: [
-                SizedBox(width: 24, child: headerCell('#')),
-                for (int i = 0; i < displayHeaders.length; i++)
+                SizedBox(width: 32, child: headerCell('#')),
+                for (int i = 0; i < headers.length; i++)
                   Expanded(
-                    flex: colFlex(i),
-                    child: headerCell(
-                      displayHeaders[i],
-                      rightAlign: numericCols.contains(lookupKeys[i]),
-                    ),
+                    flex: _colFlex(headers[i], i),
+                    child: headerCell(headers[i]),
                   ),
                 if (showShare)
                   SizedBox(
@@ -206,13 +225,12 @@ class V2ReportView extends ConsumerWidget {
                     _tableRow(
                       rank: rank,
                       row: rows[rank],
-                      displayHeaders: displayHeaders,
+                      headers: headers,
                       lookupKeys: lookupKeys,
                       numericCols: numericCols,
                       primaryNumericKey: primaryNumericKey,
                       grandTotal: grandTotal,
                       showShare: showShare,
-                      colFlex: colFlex,
                     ),
                 ],
               ),
@@ -226,13 +244,12 @@ class V2ReportView extends ConsumerWidget {
   Widget _tableRow({
     required int rank,
     required Map<String, dynamic> row,
-    required List<String> displayHeaders,
+    required List<String> headers,
     required List<String> lookupKeys,
     required Set<String> numericCols,
     required String primaryNumericKey,
     required double grandTotal,
     required bool showShare,
-    required int Function(int) colFlex,
   }) {
     final palette = OpticsColors.chartPalette;
     final rowColor = palette[rank % palette.length];
@@ -249,7 +266,7 @@ class V2ReportView extends ConsumerWidget {
       child: Row(
         children: [
           SizedBox(
-            width: 24,
+            width: 32,
             child: Text(
               '${rank + 1}',
               style: const TextStyle(
@@ -258,9 +275,9 @@ class V2ReportView extends ConsumerWidget {
               ),
             ),
           ),
-          for (int i = 0; i < displayHeaders.length; i++)
+          for (int i = 0; i < headers.length; i++)
             Expanded(
-              flex: colFlex(i),
+              flex: _colFlex(headers[i], i),
               child: i == 0
                   ? Row(
                       children: [
@@ -275,7 +292,7 @@ class V2ReportView extends ConsumerWidget {
                         ),
                         Expanded(
                           child: Text(
-                            row[lookupKeys[i]]?.toString() ?? '',
+                            _formatCellValue(headers[i], row[lookupKeys[i]]),
                             style: const TextStyle(
                               fontSize: 12,
                               color: OpticsColors.textPrimary,
@@ -286,19 +303,13 @@ class V2ReportView extends ConsumerWidget {
                       ],
                     )
                   : Text(
-                      row[lookupKeys[i]]?.toString() ?? '',
-                      style: TextStyle(
+                      _formatCellValue(headers[i], row[lookupKeys[i]]),
+                      style: const TextStyle(
                         fontSize: 12,
-                        fontWeight: numericCols.contains(lookupKeys[i])
-                            ? FontWeight.w600
-                            : FontWeight.w400,
-                        color: numericCols.contains(lookupKeys[i])
-                            ? rowColor
-                            : OpticsColors.textSecondary,
+                        fontWeight: FontWeight.w400,
+                        color: OpticsColors.textPrimary,
                       ),
-                      textAlign: numericCols.contains(lookupKeys[i])
-                          ? TextAlign.right
-                          : TextAlign.left,
+                      textAlign: TextAlign.left,
                       overflow: TextOverflow.ellipsis,
                     ),
             ),
@@ -482,6 +493,90 @@ class V2ReportView extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Columns that should be rendered as $xx,xxx.xx currency values.
+const _moneyHeaders = {'AOV', 'Total Purchases', 'Total Sales'};
+
+/// Maps raw DB values to display-friendly labels for specific columns.
+String _formatCellValue(String header, dynamic value) {
+  final raw = value?.toString() ?? '';
+  if (header == 'Dispute Type') {
+    const eventLabels = {
+      'edit_line':    'Qty Change',
+      'cancel_order': 'Order Cancel',
+      'cancel_line':  'Line Cancel',
+      'add_line':     'Line Added',
+      'deliver_by':   'Delivery Date Change',
+      'deliver_to':   'Destination Change',
+      'destination':  'Destination Change',
+    };
+    return eventLabels[raw] ?? raw;
+  }
+  if (_moneyHeaders.contains(header)) {
+    final n = double.tryParse(raw.replaceAll(RegExp(r'[^\d.]'), ''));
+    if (n != null) {
+      final parts = n.toStringAsFixed(2).split('.');
+      final intPart = parts[0];
+      final decPart = parts[1];
+      final buffer = StringBuffer();
+      int count = 0;
+      for (int j = intPart.length - 1; j >= 0; j--) {
+        if (count > 0 && count % 3 == 0) buffer.write(',');
+        buffer.write(intPart[j]);
+        count++;
+      }
+      final formatted = buffer.toString().split('').reversed.join();
+      return r'$' + formatted + '.' + decPart;
+    }
+  }
+  // ISO date/timestamp → M-D-YY
+  if (raw.length >= 10 && RegExp(r'^\d{4}-\d{2}-\d{2}').hasMatch(raw)) {
+    final d = DateTime.tryParse(raw);
+    if (d != null) return DateFormat('M-d-yy').format(d.toLocal());
+  }
+  return raw;
+}
+
+/// Returns the flex weight for a table column.
+int _colFlex(String header, int index) {
+  const flexMap = {
+    // Price Search Live Feed
+    'Source':           2,
+    'Searched Product': 8,
+    'Price':            2,
+    'Date':             2,
+    // Unclaimed Orders
+    'Purchase Date':    4,
+    'Delivery Date':    4,
+    'Order#':           3,
+    'Company':          6,
+    'Deliver To':       6,
+    'Order Value':      3,
+    // Orders in Dispute
+    'Dispute Type':     6,
+    'Buyer Company':    6,
+    'Status':           7,
+    // All Buyers / All Sellers
+    'Buyer':            5,
+    'Buyer Email':      11,
+    'Purchases':        3,
+    'AOV':              4,
+    'Total Purchases':  5,
+    'Date Joined':      4,
+    'Seller':           5,
+    'Seller Email':     11,
+    'Seller Company':   6,
+    'Sales':            3,
+    'Total Sales':      5,
+    // Generic fallbacks
+    'Product':          8,
+    'Description':      8,
+    'Item Description': 8,
+    'Notes':            6,
+    'Comment':          6,
+  };
+  return flexMap[header] ?? (index == 0 ? 2 : 2);
 }
 
 double? _toDouble(dynamic v) {

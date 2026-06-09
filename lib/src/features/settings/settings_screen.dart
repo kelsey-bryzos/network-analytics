@@ -14,6 +14,167 @@ import '../../design/theme.dart';
 import 'role_info_tooltip.dart';
 
 // ---------------------------------------------------------------------------
+// Secure error display helpers.
+//
+// CRITICAL SECURITY RULE: External users must NEVER see Supabase URLs,
+// stack traces, or any internal implementation details in error messages.
+// Only @bryzos.com users get verbose/debug errors.
+// ---------------------------------------------------------------------------
+
+/// Returns true if the currently signed-in user has an @bryzos.com email.
+bool _isBryzosUser(WidgetRef ref) {
+  final email = ref.read(supabaseProvider).auth.currentUser?.email ?? '';
+  return email.toLowerCase().endsWith('@bryzos.com');
+}
+
+/// Sanitises an error message for external users. Strips anything that looks
+/// like an internal URL, stack trace, or implementation detail.
+String _sanitiseError(Object error) {
+  final raw = error.toString();
+  // Remove Supabase URLs, stack traces, and "ClientException:" prefixes
+  return raw
+      .replaceAll(RegExp(r'https?://[^\s,]+'), '[redacted]')
+      .replaceAll(RegExp(r'ClientException:\s*'), '')
+      .replaceAll(RegExp(r'Exception:\s*'), '')
+      .trim();
+}
+
+/// A widget that displays an error message.
+/// - Bryzos users see the full verbose error.
+/// - External users see a clean generic message + a "Report Error" button
+///   that silently emails the error details to kelsey@bryzos.com.
+class _SecureErrorText extends ConsumerStatefulWidget {
+  final String genericMessage; // e.g. "Error loading data sources."
+  final Object error;
+
+  const _SecureErrorText({
+    required this.genericMessage,
+    required this.error,
+  });
+
+  @override
+  ConsumerState<_SecureErrorText> createState() => _SecureErrorTextState();
+}
+
+class _SecureErrorTextState extends ConsumerState<_SecureErrorText> {
+  bool _reported = false;
+  bool _reporting = false;
+
+  Future<void> _reportError() async {
+    setState(() => _reporting = true);
+    try {
+      final client = ref.read(supabaseProvider);
+      final userEmail = client.auth.currentUser?.email ?? 'unknown';
+      await client.functions.invoke(
+        'send-error-report',
+        body: {
+          'user_email': userEmail,
+          'error_detail': widget.error.toString(),
+          'context': widget.genericMessage,
+        },
+      );
+      if (mounted) setState(() => _reported = true);
+    } catch (_) {
+      // Silently fail — we don't want the error reporting to itself show errors
+      if (mounted) setState(() => _reported = true);
+    } finally {
+      if (mounted) setState(() => _reporting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isBryzos = _isBryzosUser(ref);
+
+    if (isBryzos) {
+      // Verbose error for Bryzos staff
+      return Text(
+        '${widget.genericMessage} ${widget.error}',
+        style: OpticsTextStyles.bodySm.copyWith(color: OpticsColors.danger),
+      );
+    }
+
+    // Clean error for external users
+    return Row(
+      children: [
+        Flexible(
+          child: Text(
+            widget.genericMessage,
+            style: OpticsTextStyles.bodySm.copyWith(color: OpticsColors.danger),
+          ),
+        ),
+        const SizedBox(width: 8),
+        if (_reported)
+          Text(
+            'Reported ✓',
+            style: OpticsTextStyles.bodySm.copyWith(
+              color: OpticsColors.success,
+              fontSize: 11,
+            ),
+          )
+        else
+          TextButton.icon(
+            onPressed: _reporting ? null : _reportError,
+            icon: _reporting
+                ? const SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(strokeWidth: 1.5),
+                  )
+                : const Icon(Icons.flag_outlined, size: 14),
+            label: const Text('Report Error', style: TextStyle(fontSize: 11)),
+            style: TextButton.styleFrom(
+              foregroundColor: OpticsColors.textSecondary,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Shows a SnackBar with error info. Bryzos users see full detail; external
+/// users see a sanitised message.
+void _showSecureErrorSnackBar(BuildContext context, WidgetRef ref, String generic, Object error) {
+  final isBryzos = _isBryzosUser(ref);
+  if (isBryzos) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$generic $error'),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 5),
+        backgroundColor: OpticsColors.danger,
+      ),
+    );
+  } else {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(generic),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 8), // Give them time to click report
+        backgroundColor: OpticsColors.danger,
+        action: SnackBarAction(
+          label: 'Report Error',
+          textColor: OpticsColors.surfaceElevated,
+          onPressed: () {
+            ref.read(supabaseProvider).functions.invoke(
+              'send-error-report',
+              body: {
+                'message': generic,
+                'details': error.toString(),
+                'context': 'Settings Screen Snackbar',
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Tenant-scoped providers for the settings screen.
 // These are keyed by tenantId so each org card always queries its own data,
 // independent of which tenant is currently "active" in the JWT.
@@ -211,7 +372,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           if (_loading)
             const Center(child: CircularProgressIndicator())
           else if (_err != null)
-            Text('Error loading organizations: $_err', style: const TextStyle(color: OpticsColors.danger))
+            Consumer(builder: (ctx, ref, _) {
+              return _SecureErrorText(
+                genericMessage: 'Error loading organizations.',
+                error: _err!,
+              );
+            })
           else if (_tenants == null || _tenants!.isEmpty)
             const Text('No organizations found.', style: OpticsTextStyles.body)
           else
@@ -426,7 +592,7 @@ class _ActiveTenantCardState extends ConsumerState<_ActiveTenantCard> {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Organization details saved')));
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) _showSecureErrorSnackBar(context, ref, 'Could not save details.', e);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -445,7 +611,7 @@ class _ActiveTenantCardState extends ConsumerState<_ActiveTenantCard> {
       ref.invalidate(activeTenantObjectProvider);
       if (mounted) setState(() {});
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Logo save failed: $e')));
+      if (mounted) _showSecureErrorSnackBar(context, ref, 'Logo save failed.', e);
     }
   }
 
@@ -677,6 +843,53 @@ class _ActiveTenantCardState extends ConsumerState<_ActiveTenantCard> {
   }
 }
 
+class _DomainTagInfo {
+  final String label;
+  final Color color;
+  _DomainTagInfo(this.label, this.color);
+}
+
+_DomainTagInfo? _getDomainTag(String email, bool isBryzosStaff) {
+  if (isBryzosStaff) return _DomainTagInfo('BRYZOS', const Color(0xFF7C3AED));
+  if (email.isEmpty) return null;
+  final parts = email.split('@');
+  if (parts.length != 2) return null;
+  final domain = parts[1].toLowerCase();
+  
+  if (domain == 'bryzos.com') {
+    return _DomainTagInfo('BRYZOS', const Color(0xFF7C3AED));
+  } else if (domain == 'ryerson.com') {
+    return _DomainTagInfo('RYERSON', const Color(0xFF3B82F6)); // Blue
+  } else if (domain == 'centralsteel.com' || domain == 'csw.com') {
+    return _DomainTagInfo('CSW', const Color(0xFFEAB308)); // Yellow/Gold
+  } else if (domain == 'steelnow.com') {
+    return _DomainTagInfo('STEELNOW', const Color(0xFF10B981)); // Green
+  } else if (domain == 'sunbeltgroup.com' || domain == 'sunbelt.com') {
+    return _DomainTagInfo('SUNBELT', const Color(0xFFF97316)); // Orange
+  } else {
+    // Exclude common free email providers from getting a company tag
+    const generic = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'me.com', 'mac.com'];
+    if (generic.contains(domain)) return null;
+    
+    // Dynamically generate a tag and color for other B2B domains
+    final company = domain.split('.').first.toUpperCase();
+    if (company.isEmpty) return null;
+    
+    // Simple hash to pick a consistent color from a predefined list
+    final colors = [
+      const Color(0xFF14B8A6), // Teal
+      const Color(0xFF8B5CF6), // Violet
+      const Color(0xFFF43F5E), // Rose
+      const Color(0xFF06B6D4), // Cyan
+      const Color(0xFFD946EF), // Fuchsia
+      const Color(0xFF84CC16), // Lime
+      const Color(0xFFEAB308), // Yellow
+    ];
+    final color = colors[company.hashCode.abs() % colors.length];
+    return _DomainTagInfo(company, color);
+  }
+}
+
 class _TeamList extends ConsumerWidget {
   final String tenantId;
   const _TeamList({required this.tenantId});
@@ -707,6 +920,8 @@ class _TeamList extends ConsumerWidget {
                 ? fullName[0].toUpperCase()
                 : (email.isNotEmpty ? email[0].toUpperCase() : '?');
 
+            final domainTag = _getDomainTag(email, isBryzosStaff);
+
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: Row(
@@ -717,12 +932,12 @@ class _TeamList extends ConsumerWidget {
                     width: 32,
                     height: 32,
                     decoration: BoxDecoration(
-                      color: isBryzosStaff
-                          ? const Color(0xFF7C3AED).withValues(alpha: 0.18)
+                      color: domainTag != null
+                          ? domainTag.color.withValues(alpha: 0.18)
                           : OpticsColors.surfaceElevated,
                       shape: BoxShape.circle,
-                      border: isBryzosStaff
-                          ? Border.all(color: const Color(0xFF7C3AED).withValues(alpha: 0.5), width: 1)
+                      border: domainTag != null
+                          ? Border.all(color: domainTag.color.withValues(alpha: 0.5), width: 1)
                           : null,
                     ),
                     alignment: Alignment.center,
@@ -731,8 +946,8 @@ class _TeamList extends ConsumerWidget {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.bold,
-                        color: isBryzosStaff
-                            ? const Color(0xFFA78BFA)
+                        color: domainTag != null
+                            ? domainTag.color.withValues(alpha: 0.9)
                             : OpticsColors.textSecondary,
                       ),
                     ),
@@ -747,23 +962,23 @@ class _TeamList extends ConsumerWidget {
                           children: [
                             if (fullName.isNotEmpty)
                               Text(fullName, style: OpticsTextStyles.body),
-                            if (isBryzosStaff) ...[
+                            if (domainTag != null) ...[
                               const SizedBox(width: 6),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF7C3AED).withValues(alpha: 0.15),
+                                  color: domainTag.color.withValues(alpha: 0.15),
                                   borderRadius: BorderRadius.circular(3),
                                   border: Border.all(
-                                    color: const Color(0xFF7C3AED).withValues(alpha: 0.4),
+                                    color: domainTag.color.withValues(alpha: 0.4),
                                   ),
                                 ),
-                                child: const Text(
-                                  'BRYZOS',
+                                child: Text(
+                                  domainTag.label,
                                   style: TextStyle(
                                     fontSize: 9,
                                     fontWeight: FontWeight.w700,
-                                    color: Color(0xFFA78BFA),
+                                    color: domainTag.color.withValues(alpha: 0.9),
                                     letterSpacing: 0.8,
                                   ),
                                 ),
@@ -810,9 +1025,9 @@ class _TeamList extends ConsumerWidget {
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Text(
-        'Could not load members: $e',
-        style: OpticsTextStyles.bodySm.copyWith(color: OpticsColors.danger),
+      error: (e, _) => _SecureErrorText(
+        genericMessage: 'Could not load members.',
+        error: e,
       ),
     );
   }
@@ -836,9 +1051,9 @@ class _PendingInvitesList extends ConsumerWidget {
           child: CircularProgressIndicator(strokeWidth: 2),
         ),
       ),
-      error: (_, __) => const Text(
-        'Could not load pending invites.',
-        style: OpticsTextStyles.bodySm,
+      error: (e, _) => _SecureErrorText(
+        genericMessage: 'Could not load pending invites.',
+        error: e,
       ),
       data: (invites) {
         if (invites.isEmpty) {
@@ -904,18 +1119,31 @@ class _PendingInviteRowState extends ConsumerState<_PendingInviteRow> {
         headers: tid == null ? {} : {'x-optics-tenant': tid},
       );
       final data = (res.data as Map?)?.cast<String, dynamic>() ?? {};
-      if (data['error'] != null) throw Exception(data['error']);
+      if (data['error'] != null) {
+        // If the invite is already gone, treat it as a success since the goal is achieved.
+        if (data['error'] == 'invite not found') {
+          // Do nothing, proceed to success block to invalidate UI
+        } else {
+          throw Exception(data['error']);
+        }
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Invite to $email revoked.')),
+          SnackBar(
+            content: Text(
+              'Invite to $email revoked.',
+              style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
+            ),
+            backgroundColor: OpticsColors.accentGreen,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
+        if (tid != null) ref.invalidate(_tenantPendingInvitesProvider(tid));
         ref.invalidate(activeTenantPendingInvitesProvider);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Revoke failed: $e')),
-        );
+        _showSecureErrorSnackBar(context, ref, 'Revoke failed.', e);
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -1094,7 +1322,7 @@ class _InvitePanelState extends ConsumerState<_InvitePanel> {
         ref.invalidate(activeTenantPendingInvitesProvider);
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) _showSecureErrorSnackBar(context, ref, 'Could not send invite.', e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -1327,7 +1555,7 @@ class _LogoUploaderState extends ConsumerState<_LogoUploader> {
       widget.onChanged(url);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
+        _showSecureErrorSnackBar(context, ref, 'Upload failed.', e);
       }
     } finally {
       if (mounted) setState(() => _uploading = false);
@@ -1346,7 +1574,7 @@ class _LogoUploaderState extends ConsumerState<_LogoUploader> {
       await _uploadBytes(file.bytes!, file.name);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
+        _showSecureErrorSnackBar(context, ref, 'Upload failed.', e);
       }
     }
   }
@@ -1486,9 +1714,9 @@ class _TenantDataSourcesList extends ConsumerWidget {
           child: CircularProgressIndicator(strokeWidth: 2),
         ),
       ),
-      error: (e, _) => Text(
-        'Error loading data sources: $e',
-        style: const TextStyle(color: OpticsColors.danger, fontSize: 12),
+      error: (e, _) => _SecureErrorText(
+        genericMessage: 'Error loading data sources.',
+        error: e,
       ),
       data: (items) {
         if (items.isEmpty) {
@@ -1584,9 +1812,7 @@ class _TenantDataSourceRowState extends ConsumerState<_TenantDataSourceRow> {
       // Only reached on exception from requestDataSourceSync itself.
       if (mounted) {
         setState(() { _refreshing = false; _refreshStartedAt = null; });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Refresh failed: $e')),
-        );
+        _showSecureErrorSnackBar(context, ref, 'Refresh failed.', e);
       }
     }
   }
@@ -1630,9 +1856,7 @@ class _TenantDataSourceRowState extends ConsumerState<_TenantDataSourceRow> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Cancel failed: $e')),
-        );
+        _showSecureErrorSnackBar(context, ref, 'Cancel failed.', e);
       }
     } finally {
       if (mounted) setState(() { _cancelling = false; _refreshing = false; _refreshStartedAt = null; });
@@ -1659,9 +1883,7 @@ class _TenantDataSourceRowState extends ConsumerState<_TenantDataSourceRow> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not update cadence: $e')),
-        );
+        _showSecureErrorSnackBar(context, ref, 'Could not update cadence.', e);
       }
     }
   }
@@ -1695,12 +1917,7 @@ class _TenantDataSourceRowState extends ConsumerState<_TenantDataSourceRow> {
       // Surface errors (e.g. network failure, non-2xx from edge function) instead
       // of silently swallowing them and leaving the button stuck in loading state.
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Test failed: $e'),
-            backgroundColor: Colors.red.shade700,
-          ),
-        );
+        _showSecureErrorSnackBar(context, ref, 'Connection test failed.', e);
       }
     } finally {
       if (mounted) setState(() => _testing = false);
@@ -1974,7 +2191,7 @@ class _TenantDataSourceRowState extends ConsumerState<_TenantDataSourceRow> {
               } catch (e) {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Delete failed: $e')),
+                    SnackBar(content: Text(_isBryzosUser(ref) ? 'Delete failed: $e' : 'Delete failed.')),
                   );
                 }
               }
@@ -2132,10 +2349,13 @@ class _DataSourceDialogState extends ConsumerState<_DataSourceDialog> {
             ),
             if (_err != null) ...[
               const SizedBox(height: 12),
-              Text(
-                _err!,
-                style: const TextStyle(color: OpticsColors.danger, fontSize: 12),
-              ),
+              Consumer(builder: (ctx, ref, _) {
+                final isBryzos = _isBryzosUser(ref);
+                return Text(
+                  isBryzos ? _err! : 'Could not save data source.',
+                  style: const TextStyle(color: OpticsColors.danger, fontSize: 12),
+                );
+              }),
             ],
           ],
         ),

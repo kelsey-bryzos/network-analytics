@@ -41,9 +41,14 @@
 	<key>SUScheduledCheckInterval</key>
 	<integer>86400</integer>
 	<key>SUAutomaticallyUpdate</key>
-	<true/>
+	<false/>
 	<key>SUPublicEDKey</key>
 	<string>yrqfBpw+m/j00C5QzOYltFbWuuQSkyb5nWyWtxvdX50=</string>
+
+	<!-- Injected at build time by CI (OPTICS_APP_ENV=prod|staging|demo).
+	     AppDelegate reads this to override the Sparkle feed URL for non-prod. -->
+	<key>OPTICS_APP_ENV</key>
+	<string>$(OPTICS_APP_ENV)</string>
 
 	<!-- Register the optics:// URL scheme so email invite links can open
 	     the desktop app (e.g. optics://accept-invite?token=…). -->

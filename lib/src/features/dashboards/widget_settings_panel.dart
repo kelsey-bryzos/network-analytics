@@ -57,14 +57,30 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
     super.initState();
     final s = widget.widget.settings;
 
-    // Current & original values — initialized from the widget
+    // brz binding — used as fallback for values the settings panel may not
+    // have written yet (e.g. max_items / time_range authored on the library item).
+    final brz = () {
+      final b = widget.widget.binding['brz'];
+      if (b is Map) return b.cast<String, dynamic>();
+      return <String, dynamic>{};
+    }();
+
+    // Current & original values — initialized from the widget.
+    // Resolution order: user-set settings → brz binding authored default → hardcoded fallback.
+    // This prevents the settings panel from clobbering the library-item defaults when
+    // the user opens settings (e.g. to change chart type) without touching max_items/time_range.
     _origTitle = widget.widget.title;
     _origKind = widget.widget.kind;
     _origColorScheme = s['colorScheme'] as String? ?? 'Default';
     _origGroupBy = s['groupBy'] as String? ?? 'Shape';
     _origSortBy = s['sortBy'] as String? ?? 'Value ↓';
-    _origTimeRange = migrateTimeRange(s['timeRange'] as String?);
-    _origMaxItems = (s['maxItems'] as num?)?.toInt() ?? 10;
+    final sTimeRange = s['timeRange'] as String?;
+    _origTimeRange = migrateTimeRange(
+      (sTimeRange != null && sTimeRange.isNotEmpty) ? sTimeRange : (brz['time_range'] as String?),
+    );
+    _origMaxItems = (s['maxItems'] as num?)?.toInt()
+        ?? (brz['max_items'] as num?)?.toInt()
+        ?? 10;
     _origAutoRefresh = s['autoRefresh'] as String? ?? 'Off';
     _origToggles = {
       'Data Labels': (s['dataLabels'] as bool?) ?? false,

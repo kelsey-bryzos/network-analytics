@@ -1,2 +1,7 @@
 #include "../../Flutter/Flutter-Release.xcconfig"
 #include "Warnings.xcconfig"
+
+// Injected by CI at build time. AppDelegate reads this from Info.plist
+// to select the correct Sparkle appcast feed (prod/staging/demo).
+// Default: prod. Override with OPTICS_APP_ENV=staging|demo in CI.
+OPTICS_APP_ENV = prod

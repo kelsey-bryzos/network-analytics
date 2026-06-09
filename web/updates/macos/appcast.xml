@@ -78,5 +78,70 @@
         length="27787196"
         type="application/octet-stream" />
     </item>
+      <item>
+      <title>Version 1.0.108</title>
+      <pubDate>Thu, 04 Jun 2026 16:25:56 +0000</pubDate>
+      <sparkle:version>1000108</sparkle:version>
+      <sparkle:shortVersionString>1.0.108</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>10.15</sparkle:minimumSystemVersion>
+      <description><![CDATA[<p>See <a href="https://github.com/kelsey-bryzos/network-analytics/releases/tag/v1.0.108">release notes on GitHub</a>.</p>]]></description>
+      <enclosure
+        url="https://github.com/kelsey-bryzos/network-analytics/releases/download/v1.0.108/NetworkAnalytics-1.0.108.dmg"
+        sparkle:edSignature="pAFa+3QoHHY12ZZqwf8QjH4q2TFy09uaTyTV7ecGMMXgmrF4Xwin6ZWixYNvKHv4BG2YZOOzUdCC0WIh99QFAg=="
+        length="27789483"
+        type="application/octet-stream" />
+    </item>
+      <item>
+      <title>Version 1.0.109</title>
+      <pubDate>Thu, 04 Jun 2026 16:57:12 +0000</pubDate>
+      <sparkle:version>1000109</sparkle:version>
+      <sparkle:shortVersionString>1.0.109</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>10.15</sparkle:minimumSystemVersion>
+      <description><![CDATA[<p>See <a href="https://github.com/kelsey-bryzos/network-analytics/releases/tag/v1.0.109">release notes on GitHub</a>.</p>]]></description>
+      <enclosure
+        url="https://github.com/kelsey-bryzos/network-analytics/releases/download/v1.0.109/NetworkAnalytics-1.0.109.dmg"
+        sparkle:edSignature="QygdOatFGobTSaOmlpHzimjhU4TbMAY5/N90z+FK1jkNDUjpCPdCiuKnnkI1YpxfPxNAtxgqaYuG6QFTx3/DBg=="
+        length="27790663"
+        type="application/octet-stream" />
+    </item>
+      <item>
+      <title>Version 1.0.110</title>
+      <pubDate>Thu, 04 Jun 2026 20:25:20 +0000</pubDate>
+      <sparkle:version>1000110</sparkle:version>
+      <sparkle:shortVersionString>1.0.110</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>10.15</sparkle:minimumSystemVersion>
+      <description><![CDATA[<p>See <a href="https://github.com/kelsey-bryzos/network-analytics/releases/tag/v1.0.110">release notes on GitHub</a>.</p>]]></description>
+      <enclosure
+        url="https://github.com/kelsey-bryzos/network-analytics/releases/download/v1.0.110/NetworkAnalytics-1.0.110.dmg"
+        sparkle:edSignature="PgD7xtiFoIMJgeVkwpuEkPIKW536L9QD6UiGp97Mw1ZgWga0pXysSJwUrCUZsLfNyBLByBZc7ZAFMEigOTasAg=="
+        length="27371516"
+        type="application/octet-stream" />
+    </item>
+      <item>
+      <title>Version 1.0.111</title>
+      <pubDate>Thu, 04 Jun 2026 21:00:44 +0000</pubDate>
+      <sparkle:version>1000111</sparkle:version>
+      <sparkle:shortVersionString>1.0.111</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>10.15</sparkle:minimumSystemVersion>
+      <description><![CDATA[<p>See <a href="https://github.com/kelsey-bryzos/network-analytics/releases/tag/v1.0.111">release notes on GitHub</a>.</p>]]></description>
+      <enclosure
+        url="https://github.com/kelsey-bryzos/network-analytics/releases/download/v1.0.111/NetworkAnalytics-1.0.111.dmg"
+        sparkle:edSignature="kwg/P1epUQdYEpCmn41Alg+vIOD44nTT9d1QEhRofoChEnv+jQ4yI8UIRhynzGVWq+RtaimaNR9dY1+L726MDg=="
+        length="27798001"
+        type="application/octet-stream" />
+    </item>
+      <item>
+      <title>Version 1.0.112</title>
+      <pubDate>Thu, 04 Jun 2026 21:29:30 +0000</pubDate>
+      <sparkle:version>1000112</sparkle:version>
+      <sparkle:shortVersionString>1.0.112</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>10.15</sparkle:minimumSystemVersion>
+      <description><![CDATA[<p>See <a href="https://github.com/kelsey-bryzos/network-analytics/releases/tag/v1.0.112">release notes on GitHub</a>.</p>]]></description>
+      <enclosure
+        url="https://github.com/kelsey-bryzos/network-analytics/releases/download/v1.0.112/NetworkAnalytics-1.0.112.dmg"
+        sparkle:edSignature="3IY3kEo0kNAH2AVvLmTed+J2tvExoTnXE9C74SZkUTnYqTtfcdSQXdhC6M6nyYh8q5cC5ZqZHa7xkSFNP8JLCQ=="
+        length="27798008"
+        type="application/octet-stream" />
+    </item>
   </channel>
 </rss>

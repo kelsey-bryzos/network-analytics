@@ -31,7 +31,12 @@ String _fmtFull(double v) {
 String _fmtSmartMoney(double v) {
   if (v.abs() >= 1e6) return '\$${(v / 1e6).toStringAsFixed(2)}M';
   if (v.abs() >= 1e3) return '\$${(v / 1e3).toStringAsFixed(1)}K';
-  return '\$${v.toStringAsFixed(0)}';
+  return '\$${v.toStringAsFixed(2)}';
+}
+
+/// Exact dollar format with commas and 2 decimals
+String _fmtExactMoney(double v) {
+  return NumberFormat('\$#,##0.00').format(v);
 }
 
 /// Smart value formatter: dollar-prefixed with correct scale if unit contains $, else compact number.
@@ -1492,8 +1497,7 @@ class _WidgetRendererCore extends StatelessWidget {
     final cols = rows.first.keys.toList();
     final headers = [for (final c in cols) _humanizeKey(c)];
     final aligns = <TextAlign>[
-      for (final c in cols)
-        _isNumericColumn(c, rows) ? TextAlign.right : TextAlign.left,
+      for (final c in cols) TextAlign.left,
     ];
 
     return Column(
@@ -1502,7 +1506,7 @@ class _WidgetRendererCore extends StatelessWidget {
         _chartHeader(),
         // Frozen header
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
           decoration: BoxDecoration(
             color: _wt.headerBg,
             borderRadius:
@@ -1511,7 +1515,7 @@ class _WidgetRendererCore extends StatelessWidget {
           child: Row(
             children: [
               SizedBox(
-                width: 24,
+                width: 32,
                 child: Text('#',
                     style: TextStyle(
                         fontSize: 11,
@@ -1520,6 +1524,7 @@ class _WidgetRendererCore extends StatelessWidget {
               ),
               for (int c = 0; c < cols.length; c++)
                 Expanded(
+                  flex: _flexForCol(cols[c]),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     child: Text(
@@ -1543,21 +1548,21 @@ class _WidgetRendererCore extends StatelessWidget {
               children: [
                 for (int i = 0; i < rows.length; i++)
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 7),
+                    padding: const EdgeInsets.fromLTRB(12, 7, 4, 7),
                     color: i.isOdd
                         ? _wt.headerBg.withValues(alpha: 0.3)
                         : Colors.transparent,
                     child: Row(
                       children: [
                         SizedBox(
-                          width: 24,
+                          width: 32,
                           child: Text('${i + 1}',
                               style: TextStyle(
                                   fontSize: 11, color: _wt.mutedText)),
                         ),
                         for (int c = 0; c < cols.length; c++)
                           Expanded(
+                            flex: _flexForCol(cols[c]),
                             child: Padding(
                               padding:
                                   const EdgeInsets.symmetric(horizontal: 4),
@@ -1603,26 +1608,66 @@ class _WidgetRendererCore extends StatelessWidget {
     return total > 0 && nums * 2 > total;
   }
 
+  int _flexForCol(String key) {
+    const m = {
+      // Orders in Dispute (Edge Function returns aliased keys)
+      'Order#':          3,
+      'Dispute Type':    5,
+      'Buyer':           4,
+      'Seller':          4,
+      'Status':          9,
+      // Shared across Orders in Dispute + All Buyers + All Sellers
+      'Buyer Company':   6,
+      'Seller Company':  6,
+      // All Buyers / All Sellers
+      'Buyer Email':     8,
+      'Seller Email':    8,
+      'Purchases':       3,
+      'AOV':             4,
+      'Total Purchases': 5,
+      'Sales':           3,
+      'Total Sales':     5,
+    };
+    return m[key] ?? 5;
+  }
+
   String _formatCell(String key, dynamic v) {
     if (v == null) return '';
-    if (v is num) {
-      final isMoney = _looksLikeMoneyKey(key);
-      if (isMoney) return _fmtSmartMoney(v.toDouble());
-      return _fmtFull(v.toDouble());
+    // Dispute Type event codes → friendly labels
+    if (key == 'event' || key == 'Dispute Type') {
+      const labels = {
+        'edit_line':    'Qty Change',
+        'cancel_order': 'Order Cancel',
+        'cancel_line':  'Line Cancel',
+        'add_line':     'Line Added',
+        'deliver_by':   'Delivery Date Change',
+        'deliver_to':   'Destination Change',
+        'destination':  'Destination Change',
+      };
+      return labels[v?.toString()] ?? v?.toString() ?? '';
     }
     if (v is bool) return v ? 'Yes' : 'No';
     final s = v.toString();
     // ISO timestamp → short date
     if (_looksLikeIsoDate(s)) {
       final d = DateTime.tryParse(s);
-      if (d != null) return DateFormat('yyyy-MM-dd').format(d.toLocal());
+      if (d != null) return DateFormat('M-d-yy').format(d.toLocal());
     }
+    // Numeric (num or parseable string) — apply money or plain formatting
+    final isMoney = _looksLikeMoneyKey(key);
+    if (v is num) {
+      if (isMoney) return _fmtExactMoney(v.toDouble());
+      return _fmtFull(v.toDouble());
+    }
+    final parsed = double.tryParse(s);
+    if (parsed != null && isMoney) return _fmtExactMoney(parsed);
     return s;
   }
 
   bool _looksLikeMoneyKey(String key) {
     final k = key.toLowerCase();
-    return k.contains('price') ||
+    return k == 'aov' ||
+        k.contains('price') ||
         k.contains('revenue') ||
         k.contains('total') ||
         k.contains('value') ||
@@ -1661,7 +1706,7 @@ class _WidgetRendererCore extends StatelessWidget {
             borderRadius: const BorderRadius.vertical(top: Radius.circular(6))),
           child: Row(
             children: [
-              SizedBox(width: 24,
+              SizedBox(width: 32,
                   child: Text('#', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText))),
               Expanded(flex: 3,
                   child: Text(col1Header, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText))),
@@ -1697,7 +1742,7 @@ class _WidgetRendererCore extends StatelessWidget {
       color: isOdd ? _wt.headerBg.withValues(alpha: 0.3) : Colors.transparent,
       child: Row(
         children: [
-          SizedBox(width: 24,
+          SizedBox(width: 32,
               child: Text('${rank + 1}', style: TextStyle(fontSize: 11, color: _wt.mutedText))),
           Expanded(flex: 3,
               child: Row(
@@ -1762,7 +1807,7 @@ class _WidgetRendererCore extends StatelessWidget {
             borderRadius: const BorderRadius.vertical(top: Radius.circular(6))),
           child: Row(
             children: [
-              SizedBox(width: 24,
+              SizedBox(width: 32,
                   child: Text('#', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText))),
               Expanded(flex: 3,
                   child: Text('Name', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText))),
@@ -1828,7 +1873,7 @@ class _WidgetRendererCore extends StatelessWidget {
       color: rank % 2 == 1 ? _wt.headerBg.withValues(alpha: 0.3) : Colors.transparent,
       child: Row(
         children: [
-          SizedBox(width: 24,
+          SizedBox(width: 32,
               child: Text('${rank + 1}', style: TextStyle(fontSize: 11, color: _wt.mutedText))),
           Expanded(flex: 3,
               child: Row(

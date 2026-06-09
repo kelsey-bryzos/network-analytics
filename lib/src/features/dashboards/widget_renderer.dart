@@ -29,9 +29,9 @@ String _fmtFull(double v) {
 
 /// Smart dollar formatter — picks the right unit scale, never shows $0.0M for sub-million values.
 String _fmtSmartMoney(double v) {
-  if (v.abs() >= 1e6) return '\$${(v / 1e6).toStringAsFixed(2)}M';
-  if (v.abs() >= 1e3) return '\$${(v / 1e3).toStringAsFixed(1)}K';
-  return '\$${v.toStringAsFixed(0)}';
+  if (v.abs() >= 1e6) return '\${(v / 1e6).toStringAsFixed(2)}M';
+  if (v.abs() >= 1e3) return '\${(v / 1e3).toStringAsFixed(1)}K';
+  return '\${v.toStringAsFixed(2)}';
 }
 
 /// Smart value formatter: dollar-prefixed with correct scale if unit contains $, else compact number.
@@ -1641,11 +1641,6 @@ class _WidgetRendererCore extends StatelessWidget {
       };
       return labels[v?.toString()] ?? v?.toString() ?? '';
     }
-    if (v is num) {
-      final isMoney = _looksLikeMoneyKey(key);
-      if (isMoney) return _fmtSmartMoney(v.toDouble());
-      return _fmtFull(v.toDouble());
-    }
     if (v is bool) return v ? 'Yes' : 'No';
     final s = v.toString();
     // ISO timestamp → short date
@@ -1653,6 +1648,14 @@ class _WidgetRendererCore extends StatelessWidget {
       final d = DateTime.tryParse(s);
       if (d != null) return DateFormat('M-d-yy').format(d.toLocal());
     }
+    // Numeric (num or parseable string) — apply money or plain formatting
+    final isMoney = _looksLikeMoneyKey(key);
+    if (v is num) {
+      if (isMoney) return _fmtSmartMoney(v.toDouble());
+      return _fmtFull(v.toDouble());
+    }
+    final parsed = double.tryParse(s);
+    if (parsed != null && isMoney) return _fmtSmartMoney(parsed);
     return s;
   }
 

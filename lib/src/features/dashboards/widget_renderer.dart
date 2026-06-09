@@ -29,9 +29,9 @@ String _fmtFull(double v) {
 
 /// Smart dollar formatter — picks the right unit scale, never shows $0.0M for sub-million values.
 String _fmtSmartMoney(double v) {
-  if (v.abs() >= 1e6) return '\${(v / 1e6).toStringAsFixed(2)}M';
-  if (v.abs() >= 1e3) return '\${(v / 1e3).toStringAsFixed(1)}K';
-  return '\${v.toStringAsFixed(2)}';
+  if (v.abs() >= 1e6) return '\$${(v / 1e6).toStringAsFixed(2)}M';
+  if (v.abs() >= 1e3) return '\$${(v / 1e3).toStringAsFixed(1)}K';
+  return '\$${v.toStringAsFixed(2)}';
 }
 
 /// Smart value formatter: dollar-prefixed with correct scale if unit contains $, else compact number.

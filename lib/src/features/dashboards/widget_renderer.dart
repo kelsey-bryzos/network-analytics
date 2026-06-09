@@ -34,6 +34,11 @@ String _fmtSmartMoney(double v) {
   return '\$${v.toStringAsFixed(2)}';
 }
 
+/// Exact dollar format with commas and 2 decimals
+String _fmtExactMoney(double v) {
+  return NumberFormat('\$#,##0.00').format(v);
+}
+
 /// Smart value formatter: dollar-prefixed with correct scale if unit contains $, else compact number.
 /// Applies unit multiplier ($K → ×1000, $M → ×1e6) so axis labels show correct scale.
 String _fmtSmartValue(double v, String unit) {
@@ -1651,11 +1656,11 @@ class _WidgetRendererCore extends StatelessWidget {
     // Numeric (num or parseable string) — apply money or plain formatting
     final isMoney = _looksLikeMoneyKey(key);
     if (v is num) {
-      if (isMoney) return _fmtSmartMoney(v.toDouble());
+      if (isMoney) return _fmtExactMoney(v.toDouble());
       return _fmtFull(v.toDouble());
     }
     final parsed = double.tryParse(s);
-    if (parsed != null && isMoney) return _fmtSmartMoney(parsed);
+    if (parsed != null && isMoney) return _fmtExactMoney(parsed);
     return s;
   }
 

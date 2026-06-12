@@ -1936,6 +1936,7 @@ class _TenantDataSourceRowState extends ConsumerState<_TenantDataSourceRow> {
         lastAtRaw != null ? DateTime.tryParse(lastAtRaw)?.toLocal() : null;
     final lastRows = sync?['last_sync_rows'] as int?;
     final lastErr = sync?['last_sync_error'] as String?;
+    final lastTrigger = sync?['last_sync_trigger'] as String?;
 
     final isSyncing = lastStatus == 'running' || _refreshing;
     final progressAsync = isSyncing
@@ -1967,7 +1968,8 @@ class _TenantDataSourceRowState extends ConsumerState<_TenantDataSourceRow> {
       subtitleColor = OpticsColors.warning;
     } else if (lastStatus == 'ok' && lastAt != null) {
       final rowsStr = (lastRows != null && lastRows > 0) ? ' · $lastRows new' : '';
-      subtitle = 'Last sync: ${_formatAgo(lastAt)}$rowsStr';
+      final triggerStr = lastTrigger == 'automated' ? ' · auto' : ' · manual';
+      subtitle = 'Last sync: ${_formatAgo(lastAt)}$rowsStr$triggerStr';
     } else if (lastStatus == 'partial' && lastAt != null) {
       final errStr = (sync?['last_sync_error'] as String?)?.isNotEmpty == true
           ? ' — ${sync!['last_sync_error']}'

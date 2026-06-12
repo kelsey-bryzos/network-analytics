@@ -553,6 +553,9 @@ int _colFlex(String header, int index) {
     'Company':          6,
     'Deliver To':       6,
     'Order Value':      3,
+    // Orders Previewed by Sellers
+    'Preview Screen':   7,
+    'Claim Screen':     7,
     // Orders in Dispute
     'Dispute Type':     6,
     'Buyer Company':    6,

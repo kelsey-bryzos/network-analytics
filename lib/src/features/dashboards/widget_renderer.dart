@@ -1617,8 +1617,8 @@ class _WidgetRendererCore extends StatelessWidget {
       'Seller':          4,
       'Status':          9,
       // Orders Previewed by Sellers
-      'Preview Screen':  7,
-      'Claim Screen':    7,
+      'Preview Screen':  10,
+      'Claim Screen':    10,
       // Shared across Orders in Dispute + All Buyers + All Sellers
       'Buyer Company':   6,
       'Seller Company':  6,

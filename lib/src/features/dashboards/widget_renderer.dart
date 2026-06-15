@@ -1616,6 +1616,13 @@ class _WidgetRendererCore extends StatelessWidget {
       'Buyer':           4,
       'Seller':          4,
       'Status':          9,
+      // Monthly Financial Summary
+      'Month':           5,
+      'Transactions':    4,
+      'Revenue':         4,
+      'COGS':            4,
+      'GP ($)':          4,
+      'GP (%)':          3,
       // Orders Previewed by Sellers
       'Preview Screen':  6,
       'Claim Screen':    6,
@@ -1650,6 +1657,11 @@ class _WidgetRendererCore extends StatelessWidget {
       return labels[v?.toString()] ?? v?.toString() ?? '';
     }
     if (v is bool) return v ? 'Yes' : 'No';
+    // GP (%) → show as percentage
+    if (key == 'GP (%)') {
+      final n = v is num ? v.toDouble() : double.tryParse(v.toString());
+      if (n != null) return '${n.toStringAsFixed(2)}%';
+    }
     final s = v.toString();
     // ISO timestamp → short date
     if (_looksLikeIsoDate(s)) {
@@ -1669,7 +1681,9 @@ class _WidgetRendererCore extends StatelessWidget {
 
   bool _looksLikeMoneyKey(String key) {
     final k = key.toLowerCase();
+    if (k == 'gp (%)') return false; // percentage, not money
     return k == 'aov' ||
+        k == 'gp (\$)' ||
         k.contains('price') ||
         k.contains('revenue') ||
         k.contains('total') ||

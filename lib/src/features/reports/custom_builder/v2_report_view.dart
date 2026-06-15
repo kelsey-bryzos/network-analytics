@@ -496,7 +496,7 @@ class V2ReportView extends ConsumerWidget {
 }
 
 /// Columns that should be rendered as $xx,xxx.xx currency values.
-const _moneyHeaders = {'AOV', 'Total Purchases', 'Total Sales'};
+const _moneyHeaders = {'AOV', 'Total Purchases', 'Total Sales', 'Revenue', 'COGS', 'GP ($)'};
 
 /// Maps raw DB values to display-friendly labels for specific columns.
 String _formatCellValue(String header, dynamic value) {
@@ -514,9 +514,11 @@ String _formatCellValue(String header, dynamic value) {
     return eventLabels[raw] ?? raw;
   }
   if (_moneyHeaders.contains(header)) {
-    final n = double.tryParse(raw.replaceAll(RegExp(r'[^\d.]'), ''));
+    final n = double.tryParse(raw.replaceAll(RegExp(r'[^\d.\-]'), ''));
     if (n != null) {
-      final parts = n.toStringAsFixed(2).split('.');
+      final isNeg = n < 0;
+      final abs = n.abs();
+      final parts = abs.toStringAsFixed(2).split('.');
       final intPart = parts[0];
       final decPart = parts[1];
       final buffer = StringBuffer();
@@ -527,7 +529,137 @@ String _formatCellValue(String header, dynamic value) {
         count++;
       }
       final formatted = buffer.toString().split('').reversed.join();
-      return r'$' + formatted + '.' + decPart;
+      return (isNeg ? r'-
+  // ISO date/timestamp → M-D-YY
+  if (raw.length >= 10 && RegExp(r'^\d{4}-\d{2}-\d{2}').hasMatch(raw)) {
+    final d = DateTime.tryParse(raw);
+    if (d != null) return DateFormat('M-d-yy').format(d.toLocal());
+  }
+  return raw;
+}
+
+/// Returns the flex weight for a table column.
+int _colFlex(String header, int index) {
+  const flexMap = {
+    // Price Search Live Feed
+    'Source':           2,
+    'Searched Product': 8,
+    'Price':            2,
+    'Date':             2,
+    // Unclaimed Orders
+    'Purchase Date':    4,
+    'Delivery Date':    4,
+    'Order#':           3,
+    'Company':          6,
+    'Deliver To':       6,
+    'Order Value':      3,
+    // Monthly Financial Summary
+    'Month':            5,
+    'Transactions':     4,
+    'Revenue':          4,
+    'COGS':             4,
+    'GP ($)':           4,
+    'GP (%)':           3,
+    // Orders Previewed by Sellers
+    'Preview Screen':   6,
+    'Claim Screen':     6,
+    // Orders in Dispute
+    'Dispute Type':     6,
+    'Buyer Company':    6,
+    'Status':           7,
+    // All Buyers / All Sellers
+    'Buyer':            5,
+    'Buyer Email':      11,
+    'Purchases':        3,
+    'AOV':              4,
+    'Total Purchases':  5,
+    'Date Joined':      4,
+    'Seller':           5,
+    'Seller Email':     11,
+    'Seller Company':   6,
+    'Sales':            3,
+    'Total Sales':      5,
+    // Generic fallbacks
+    'Product':          8,
+    'Description':      8,
+    'Item Description': 8,
+    'Notes':            6,
+    'Comment':          6,
+  };
+  return flexMap[header] ?? (index == 0 ? 2 : 2);
+}
+
+double? _toDouble(dynamic v) {
+  if (v == null) return null;
+  if (v is num) return v.toDouble();
+  return double.tryParse(v.toString());
+}
+ : r'
+  // ISO date/timestamp → M-D-YY
+  if (raw.length >= 10 && RegExp(r'^\d{4}-\d{2}-\d{2}').hasMatch(raw)) {
+    final d = DateTime.tryParse(raw);
+    if (d != null) return DateFormat('M-d-yy').format(d.toLocal());
+  }
+  return raw;
+}
+
+/// Returns the flex weight for a table column.
+int _colFlex(String header, int index) {
+  const flexMap = {
+    // Price Search Live Feed
+    'Source':           2,
+    'Searched Product': 8,
+    'Price':            2,
+    'Date':             2,
+    // Unclaimed Orders
+    'Purchase Date':    4,
+    'Delivery Date':    4,
+    'Order#':           3,
+    'Company':          6,
+    'Deliver To':       6,
+    'Order Value':      3,
+    // Monthly Financial Summary
+    'Month':            5,
+    'Transactions':     4,
+    'Revenue':          4,
+    'COGS':             4,
+    'GP ($)':           4,
+    'GP (%)':           3,
+    // Orders Previewed by Sellers
+    'Preview Screen':   6,
+    'Claim Screen':     6,
+    // Orders in Dispute
+    'Dispute Type':     6,
+    'Buyer Company':    6,
+    'Status':           7,
+    // All Buyers / All Sellers
+    'Buyer':            5,
+    'Buyer Email':      11,
+    'Purchases':        3,
+    'AOV':              4,
+    'Total Purchases':  5,
+    'Date Joined':      4,
+    'Seller':           5,
+    'Seller Email':     11,
+    'Seller Company':   6,
+    'Sales':            3,
+    'Total Sales':      5,
+    // Generic fallbacks
+    'Product':          8,
+    'Description':      8,
+    'Item Description': 8,
+    'Notes':            6,
+    'Comment':          6,
+  };
+  return flexMap[header] ?? (index == 0 ? 2 : 2);
+}
+
+double? _toDouble(dynamic v) {
+  if (v == null) return null;
+  if (v is num) return v.toDouble();
+  return double.tryParse(v.toString());
+}
+) + formatted + '.' + decPart;
     }
   }
   // ISO date/timestamp → M-D-YY
@@ -553,6 +685,13 @@ int _colFlex(String header, int index) {
     'Company':          6,
     'Deliver To':       6,
     'Order Value':      3,
+    // Monthly Financial Summary
+    'Month':            5,
+    'Transactions':     4,
+    'Revenue':          4,
+    'COGS':             4,
+    'GP ($)':           4,
+    'GP (%)':           3,
     // Orders Previewed by Sellers
     'Preview Screen':   6,
     'Claim Screen':     6,

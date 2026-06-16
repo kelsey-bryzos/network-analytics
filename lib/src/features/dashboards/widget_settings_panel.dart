@@ -270,6 +270,7 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
         _label('Sort by'),
         _ChipGroup<String>(
           options: const [
+            ('None', 'None'),
             ('Value ↓', 'Value ↓'),
             ('Value ↑', 'Value ↑'),
             ('Qty ↓', 'Qty ↓'),

@@ -1683,6 +1683,7 @@ class _WidgetRendererCore extends StatelessWidget {
     final k = key.toLowerCase();
     if (k == 'gp (%)') return false; // percentage, not money
     return k == 'aov' ||
+        k == 'cogs' ||
         k == 'gp (\$)' ||
         k.contains('price') ||
         k.contains('revenue') ||

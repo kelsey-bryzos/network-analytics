@@ -21,8 +21,6 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   final _password = TextEditingController();
   bool _loading = false;
   String? _error;
-  bool _magicLink = false;
-  bool _magicSent = false;
   bool _signUp = false;
   bool _forgotPassword = false;
   bool _resetSent = false;
@@ -38,7 +36,6 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     setState(() {
       _loading = true;
       _error = null;
-      _magicSent = false;
       _resetSent = false;
     });
     try {
@@ -49,9 +46,6 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
           redirectTo: '${OpticsEnv.appBaseUrl}/reset-password',
         );
         setState(() => _resetSent = true);
-      } else if (_magicLink) {
-        await client.auth.signInWithOtp(email: _email.text.trim());
-        setState(() => _magicSent = true);
       } else if (_signUp) {
         await client.auth.signUp(
           email: _email.text.trim(),
@@ -126,7 +120,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   autofillHints: const [AutofillHints.email],
                   decoration: const InputDecoration(hintText: 'Email address'),
                 ),
-                if (!_magicLink && !_forgotPassword) ...[
+                if (!_forgotPassword) ...[
                   const SizedBox(height: 10),
                   TextField(
                     controller: _password,
@@ -142,16 +136,6 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     _error!,
                     style: const TextStyle(
                       color: OpticsColors.danger,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-                if (_magicSent) ...[
-                  const SizedBox(height: 10),
-                  const Text(
-                    'Check your email for a sign-in link.',
-                    style: TextStyle(
-                      color: OpticsColors.success,
                       fontSize: 12,
                     ),
                   ),
@@ -180,9 +164,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         )
                       : Text(_forgotPassword
                           ? 'SEND RESET LINK'
-                          : (_magicLink
-                              ? 'SEND MAGIC LINK'
-                              : (_signUp ? 'CREATE ACCOUNT' : 'SIGN IN'))),
+                          : (_signUp ? 'CREATE ACCOUNT' : 'SIGN IN')),
                 ),
                 const SizedBox(height: 12),
                 if (_forgotPassword)
@@ -198,17 +180,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   TextButton(
                     onPressed: () => setState(() {
                       _forgotPassword = true;
-                      _magicLink = false;
                       _signUp = false;
                       _error = null;
                     }),
                     child: const Text('FORGOT PASSWORD?'),
-                  ),
-                  TextButton(
-                    onPressed: () => setState(() => _magicLink = !_magicLink),
-                    child: Text(
-                      _magicLink ? 'USE PASSWORD INSTEAD' : 'USE MAGIC LINK',
-                    ),
                   ),
                 ],
                 if (!_forgotPassword)
@@ -216,7 +191,6 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     TextButton(
                       onPressed: () => setState(() {
                         _signUp = !_signUp;
-                        _magicLink = false;
                       }),
                       child: Text(
                         _signUp

@@ -42,6 +42,7 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
       metricTop.endsWith('_feed') || 
       metricTop.endsWith('_log')
     );
+    final effectiveIsTableView = _isTableView || isTableOnly;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -180,7 +181,6 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
     }
     
     final kind = WidgetKind.fromString(type);
-    final binding = Map<String, dynamic>.from((w['binding'] as Map?) ?? const {});
     final settings = Map<String, dynamic>.from((w['settings'] as Map?) ?? const {});
 
     if (effectiveIsTableView) {
@@ -291,6 +291,7 @@ class _AddToDashboardBtnState extends ConsumerState<_AddToDashboardBtn> {
       metricTop.endsWith('_feed') || 
       metricTop.endsWith('_log')
     );
+    final effectiveIsTableView = _isTableView || isTableOnly;
 
     return InkWell(
       onTap: _busy ? null : _add,

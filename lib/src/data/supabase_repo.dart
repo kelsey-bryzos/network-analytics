@@ -91,7 +91,7 @@ class SupabaseRepo {
     final row = await client.from('widgets').insert({
       'dashboard_id': dashboardId,
       'title': title,
-      'type': kind.name,
+      'type': kind.dbTypeName,
       'layout': {'x': x, 'y': y, 'w': w, 'h': h},
       'data_binding': binding,
       'settings': settings,

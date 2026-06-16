@@ -529,7 +529,17 @@ String _formatCellValue(String header, dynamic value) {
         count++;
       }
       final formatted = buffer.toString().split('').reversed.join();
-      return (isNeg ? '-\
+      return '${isNeg ? '-' : ''}\$formatted.$decPart';
+    }
+    return raw;
+  }
+  if (header == 'GP (%)') {
+    final n = double.tryParse(raw.replaceAll(RegExp(r'[^\d.\-]'), ''));
+    if (n != null) return '${n.toStringAsFixed(2)}%';
+    return raw;
+  }
+  return raw;
+}
 
 /// Returns the flex weight for a table column.
 int _colFlex(String header, int index) {

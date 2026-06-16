@@ -415,12 +415,30 @@ class SupabaseRepo {
   ///     table (which the current user has visibility to via RLS).
   Future<List<Report>> listReports() async {
     // 1. Fetch canned (system library) reports AND widgets
-    final libRows = await client
+    final libRowsRaw = await client
         .from('library_items')
         .select()
         .eq('scope', 'system')
         .inFilter('kind', ['report', 'widget'])
         .order('name');
+        
+    // Deduplicate: if a name exists as both 'widget' and 'report', prefer the 'widget'.
+    final Map<String, dynamic> deduplicatedLib = {};
+    for (final row in (libRowsRaw as List)) {
+      final m = row as Map<String, dynamic>;
+      final name = m['name'] as String? ?? '';
+      final kind = m['kind'] as String? ?? '';
+      if (!deduplicatedLib.containsKey(name)) {
+        deduplicatedLib[name] = m;
+      } else {
+        // If we already have a 'report' and this is a 'widget', overwrite it.
+        final existingKind = deduplicatedLib[name]!['kind'] as String? ?? '';
+        if (existingKind == 'report' && kind == 'widget') {
+          deduplicatedLib[name] = m;
+        }
+      }
+    }
+    final libRows = deduplicatedLib.values.toList();
 
     // 1b. Pull the current user's per-canned-report archive prefs so we can
     //     surface "View Archives" entries that are user-specific.

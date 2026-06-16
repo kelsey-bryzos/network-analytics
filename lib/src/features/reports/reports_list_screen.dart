@@ -2420,18 +2420,23 @@ class _LivePagePreview extends StatelessWidget {
               ),
             )
           else
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: widgets.length == 1
-                  ? [
-                      _renderWidget(widgets.first.cast<String, dynamic>(), forceTable: true, widthOverride: 220),
-                      _renderWidget(widgets.first.cast<String, dynamic>(), forceChart: true, widthOverride: 220),
-                    ]
-                  : widgets
-                      .map((w) => _renderWidget(w.cast<String, dynamic>()))
-                      .toList(),
-            ),
+            if (widgets.length == 1)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: _renderWidget(widgets.first.cast<String, dynamic>(), forceTable: true)),
+                  const SizedBox(width: 10),
+                  Expanded(child: _renderWidget(widgets.first.cast<String, dynamic>(), forceChart: true)),
+                ],
+              )
+            else
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: widgets
+                    .map((w) => _renderWidget(w.cast<String, dynamic>()))
+                    .toList(),
+              ),
         ],
       ),
     );

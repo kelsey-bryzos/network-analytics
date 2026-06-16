@@ -280,19 +280,6 @@ class _AddToDashboardBtnState extends ConsumerState<_AddToDashboardBtn> {
 
   @override
   Widget build(BuildContext context) {
-    final wTop = Map<String, dynamic>.from(widget.widgetData);
-    final bindingTop = Map<String, dynamic>.from((wTop['binding'] as Map?) ?? const {});
-    final brzTop = bindingTop['brz'] is Map ? Map<String, dynamic>.from(bindingTop['brz'] as Map) : null;
-    final metricTop = brzTop?['metric'] as String? ?? '';
-    final isTableOnly = wTop['type'] == 'table' && (
-      metricTop.endsWith('_table') || 
-      metricTop.endsWith('_list') || 
-      metricTop.endsWith('_detail') || 
-      metricTop.endsWith('_feed') || 
-      metricTop.endsWith('_log')
-    );
-    final effectiveIsTableView = _isTableView || isTableOnly;
-
     return InkWell(
       onTap: _busy ? null : _add,
       borderRadius: BorderRadius.circular(6),

@@ -372,9 +372,28 @@ final _reportByIdProvider =
         .maybeSingle();
     if (row == null) return null;
     final m = row;
+    final kind = m['kind'] as String? ?? 'report';
     final payload = (m['payload'] as Map?)?.cast<String, dynamic>() ?? {};
-    final layout =
-        (payload['layout'] as Map?)?.cast<String, dynamic>() ?? {'pages': []};
+    
+    Map<String, dynamic> layout;
+    if (kind == 'widget') {
+      layout = {
+        'pages': [
+          {
+            'title': m['name'],
+            'widgets': [
+              {
+                'title': m['name'],
+                ...payload
+              }
+            ]
+          }
+        ]
+      };
+    } else {
+      layout = (payload['layout'] as Map?)?.cast<String, dynamic>() ?? {'pages': []};
+    }
+    
     return Report(
       id: 'lib:${m['id']}',
       tenantId: '',

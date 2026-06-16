@@ -590,7 +590,7 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
   Future<void> _share(BuildContext ctx, WidgetRef ref, Report r) async {
     await showDialog<void>(
       context: ctx,
-      builder: (_) => _ShareDialog(report: r),
+      builder: (_) => ShareReportDialog(report: r),
     );
     // ignore: unused_result
     ref.refresh(reportsProvider);
@@ -1995,14 +1995,14 @@ class _PreviewDrawer extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────
 // Share dialog (tenant-wide toggle; per-user share is a fast-follow)
 // ─────────────────────────────────────────────────────────────────
-class _ShareDialog extends ConsumerStatefulWidget {
+class ShareReportDialog extends ConsumerStatefulWidget {
   final Report report;
-  const _ShareDialog({required this.report});
+  const ShareReportDialog({required this.report});
   @override
-  ConsumerState<_ShareDialog> createState() => _ShareDialogState();
+  ConsumerState<ShareReportDialog> createState() => ShareReportDialogState();
 }
 
-class _ShareDialogState extends ConsumerState<_ShareDialog> {
+class ShareReportDialogState extends ConsumerState<ShareReportDialog> {
   late bool _tenantWide = widget.report.sharedWithTenant;
   bool _busy = false;
   String? _err;
@@ -3291,4 +3291,105 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
       ),
     );
   }
+}
+
+
+
+// ─────────────────────────────────────────────────────────────────
+// Top-Level Helpers for Export and Share
+// ─────────────────────────────────────────────────────────────────
+
+void showToastHelper(BuildContext ctx, String msg) {
+  if (!ctx.mounted) return;
+  ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(msg)));
+}
+
+Future<String?> cloneReportHelper(BuildContext ctx, WidgetRef ref, Report r, {required String purpose}) async {
+  final client = ref.read(supabaseProvider);
+  final tid = client.auth.currentUser?.appMetadata['active_tenant_id'] as String?;
+  final body = <String, dynamic>{'purpose': purpose};
+  if (r.id.startsWith('lib:')) {
+    body['library_item_id'] = r.id.substring(4);
+  } else {
+    body['report_id'] = r.id;
+  }
+  final res = await client.functions.invoke(
+    'clone-canned-report',
+    body: body,
+    headers: tid == null ? {} : {'x-optics-tenant': tid},
+  );
+  final data = (res.data as Map?)?.cast<String, dynamic>() ?? {};
+  return (data['report_id'] ?? data['id']) as String?;
+}
+
+Future<void> downloadToDiskHelper(BuildContext ctx, {required String url, required Report report, required String format}) async {
+  final fmtLabel = format.toUpperCase();
+  final safeName = report.name.replaceAll(RegExp(r'[^A-Za-z0-9 _\-\.]'), '').trim();
+  final defaultFileName = '${safeName.isEmpty ? 'optics-report' : safeName}.$format';
+
+  final resp = await HttpClient().getUrl(Uri.parse(url));
+  final httpResp = await resp.close();
+  if (httpResp.statusCode != 200) {
+    if (ctx.mounted) showToastHelper(ctx, '$fmtLabel download failed (${httpResp.statusCode})');
+    return;
+  }
+  final bytes = <int>[];
+  await for (final chunk in httpResp) { bytes.addAll(chunk); }
+
+  String? savePath;
+  try {
+    savePath = await FilePicker.platform.saveFile(
+      dialogTitle: 'Save $fmtLabel',
+      fileName: defaultFileName,
+      type: format == 'pdf' ? FileType.custom : FileType.custom,
+      allowedExtensions: [format],
+    );
+  } catch (_) { savePath = null; }
+  
+  if (savePath == null) {
+    if (ctx.mounted) showToastHelper(ctx, '$fmtLabel save cancelled.');
+    return;
+  }
+  if (!savePath.toLowerCase().endsWith('.$format')) savePath = '$savePath.$format';
+  await File(savePath).writeAsBytes(bytes, flush: true);
+  if (ctx.mounted) showToastHelper(ctx, '$fmtLabel saved: $savePath');
+}
+
+Future<void> exportReportHelper(BuildContext ctx, WidgetRef ref, Report r, String format) async {
+  final fmtLabel = format.toUpperCase();
+  showToastHelper(ctx, 'Generating $fmtLabel for "${r.name}"...');
+
+  String reportId = r.id;
+  try {
+    if (r.isCanned) {
+      final handle = await cloneReportHelper(ctx, ref, r, purpose: 'operational');
+      if (handle == null) {
+        if (ctx.mounted) showToastHelper(ctx, '$fmtLabel export failed: handle');
+        return;
+      }
+      reportId = handle;
+    }
+    final repo = ref.read(repoProvider);
+    final path = await repo.exportReport(reportId: reportId, format: format);
+    if (path == null) {
+      if (ctx.mounted) showToastHelper(ctx, '$fmtLabel export failed.');
+      return;
+    }
+    final url = await repo.signedExportUrl(path, expiresInSeconds: 3600);
+    if (url == null || url.isEmpty) {
+      if (ctx.mounted) showToastHelper(ctx, 'Could not sign download URL.');
+      return;
+    }
+    await downloadToDiskHelper(ctx, url: url, report: r, format: format);
+  } catch (e) {
+    if (ctx.mounted) showToastHelper(ctx, '$fmtLabel export failed: $e');
+  }
+}
+
+Future<void> shareReportHelper(BuildContext ctx, WidgetRef ref, Report r) async {
+  await showDialog<void>(
+    context: ctx,
+    builder: (_) => ShareReportDialog(report: r),
+  );
+  ref.refresh(reportsProvider);
 }

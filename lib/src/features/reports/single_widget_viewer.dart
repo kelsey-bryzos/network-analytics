@@ -6,6 +6,7 @@ import '../../data/supabase_repo.dart';
 import '../../design/optics_card.dart';
 import '../../design/theme.dart';
 import '../dashboards/widget_renderer.dart';
+import 'reports_list_screen.dart';
 
 class SingleWidgetViewer extends ConsumerStatefulWidget {
   final Report report;
@@ -30,6 +31,18 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
 
   @override
   Widget build(BuildContext context) {
+    final wTop = Map<String, dynamic>.from(widget.widgetData);
+    final bindingTop = Map<String, dynamic>.from((wTop['binding'] as Map?) ?? const {});
+    final brzTop = bindingTop['brz'] is Map ? Map<String, dynamic>.from(bindingTop['brz'] as Map) : null;
+    final metricTop = brzTop?['metric'] as String? ?? '';
+    final isTableOnly = wTop['type'] == 'table' && (
+      metricTop.endsWith('_table') || 
+      metricTop.endsWith('_list') || 
+      metricTop.endsWith('_detail') || 
+      metricTop.endsWith('_feed') || 
+      metricTop.endsWith('_log')
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -67,9 +80,7 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
               icon: Icons.file_download_outlined,
               label: 'Export',
               onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Export is available from the Reports Library.'))
-                );
+                exportReportHelper(context, ref, widget.report, 'xlsx');
               },
             ),
             const SizedBox(width: OpticsSpacing.sm),
@@ -77,14 +88,12 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
               icon: Icons.share_outlined,
               label: 'Share',
               onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Share is available from the Reports Library.'))
-                );
+                shareReportHelper(context, ref, widget.report);
               },
             ),
             const SizedBox(width: OpticsSpacing.sm),
             // Add to Dashboard
-            if (!_isTableView)
+            if (!effectiveIsTableView)
               _AddToDashboardBtn(widgetData: widget.widgetData, report: widget.report),
           ],
         ),
@@ -150,9 +159,21 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
 
   Widget _buildWidgetRenderer() {
     final w = Map<String, dynamic>.from(widget.widgetData);
+    final binding = Map<String, dynamic>.from((w['binding'] as Map?) ?? const {});
+    final brz = binding['brz'] is Map ? Map<String, dynamic>.from(binding['brz'] as Map) : null;
+    final metric = brz?['metric'] as String? ?? '';
+    final isTableOnly = w['type'] == 'table' && (
+      metric.endsWith('_table') || 
+      metric.endsWith('_list') || 
+      metric.endsWith('_detail') || 
+      metric.endsWith('_feed') || 
+      metric.endsWith('_log')
+    );
+    final effectiveIsTableView = _isTableView || isTableOnly;
+
     
     String type = w['type'] as String? ?? 'kpi';
-    if (_isTableView) {
+    if (effectiveIsTableView) {
       type = 'table';
     } else {
       if (type == 'table' || type == 'kpi') type = 'barVertical';
@@ -162,7 +183,7 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
     final binding = Map<String, dynamic>.from((w['binding'] as Map?) ?? const {});
     final settings = Map<String, dynamic>.from((w['settings'] as Map?) ?? const {});
 
-    if (_isTableView) {
+    if (effectiveIsTableView) {
       if (binding['brz'] is Map) {
         final brz = Map<String, dynamic>.from(binding['brz'] as Map);
         brz['time_range'] = 'All';
@@ -259,6 +280,18 @@ class _AddToDashboardBtnState extends ConsumerState<_AddToDashboardBtn> {
 
   @override
   Widget build(BuildContext context) {
+    final wTop = Map<String, dynamic>.from(widget.widgetData);
+    final bindingTop = Map<String, dynamic>.from((wTop['binding'] as Map?) ?? const {});
+    final brzTop = bindingTop['brz'] is Map ? Map<String, dynamic>.from(bindingTop['brz'] as Map) : null;
+    final metricTop = brzTop?['metric'] as String? ?? '';
+    final isTableOnly = wTop['type'] == 'table' && (
+      metricTop.endsWith('_table') || 
+      metricTop.endsWith('_list') || 
+      metricTop.endsWith('_detail') || 
+      metricTop.endsWith('_feed') || 
+      metricTop.endsWith('_log')
+    );
+
     return InkWell(
       onTap: _busy ? null : _add,
       borderRadius: BorderRadius.circular(6),

@@ -496,7 +496,7 @@ class V2ReportView extends ConsumerWidget {
 }
 
 /// Columns that should be rendered as $xx,xxx.xx currency values.
-const _moneyHeaders = {'AOV', 'Total Purchases', 'Total Sales', 'Revenue', 'COGS', 'GP ($)'};
+const _moneyHeaders = {'AOV', 'Total Purchases', 'Total Sales', 'Revenue', 'COGS', 'GP (\$)'};
 
 /// Maps raw DB values to display-friendly labels for specific columns.
 String _formatCellValue(String header, dynamic value) {
@@ -566,7 +566,7 @@ int _colFlex(String header, int index) {
     'Transactions':     4,
     'Revenue':          4,
     'COGS':             4,
-    'GP ($)':           4,
+    'GP (\$)':          4,
     'GP (%)':           3,
     // Orders Previewed by Sellers
     'Preview Screen':   6,

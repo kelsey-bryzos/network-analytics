@@ -1621,7 +1621,7 @@ class _WidgetRendererCore extends StatelessWidget {
       'Transactions':    4,
       'Revenue':         4,
       'COGS':            4,
-      'GP ($)':          4,
+      'GP (\$)':         4,
       'GP (%)':          3,
       // Orders Previewed by Sellers
       'Preview Screen':  6,

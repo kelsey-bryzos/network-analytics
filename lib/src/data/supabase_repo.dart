@@ -414,12 +414,12 @@ class SupabaseRepo {
   ///  2. **Custom reports** — actual rows in the tenant-scoped `reports`
   ///     table (which the current user has visibility to via RLS).
   Future<List<Report>> listReports() async {
-    // 1. Fetch canned (system library) reports
+    // 1. Fetch canned (system library) reports AND widgets
     final libRows = await client
         .from('library_items')
         .select()
         .eq('scope', 'system')
-        .eq('kind', 'report')
+        .inFilter('kind', ['report', 'widget'])
         .order('name');
 
     // 1b. Pull the current user's per-canned-report archive prefs so we can
@@ -446,9 +446,28 @@ class SupabaseRepo {
 
     final canned = (libRows as List).map((r) {
       final m = r as Map<String, dynamic>;
+      final kind = m['kind'] as String;
       final payload = (m['payload'] as Map?)?.cast<String, dynamic>() ?? {};
-      final layout = (payload['layout'] as Map?)?.cast<String, dynamic>() ??
-          {'pages': []};
+      
+      Map<String, dynamic> layout;
+      if (kind == 'widget') {
+        layout = {
+          'pages': [
+            {
+              'title': m['name'],
+              'widgets': [
+                {
+                  'title': m['name'],
+                  ...payload
+                }
+              ]
+            }
+          ]
+        };
+      } else {
+        layout = (payload['layout'] as Map?)?.cast<String, dynamic>() ?? {'pages': []};
+      }
+      
       final libId = m['id'] as String;
       final archivedAt = cannedArchivedAt[libId];
       return Report(

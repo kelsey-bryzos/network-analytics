@@ -1769,9 +1769,6 @@ class _PreviewDrawer extends StatelessWidget {
                         }),
                         const SizedBox(height: 18),
                       ],
-                      const Text('PAGE PREVIEW',
-                          style: OpticsTextStyles.sectionLabel),
-                      const SizedBox(height: 8),
                       _PagePreviewSurface(
                         report: report,
                         pages: pages,
@@ -2426,17 +2423,28 @@ class _LivePagePreview extends StatelessWidget {
             Wrap(
               spacing: 10,
               runSpacing: 10,
-              children: widgets
-                  .map((w) => _renderWidget(w.cast<String, dynamic>()))
-                  .toList(),
+              children: widgets.length == 1
+                  ? [
+                      _renderWidget(widgets.first.cast<String, dynamic>(), forceTable: true, widthOverride: 220),
+                      _renderWidget(widgets.first.cast<String, dynamic>(), forceChart: true, widthOverride: 220),
+                    ]
+                  : widgets
+                      .map((w) => _renderWidget(w.cast<String, dynamic>()))
+                      .toList(),
             ),
         ],
       ),
     );
   }
 
-  Widget _renderWidget(Map<String, dynamic> w) {
-    final type = w['type'] as String? ?? 'kpi';
+  Widget _renderWidget(Map<String, dynamic> w, {bool forceTable = false, bool forceChart = false, double? widthOverride}) {
+    String type = w['type'] as String? ?? 'kpi';
+    if (forceTable) {
+      type = 'table';
+    } else if (forceChart) {
+      if (type == 'table' || type == 'kpi') type = 'barVertical';
+    }
+    
     final kind = WidgetKind.fromString(type);
     final binding =
         Map<String, dynamic>.from((w['binding'] as Map?) ?? const {});
@@ -2451,9 +2459,9 @@ class _LivePagePreview extends StatelessWidget {
 
     final isKpi = kind == WidgetKind.kpi;
     final isMarkdown = kind == WidgetKind.markdown;
-    final width = isFirstPage
+    final width = widthOverride ?? (isFirstPage
         ? (isKpi ? 180.0 : (isMarkdown ? 420.0 : 360.0))
-        : (isKpi ? 140.0 : 260.0);
+        : (isKpi ? 140.0 : 260.0));
     final height = isFirstPage
         ? (isKpi ? 110.0 : (isMarkdown ? 110.0 : 240.0))
         : (isKpi ? 80.0 : 160.0);

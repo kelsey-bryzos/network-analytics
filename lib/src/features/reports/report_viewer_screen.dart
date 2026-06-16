@@ -9,6 +9,7 @@ import '../../design/theme.dart';
 import '../dashboards/widget_renderer.dart';
 import 'custom_builder/custom_report_query_v2.dart';
 import 'custom_builder/v2_report_view.dart';
+import 'single_widget_viewer.dart';
 
 /// Read-only renderer for a canned or custom report. Pulls the report by id
 /// (canned ids are prefixed `lib:<library_item_id>`), then renders each
@@ -101,18 +102,30 @@ class ReportViewerScreen extends ConsumerWidget {
                           title: 'Data source unavailable',
                           body: '$e',
                         ),
-                        data: (dsId) => ListView.separated(
-                          itemCount: pages.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: OpticsSpacing.xl),
-                          itemBuilder: (_, i) => _PageBlock(
-                            page: pages[i].cast<String, dynamic>(),
-                            pageIndex: i + 1,
-                            pageCount: pages.length,
-                            tenantId: report.tenantId,
-                            dataSourceId: dsId,
-                          ),
-                        ),
+                        data: (dsId) {
+                          bool isSingleWidget = pages.length == 1 &&
+                              (pages[0]['widgets'] as List?)?.length == 1;
+                          if (isSingleWidget) {
+                            return SingleWidgetViewer(
+                              report: report,
+                              widgetData: (pages[0]['widgets'] as List).first.cast<String, dynamic>(),
+                              tenantId: report.tenantId,
+                              dataSourceId: dsId,
+                            );
+                          }
+                          return ListView.separated(
+                            itemCount: pages.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: OpticsSpacing.xl),
+                            itemBuilder: (_, i) => _PageBlock(
+                              page: pages[i].cast<String, dynamic>(),
+                              pageIndex: i + 1,
+                              pageCount: pages.length,
+                              tenantId: report.tenantId,
+                              dataSourceId: dsId,
+                            ),
+                          );
+                        },
                       ),
               ),
             ],

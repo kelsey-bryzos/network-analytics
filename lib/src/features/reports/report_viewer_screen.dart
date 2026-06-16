@@ -222,53 +222,58 @@ class _PageBlock extends StatelessWidget {
     final title = page['title'] as String? ?? 'Page $pageIndex';
     final widgets =
         (page['widgets'] as List?)?.cast<Map>().toList() ?? [];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              title.toUpperCase(),
-              style: OpticsTextStyles.sectionLabel.copyWith(fontSize: 13),
+            Row(
+              children: [
+                Text(
+                  title.toUpperCase(),
+                  style: OpticsTextStyles.sectionLabel.copyWith(fontSize: 13),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Page $pageIndex of $pageCount',
+                  style: OpticsTextStyles.bodySm.copyWith(
+                    color: OpticsColors.textMuted,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 10),
-            Text(
-              'Page $pageIndex of $pageCount',
-              style: OpticsTextStyles.bodySm.copyWith(
-                color: OpticsColors.textMuted,
+            const SizedBox(height: OpticsSpacing.md),
+            if (widgets.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(OpticsSpacing.lg),
+                decoration: BoxDecoration(
+                  color: OpticsColors.surface,
+                  borderRadius: BorderRadius.circular(OpticsRadii.md),
+                  border: Border.all(color: OpticsColors.border),
+                ),
+                child: const Text(
+                  'No widgets on this page.',
+                  style: OpticsTextStyles.bodySm,
+                ),
+              )
+            else
+              Wrap(
+                spacing: OpticsSpacing.md,
+                runSpacing: OpticsSpacing.md,
+                children: widgets
+                    .map((w) => _renderWidget(
+                          w.cast<String, dynamic>(),
+                          constraints.maxWidth,
+                        ))
+                    .toList(),
               ),
-            ),
           ],
-        ),
-        const SizedBox(height: OpticsSpacing.md),
-        if (widgets.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(OpticsSpacing.lg),
-            decoration: BoxDecoration(
-              color: OpticsColors.surface,
-              borderRadius: BorderRadius.circular(OpticsRadii.md),
-              border: Border.all(color: OpticsColors.border),
-            ),
-            child: const Text(
-              'No widgets on this page.',
-              style: OpticsTextStyles.bodySm,
-            ),
-          )
-        else
-          Wrap(
-            spacing: OpticsSpacing.md,
-            runSpacing: OpticsSpacing.md,
-            children: widgets
-                .map((w) => _renderWidget(
-                      w.cast<String, dynamic>(),
-                    ))
-                .toList(),
-          ),
-      ],
+        );
+      }
     );
   }
 
-  Widget _renderWidget(Map<String, dynamic> w) {
+  Widget _renderWidget(Map<String, dynamic> w, double maxWidth) {
     final type = w['type'] as String? ?? 'kpi';
     final kind = WidgetKind.fromString(type);
     final binding =
@@ -287,16 +292,34 @@ class _PageBlock extends StatelessWidget {
     // Sizing: KPIs are compact tiles; charts and tables get wider blocks.
     final isKpi = kind == WidgetKind.kpi;
     final isMarkdown = kind == WidgetKind.markdown;
-    final width = isKpi
+    final isTable = kind == WidgetKind.table;
+    final isChart = kind == WidgetKind.barVertical ||
+                    kind == WidgetKind.barHorizontal ||
+                    kind == WidgetKind.barStacked ||
+                    kind == WidgetKind.barGrouped ||
+                    kind == WidgetKind.line ||
+                    kind == WidgetKind.combo;
+    
+    // Use an expansive width for tables and charts so they don't get squished.
+    double width = isKpi
         ? 220.0
         : isMarkdown
             ? 540.0
-            : 460.0;
+            : (isTable || isChart)
+                ? 1000.0
+                : 460.0;
+                
+    if (width > maxWidth) {
+      width = maxWidth;
+    }
+                
     final height = isKpi
         ? 130.0
         : isMarkdown
             ? 120.0
-            : 320.0;
+            : isTable
+                ? 600.0
+                : 400.0;
 
     final model = WidgetModel(
       id: 'report-${pageIndex}-${w['title'] ?? type}',

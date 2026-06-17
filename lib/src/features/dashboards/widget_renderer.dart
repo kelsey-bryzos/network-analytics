@@ -378,8 +378,11 @@ class _WidgetRendererCore extends StatelessWidget {
   String get _groupByKey => model.settings['groupBy'] as String? ?? 'Category';
   int get _maxItems => (model.settings['maxItems'] as num?)?.toInt() ?? 0;
 
-  List<Color> get _palette =>
-      _paletteFor(model.settings['colorScheme'] as String?);
+  List<Color> get _palette {
+    final cs = model.settings['colorScheme'] as String?;
+    print('[WidgetRendererCore] ${model.title} colorScheme=$cs');
+    return _paletteFor(cs);
+  }
 
   bool get _showGridLines => model.settings['gridLines'] != false;
   bool get _showLegend => model.settings['legend'] != false;

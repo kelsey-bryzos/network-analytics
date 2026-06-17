@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/models.dart';
 import '../../data/supabase_repo.dart';
@@ -1446,7 +1447,15 @@ class _HeaderBar extends ConsumerWidget {
         if (canEdit) ...[
           // Share Dashboard is currently restricted to Bryzos admins+ only.
           // Other tenants don't see it yet; we may broaden this later.
-          if ((ref.watch(activeTenantObjectProvider).value?.slug == 'bryzos') &&
+          //
+          // NOTE: gate by email domain (synchronous) instead of the active-tenant
+          // slug FutureProvider — the latter resolves slower than `canEdit`,
+          // which caused the Share button to silently never render even for
+          // Bryzos owners. Email is available immediately from the Supabase
+          // session, so this is race-free.
+          if (((Supabase.instance.client.auth.currentUser?.email ?? '')
+                  .toLowerCase()
+                  .endsWith('@bryzos.com')) &&
               (ref.watch(canAdminProvider))) ...[
             _ActionButton(
               icon: Icons.share_outlined,

@@ -2354,7 +2354,6 @@ class _Step6VisualizeState extends State<_Step6Visualize> {
     ('area', 'Area'),
     ('pie', 'Pie'),
     ('donut', 'Donut'),
-    ('gauge', 'Gauge'),
     ('combo', 'Combo'),
   ];
 
@@ -2389,7 +2388,7 @@ class _Step6VisualizeState extends State<_Step6Visualize> {
           body:
               '   • Bar / Line / Pie / Donut — need an X (category) and a numeric Y. '
               'If Y isn\'t numeric we fall back to counting rows per X.\n'
-              '   • KPI / Gauge — show a single Y value from the first row.\n'
+              '   • KPI — shows a single Y value from the first row.\n'
               '   • Table — no axes needed; shows everything as a grid.\n\n'
               'If the preview looks wrong, check that Y points at a SUM/COUNT/AVG alias from Step 4.',
         ),
@@ -2632,8 +2631,6 @@ class _PreviewPanel extends ConsumerWidget {
       case 'pie':
       case 'donut':
         return _renderPie(rows, donut: viz.chartType == 'donut');
-      case 'gauge':
-        return _renderKpi(rows);
       case 'combo':
         return _renderBar(rows);
       default:

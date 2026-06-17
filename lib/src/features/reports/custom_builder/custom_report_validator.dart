@@ -260,7 +260,7 @@ ValidationReport validateCustomReportQuery(CustomReportQueryV2 q) {
   final needsXY = const {
     'bar', 'hbar', 'line', 'area', 'pie', 'donut', 'combo'
   }.contains(chart);
-  final needsY = const {'kpi', 'gauge'}.contains(chart);
+  final needsY = const {'kpi'}.contains(chart);
 
   if (needsXY) {
     if (q.viz.x == null || !allAliases.contains(q.viz.x)) {

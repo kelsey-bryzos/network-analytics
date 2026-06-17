@@ -2407,9 +2407,11 @@ class _DashboardSettingsDialogState
   }
 
   void _set(String k, dynamic v) {
+    print('[GlobalSettings] _set called: $k = $v');
     setState(() => _s[k] = v);
-    debugPrint('[GlobalSettings] _set: $k = $v, calling onPreview with $_s');
+    print('[GlobalSettings] Calling onPreview with: $_s');
     widget.onPreview?.call(Map<String, dynamic>.from(_s));
+    print('[GlobalSettings] onPreview called');
   }
 
   Widget _section(String label, Widget child) {

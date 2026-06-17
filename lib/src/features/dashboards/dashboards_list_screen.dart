@@ -981,6 +981,77 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
     }
   }
 
+  Future<void> _shareDashboard(String dashId, String dashName) async {
+    final email = await _promptEmail(context, dashName);
+    if (email == null || email.isEmpty) return;
+
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      messenger.showSnackBar(SnackBar(content: Text('Sharing dashboard with $email...')));
+      final client = ref.read(supabaseProvider);
+      final res = await client.functions.invoke(
+        'share-dashboard',
+        body: {'dashboard_id': dashId, 'email': email},
+      );
+      if (res.status == 200 || res.status == 201) {
+        messenger.showSnackBar(SnackBar(content: Text('Dashboard shared successfully with $email.')));
+      } else {
+        throw Exception(res.data['error'] ?? 'Unknown error');
+      }
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          backgroundColor: OpticsColors.danger,
+          content: Text('Failed to share: $e'),
+        ),
+      );
+    }
+  }
+
+  Future<String?> _promptEmail(BuildContext context, String dashName) {
+    String val = '';
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OpticsColors.background,
+        title: Text('Share "$dashName"', style: OpticsTextStyles.h2),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter the email address of the user you want to share this dashboard with. They must already be an invited member of another tenant on the platform.',
+              style: TextStyle(color: OpticsColors.textSecondary, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              autofocus: true,
+              style: const TextStyle(color: OpticsColors.textPrimary),
+              decoration: const InputDecoration(
+                labelText: 'Email Address',
+                hintText: 'user@example.com',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (s) => val = s,
+              onSubmitted: (_) => Navigator.pop(ctx, val),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, val),
+            child: const Text('Share'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _createDashboard() async {
     final name = await _promptName(context, 'New dashboard');
     if (name == null || name.isEmpty) return;
@@ -1107,6 +1178,8 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final canEdit = ref.watch(canEditProvider);
+
     // Whenever the active tenant changes, drop our cached per-dashboard
     // widget state so we don't end up showing widgets that belong to the
     // previous tenant (or pointing `dashId` at a dashboard the new tenant
@@ -1203,6 +1276,7 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
                         _configureAutoRefresh(dashId);
                       }),
                       onAddWidget: () => _showAddWidgetDialog(dashId),
+                      onShare: () => _shareDashboard(dashId, currentDash.name),
                     ),
                     const SizedBox(height: OpticsSpacing.md),
                     // Widget count for debugging — tap to force-reload
@@ -1334,6 +1408,7 @@ class _HeaderBar extends ConsumerWidget {
   final ValueChanged<Dashboard> onDelete;
   final VoidCallback onSettings;
   final VoidCallback onAddWidget;
+  final VoidCallback onShare;
 
   const _HeaderBar({
     required this.dashboards,
@@ -1344,6 +1419,7 @@ class _HeaderBar extends ConsumerWidget {
     required this.onDelete,
     required this.onSettings,
     required this.onAddWidget,
+    required this.onShare,
   });
 
   @override
@@ -1375,6 +1451,13 @@ class _HeaderBar extends ConsumerWidget {
         ),
         const Spacer(),
         if (canEdit) ...[
+          _ActionButton(
+            icon: Icons.share_outlined,
+            label: 'Share',
+            onTap: onShare,
+            isLightTheme: isLightTheme,
+          ),
+          const SizedBox(width: 8),
           _ActionButton(
             icon: Icons.tune_outlined,
             label: 'Settings',

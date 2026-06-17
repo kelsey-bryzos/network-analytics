@@ -30,6 +30,7 @@ class WidgetGrid extends StatefulWidget {
   final void Function(List<WidgetModel> updatedList)? onSwap;
   final int columns;
   final double cellHeight;
+  final bool canEdit;
 
   const WidgetGrid({
     super.key,
@@ -41,6 +42,7 @@ class WidgetGrid extends StatefulWidget {
     this.onSwap,
     this.columns = 48,
     this.cellHeight = 24,
+    this.canEdit = true,
   });
 
   @override

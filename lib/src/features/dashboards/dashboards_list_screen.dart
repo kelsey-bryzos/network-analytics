@@ -30,6 +30,10 @@ class DashboardsListScreen extends ConsumerStatefulWidget {
 class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
   WidgetModel? _selected;
 
+  /// Snapshot of the widget BEFORE the settings panel was opened — used to
+  /// revert on Cancel (live preview updates _widgets in place, so we need this).
+  WidgetModel? _selectedOriginal;
+
   /// The widget list is held DIRECTLY in State — no providers, no caching,
   /// no timing issues. `setState` triggers an immediate rebuild.
   List<WidgetModel> _widgets = [];
@@ -1308,13 +1312,28 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
                               onAdd: () => _showAddWidgetDialog(dashId))
                           : CanvasZoom(
                               child: GestureDetector(
-                                onTap: () => setState(() => _selected = null),
+                                onTap: () {
+                                  // Tapping outside reverts any uncommitted preview changes
+                                  if (_selectedOriginal != null) {
+                                    final idx = _widgets.indexWhere((x) => x.id == _selectedOriginal!.id);
+                                    if (idx >= 0) {
+                                      _widgets = List<WidgetModel>.from(_widgets)..[idx] = _selectedOriginal!;
+                                    }
+                                  }
+                                  setState(() {
+                                    _selected = null;
+                                    _selectedOriginal = null;
+                                  });
+                                },
                                 child: WidgetGrid(
                                   canEdit: canEdit,
                                   widgets: _widgets,
                                   selectedId: _selected,
                                   onSelect: (w) =>
-                                      setState(() => _selected = w),
+                                      setState(() {
+                                        _selected = w;
+                                        _selectedOriginal = w; // Snapshot for Cancel revert
+                                      }),
                                   onDelete: (w) => _confirmRemoveWidget(w),
                                   onChanged: (w) {
                                     // Update the widget in the list
@@ -1350,7 +1369,31 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
             if (_selected != null)
               WidgetSettingsPanel(
                 widget: _selected!,
-                onCancel: () => setState(() => _selected = null),
+                onPreview: (preview) {
+                  // Live preview: update widget in list without persisting
+                  final idx = _widgets.indexWhere((x) => x.id == preview.id);
+                  if (idx >= 0) {
+                    setState(() {
+                      _widgets = List<WidgetModel>.from(_widgets)..[idx] = preview;
+                      _selected = preview; // Keep panel in sync
+                    });
+                  }
+                },
+                onCancel: () {
+                  // Revert to original widget (before settings panel opened)
+                  if (_selectedOriginal != null) {
+                    final idx = _widgets.indexWhere((x) => x.id == _selectedOriginal!.id);
+                    if (idx >= 0) {
+                      setState(() {
+                        _widgets = List<WidgetModel>.from(_widgets)..[idx] = _selectedOriginal!;
+                      });
+                    }
+                  }
+                  setState(() {
+                    _selected = null;
+                    _selectedOriginal = null;
+                  });
+                },
                 onApply: (w) {
                   final idx = _widgets.indexWhere((x) => x.id == w.id);
                   if (idx >= 0) {
@@ -1359,7 +1402,10 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
                     });
                   }
                   _persistWidget(w);
-                  setState(() => _selected = null);
+                  setState(() {
+                    _selected = null;
+                    _selectedOriginal = null;
+                  });
                 },
               ),
           ],

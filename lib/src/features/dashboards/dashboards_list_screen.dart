@@ -1190,7 +1190,12 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final canEdit = ref.watch(canEditProvider);
+    // Double-check: guests and viewers must NEVER see edit controls.
+    // canEditProvider should already return false for them, but we add this
+    // explicit guard as defense-in-depth against any race/caching issues.
+    final role = ref.watch(activeTenantRoleProvider).value;
+    final isGuestOrViewer = role == 'guest' || role == 'viewer';
+    final canEdit = ref.watch(canEditProvider) && !isGuestOrViewer;
 
     // Whenever the active tenant changes, drop our cached per-dashboard
     // widget state so we don't end up showing widgets that belong to the
@@ -1500,7 +1505,12 @@ class _HeaderBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final canEdit = ref.watch(canEditProvider);
+    // Double-check: guests and viewers must NEVER see edit controls.
+    // canEditProvider should already return false for them, but we add this
+    // explicit guard as defense-in-depth against any race/caching issues.
+    final role = ref.watch(activeTenantRoleProvider).value;
+    final isGuestOrViewer = role == 'guest' || role == 'viewer';
+    final canEdit = ref.watch(canEditProvider) && !isGuestOrViewer;
     final fg = isLightTheme ? const Color(0xFF111111) : OpticsColors.textSecondary;
     return Row(
       children: [
@@ -2136,7 +2146,9 @@ class _EmptyState extends ConsumerWidget {
   const _EmptyState({required this.onCreate});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final canEdit = ref.watch(canEditProvider);
+    final role = ref.watch(activeTenantRoleProvider).value;
+    final isGuestOrViewer = role == 'guest' || role == 'viewer';
+    final canEdit = ref.watch(canEditProvider) && !isGuestOrViewer;
     return Center(
       child: OpticsCard(
         child: SizedBox(
@@ -2178,7 +2190,9 @@ class _EmptyDashboard extends ConsumerWidget {
   const _EmptyDashboard({required this.onAdd});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final canEdit = ref.watch(canEditProvider);
+    final role = ref.watch(activeTenantRoleProvider).value;
+    final isGuestOrViewer = role == 'guest' || role == 'viewer';
+    final canEdit = ref.watch(canEditProvider) && !isGuestOrViewer;
     return Center(
       child: OpticsCard(
         child: SizedBox(

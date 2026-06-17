@@ -1014,7 +1014,7 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
     return showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: OpticsColors.background,
+        backgroundColor: OpticsColors.surface,
         title: Text('Share "$dashName"', style: OpticsTextStyles.headingMd),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1339,6 +1339,7 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
                               child: GestureDetector(
                                 onTap: () => setState(() => _selected = null),
                                 child: WidgetGrid(
+                                  canEdit: canEdit,
                                   widgets: _widgets,
                                   selectedId: _selected,
                                   onSelect: (w) =>
@@ -2086,11 +2087,12 @@ class _EmptyState extends ConsumerWidget {
   }
 }
 
-class _EmptyDashboard extends StatelessWidget {
+class _EmptyDashboard extends ConsumerWidget {
   final VoidCallback onAdd;
   const _EmptyDashboard({required this.onAdd});
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final canEdit = ref.watch(canEditProvider);
     return Center(
       child: OpticsCard(
         child: SizedBox(
@@ -2104,13 +2106,17 @@ class _EmptyDashboard extends StatelessWidget {
               Text('Empty Dashboard'.toUpperCase(),
                   style: OpticsTextStyles.headingMd),
               const SizedBox(height: 6),
-              const Text(
-                'Add your first widget to start building this dashboard.',
+              Text(
+                canEdit
+                    ? 'Add your first widget to start building this dashboard.'
+                    : 'This shared dashboard is currently empty.',
                 textAlign: TextAlign.center,
                 style: OpticsTextStyles.bodySm,
               ),
-              const SizedBox(height: 16),
-              _AddWidgetButton(onTap: onAdd),
+              if (canEdit) ...[
+                const SizedBox(height: 16),
+                _AddWidgetButton(onTap: onAdd),
+              ],
             ],
           ),
         ),

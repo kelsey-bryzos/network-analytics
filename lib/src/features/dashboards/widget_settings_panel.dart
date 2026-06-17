@@ -16,11 +16,15 @@ class WidgetSettingsPanel extends StatefulWidget {
   final WidgetModel widget;
   final void Function(WidgetModel updated) onApply;
   final VoidCallback onCancel;
+  /// Called on every setting change for live preview — updates the widget
+  /// in-place without persisting to the database.
+  final void Function(WidgetModel preview)? onPreview;
   const WidgetSettingsPanel({
     super.key,
     required this.widget,
     required this.onApply,
     required this.onCancel,
+    this.onPreview,
   });
 
   @override
@@ -102,6 +106,7 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
 
     // Set current values
     _title = TextEditingController(text: _origTitle);
+    _title.addListener(_emitPreview); // Live preview title changes
     _kind = _origKind;
     _colorScheme = _origColorScheme;
     _groupBy = _origGroupBy;
@@ -116,12 +121,14 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
 
   @override
   void dispose() {
+    _title.removeListener(_emitPreview);
     _title.dispose();
     super.dispose();
   }
 
-  void _apply() {
-    final updated = widget.widget.copyWith(
+  /// Build a WidgetModel from current panel state (used for both preview & apply).
+  WidgetModel _buildCurrentModel() {
+    return widget.widget.copyWith(
       title: _title.text.trim().isEmpty ? widget.widget.title : _title.text.trim(),
       kind: _kind,
       settings: {
@@ -145,7 +152,21 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
         'showReorderLevel': _filters['Show Reorder Level'],
       },
     );
-    widget.onApply(updated);
+  }
+
+  /// Emit a live preview to the parent (if onPreview is provided).
+  void _emitPreview() {
+    widget.onPreview?.call(_buildCurrentModel());
+  }
+
+  /// Wrapper that calls setState then emits a preview.
+  void _updateAndPreview(VoidCallback fn) {
+    setState(fn);
+    _emitPreview();
+  }
+
+  void _apply() {
+    widget.onApply(_buildCurrentModel());
   }
 
   /// Reset restores the widget to its ORIGINAL state when the settings panel
@@ -164,6 +185,7 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
       _toggles = Map<String, bool>.from(_origToggles);
       _filters = Map<String, bool>.from(_origFilters);
     });
+    _emitPreview();
   }
 
   @override
@@ -245,7 +267,7 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
             ('Table', WidgetKind.table),
           ],
           value: _kind,
-          onChanged: (v) => setState(() => _kind = v),
+          onChanged: (v) => _updateAndPreview(() => _kind = v),
         ),
         if (_kind == WidgetKind.barVertical ||
             _kind == WidgetKind.barHorizontal ||
@@ -259,7 +281,7 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
               ('Horizontal', 'Horizontal'),
             ],
             value: _barOrientation,
-            onChanged: (v) => setState(() => _barOrientation = v),
+            onChanged: (v) => _updateAndPreview(() => _barOrientation = v),
           ),
           Padding(
             padding: const EdgeInsets.only(top: 6),
@@ -283,7 +305,7 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
             ('Neon', 'Neon'),
           ],
           value: _colorScheme,
-          onChanged: (v) => setState(() => _colorScheme = v),
+          onChanged: (v) => _updateAndPreview(() => _colorScheme = v),
         ),
         _label('Group by'),
         _ChipGroup<String>(
@@ -296,7 +318,7 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
             ('Status', 'Status'),
           ],
           value: _groupBy,
-          onChanged: (v) => setState(() => _groupBy = v),
+          onChanged: (v) => _updateAndPreview(() => _groupBy = v),
         ),
         _label('Sort by'),
         _ChipGroup<String>(
@@ -309,12 +331,12 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
             ('A–Z', 'A–Z'),
           ],
           value: _sortBy,
-          onChanged: (v) => setState(() => _sortBy = v),
+          onChanged: (v) => _updateAndPreview(() => _sortBy = v),
         ),
         _label('Default time range'),
         TimeRangePicker(
           value: _timeRange,
-          onChanged: (v) => setState(() => _timeRange = v),
+          onChanged: (v) => _updateAndPreview(() => _timeRange = v),
         ),
       ],
     );
@@ -329,7 +351,7 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
           _ToggleRow(
             label: entry.key,
             value: entry.value,
-            onChanged: (v) => setState(() => _filters[entry.key] = v),
+            onChanged: (v) => _updateAndPreview(() => _filters[entry.key] = v),
           ),
         _label('Max items'),
         _ChipGroup<int>(
@@ -341,14 +363,14 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
             ('100', 100),
           ],
           value: _maxItems,
-          onChanged: (v) => setState(() => _maxItems = v),
+          onChanged: (v) => _updateAndPreview(() => _maxItems = v),
         ),
         _label('Display'),
         for (final entry in _toggles.entries)
           _ToggleRow(
             label: entry.key,
             value: entry.value,
-            onChanged: (v) => setState(() => _toggles[entry.key] = v),
+            onChanged: (v) => _updateAndPreview(() => _toggles[entry.key] = v),
           ),
         _label('Auto-refresh'),
         _ChipGroup<String>(
@@ -360,7 +382,7 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
             ('30 m', '30 m'),
           ],
           value: _autoRefresh,
-          onChanged: (v) => setState(() => _autoRefresh = v),
+          onChanged: (v) => _updateAndPreview(() => _autoRefresh = v),
         ),
       ],
     );

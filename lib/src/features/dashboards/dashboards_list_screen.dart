@@ -30,6 +30,18 @@ class DashboardsListScreen extends ConsumerStatefulWidget {
 class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
   WidgetModel? _selected;
 
+  /// Snapshot of the widget BEFORE the settings panel was opened — used to
+  /// revert on Cancel (live preview updates _widgets in place, so we need this).
+  WidgetModel? _selectedOriginal;
+
+  /// Snapshot of ALL widgets BEFORE the global dashboard settings dialog was
+  /// opened — used to revert on Cancel (live preview updates _widgets in place).
+  List<WidgetModel>? _globalSettingsOriginalWidgets;
+
+  /// Preview override for theme — when non-null, overrides currentDash.settings['theme']
+  /// for live preview while the global settings dialog is open.
+  String? _themePreviewOverride;
+
   /// The widget list is held DIRECTLY in State — no providers, no caching,
   /// no timing issues. `setState` triggers an immediate rebuild.
   List<WidgetModel> _widgets = [];
@@ -230,6 +242,35 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
         );
       }
     });
+  }
+
+  /// Apply global dashboard settings to all widgets for live preview.
+  /// Does NOT persist — just updates local _widgets state.
+  void _applyGlobalSettingsPreview(Map<String, dynamic> settings) {
+    debugPrint('[GlobalSettings] _applyGlobalSettingsPreview called with: $settings');
+    final colorScheme = settings['colorScheme'] as String?;
+    final timeRange = settings['timeRange'] as String?;
+    final showGridLines = settings['showGridLines'] as bool?;
+    final theme = settings['theme'] as String?;
+
+    debugPrint('[GlobalSettings] Applying: colorScheme=$colorScheme, timeRange=$timeRange, showGridLines=$showGridLines, theme=$theme');
+    debugPrint('[GlobalSettings] Widget count before: ${_widgets.length}');
+
+    setState(() {
+      // Update theme preview override (affects background/chrome)
+      if (theme != null) _themePreviewOverride = theme;
+
+      // Update widget-level settings (including theme for WidgetThemeColors)
+      _widgets = _widgets.map((w) {
+        final updatedSettings = Map<String, dynamic>.from(w.settings);
+        if (colorScheme != null) updatedSettings['colorScheme'] = colorScheme;
+        if (timeRange != null) updatedSettings['timeRange'] = timeRange;
+        if (showGridLines != null) updatedSettings['gridLines'] = showGridLines;
+        if (theme != null) updatedSettings['theme'] = theme;
+        return w.copyWith(settings: updatedSettings);
+      }).toList();
+    });
+    debugPrint('[GlobalSettings] Widget count after setState: ${_widgets.length}');
   }
 
   /// Called when the user picks a canned widget from the library dialog.
@@ -1214,7 +1255,9 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
         final currentDash =
             items.firstWhere((d) => d.id == dashId, orElse: () => items.first);
 
-        final isLightTheme = currentDash.settings['theme'] == 'light';
+        // Use preview override if set (during global settings dialog), else use saved setting
+        final effectiveTheme = _themePreviewOverride ?? currentDash.settings['theme'];
+        final isLightTheme = effectiveTheme == 'light';
         final chromeMuted = isLightTheme ? const Color(0xFF333333) : OpticsColors.textMuted;
 
         return Row(
@@ -1236,16 +1279,35 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
                       onSelect: (d) => _switchDashboard(d.id),
                       onCreate: _createDashboard,
                       onDelete: (d) => _deleteDashboard(d, items),
-                      onSettings: () => showDialog<void>(
-                        context: context,
-                        builder: (_) =>
-                            _DashboardSettingsDialog(dashboardId: dashId),
-                      ).then((_) {
-                        // After settings dialog closes, reload widgets and
-                        // reconfigure auto-refresh timer from saved settings.
-                        _loadWidgets(dashId);
-                        _configureAutoRefresh(dashId);
-                      }),
+                      onSettings: () {
+                        // Snapshot all widgets before opening dialog for Cancel revert
+                        _globalSettingsOriginalWidgets = _widgets.map((w) => w.copyWith()).toList();
+                        showDialog<bool>(
+                          context: context,
+                          builder: (_) => _DashboardSettingsDialog(
+                            dashboardId: dashId,
+                            onPreview: (settings) => _applyGlobalSettingsPreview(settings),
+                          ),
+                        ).then((applied) {
+                          if (applied == true) {
+                            // User clicked Apply — reload from DB and reconfigure
+                            _loadWidgets(dashId);
+                            _configureAutoRefresh(dashId);
+                          } else {
+                            // User clicked Cancel or closed dialog — revert to original
+                            if (_globalSettingsOriginalWidgets != null) {
+                              setState(() {
+                                _widgets = _globalSettingsOriginalWidgets!;
+                              });
+                            }
+                          }
+                          // Clear preview overrides
+                          setState(() {
+                            _globalSettingsOriginalWidgets = null;
+                            _themePreviewOverride = null;
+                          });
+                        });
+                      },
                       onAddWidget: () => _showAddWidgetDialog(dashId),
                       onShare: () => _shareDashboard(dashId, currentDash.name),
                     ),
@@ -1308,13 +1370,28 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
                               onAdd: () => _showAddWidgetDialog(dashId))
                           : CanvasZoom(
                               child: GestureDetector(
-                                onTap: () => setState(() => _selected = null),
+                                onTap: () {
+                                  // Tapping outside reverts any uncommitted preview changes
+                                  if (_selectedOriginal != null) {
+                                    final idx = _widgets.indexWhere((x) => x.id == _selectedOriginal!.id);
+                                    if (idx >= 0) {
+                                      _widgets = List<WidgetModel>.from(_widgets)..[idx] = _selectedOriginal!;
+                                    }
+                                  }
+                                  setState(() {
+                                    _selected = null;
+                                    _selectedOriginal = null;
+                                  });
+                                },
                                 child: WidgetGrid(
                                   canEdit: canEdit,
                                   widgets: _widgets,
                                   selectedId: _selected,
                                   onSelect: (w) =>
-                                      setState(() => _selected = w),
+                                      setState(() {
+                                        _selected = w;
+                                        _selectedOriginal = w; // Snapshot for Cancel revert
+                                      }),
                                   onDelete: (w) => _confirmRemoveWidget(w),
                                   onChanged: (w) {
                                     // Update the widget in the list
@@ -1350,7 +1427,31 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
             if (_selected != null)
               WidgetSettingsPanel(
                 widget: _selected!,
-                onCancel: () => setState(() => _selected = null),
+                onPreview: (preview) {
+                  // Live preview: update widget in list without persisting
+                  final idx = _widgets.indexWhere((x) => x.id == preview.id);
+                  if (idx >= 0) {
+                    setState(() {
+                      _widgets = List<WidgetModel>.from(_widgets)..[idx] = preview;
+                      _selected = preview; // Keep panel in sync
+                    });
+                  }
+                },
+                onCancel: () {
+                  // Revert to original widget (before settings panel opened)
+                  if (_selectedOriginal != null) {
+                    final idx = _widgets.indexWhere((x) => x.id == _selectedOriginal!.id);
+                    if (idx >= 0) {
+                      setState(() {
+                        _widgets = List<WidgetModel>.from(_widgets)..[idx] = _selectedOriginal!;
+                      });
+                    }
+                  }
+                  setState(() {
+                    _selected = null;
+                    _selectedOriginal = null;
+                  });
+                },
                 onApply: (w) {
                   final idx = _widgets.indexWhere((x) => x.id == w.id);
                   if (idx >= 0) {
@@ -1359,7 +1460,10 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
                     });
                   }
                   _persistWidget(w);
-                  setState(() => _selected = null);
+                  setState(() {
+                    _selected = null;
+                    _selectedOriginal = null;
+                  });
                 },
               ),
           ],
@@ -1799,7 +1903,7 @@ class _AddWidgetDialogState extends State<_AddWidgetDialog> {
                   IconButton(
                     tooltip: 'Close',
                     icon: const Icon(Icons.close, size: 18),
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: () => Navigator.pop(context, false),
                   ),
                 ],
               ),
@@ -2133,7 +2237,9 @@ Future<String?> _promptName(BuildContext ctx, String title) async {
 
 class _DashboardSettingsDialog extends ConsumerStatefulWidget {
   final String dashboardId;
-  const _DashboardSettingsDialog({required this.dashboardId});
+  /// Called on every setting change for live preview; receives current settings map.
+  final void Function(Map<String, dynamic> settings)? onPreview;
+  const _DashboardSettingsDialog({required this.dashboardId, this.onPreview});
   @override
   ConsumerState<_DashboardSettingsDialog> createState() =>
       _DashboardSettingsDialogState();
@@ -2229,7 +2335,7 @@ class _DashboardSettingsDialogState
     return false;
   }
 
-  Future<void> _save() async {
+  Future<void> _saveAndClose() async {
     setState(() => _saving = true);
     final client = ref.read(supabaseProvider);
     try {
@@ -2277,7 +2383,7 @@ class _DashboardSettingsDialogState
 
     if (mounted) {
       setState(() => _saving = false);
-      Navigator.pop(context);
+      Navigator.pop(context, true); // Return true to indicate Apply was clicked
     }
   }
 
@@ -2312,11 +2418,17 @@ class _DashboardSettingsDialogState
         _saving = false;
         _hasAppliedOverride = false;
       });
-      Navigator.pop(context);
+      Navigator.pop(context, true); // Return true — this is also a persisted change
     }
   }
 
-  void _set(String k, dynamic v) => setState(() => _s[k] = v);
+  void _set(String k, dynamic v) {
+    print('[GlobalSettings] _set called: $k = $v');
+    setState(() => _s[k] = v);
+    print('[GlobalSettings] Calling onPreview with: $_s');
+    widget.onPreview?.call(Map<String, dynamic>.from(_s));
+    print('[GlobalSettings] onPreview called');
+  }
 
   Widget _section(String label, Widget child) {
     return Padding(
@@ -2468,12 +2580,12 @@ class _DashboardSettingsDialogState
                     ),
                   const Spacer(),
                   TextButton(
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: () => Navigator.pop(context, false),
                     child: const Text('Cancel'),
                   ),
                   const SizedBox(width: 8),
                   ElevatedButton(
-                    onPressed: (_busy || _saving) ? null : _save,
+                    onPressed: (_busy || _saving) ? null : _saveAndClose,
                     child: const Text('Apply'),
                   ),
                 ],

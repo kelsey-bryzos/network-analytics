@@ -166,7 +166,7 @@ class _WidgetGridState extends State<WidgetGrid> {
           isDragging: isDragging,
           isResizing: isResizing,
           canEdit: widget.canEdit,
-          onTap: () => widget.onSelect(w),
+          onTap: widget.canEdit ? () => widget.onSelect(w) : null,
           onSettingsTap:
               widget.canEdit ? () => widget.onSelect(w) : null,
           onDeleteTap: (widget.canEdit && widget.onDelete != null)
@@ -315,7 +315,7 @@ class GridCell extends StatefulWidget {
   final bool isDragging;
   final bool isResizing;
   final bool canEdit;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final VoidCallback? onSettingsTap;
   final VoidCallback? onDeleteTap;
   final void Function(Offset globalPos)? onDragStart;
@@ -332,7 +332,7 @@ class GridCell extends StatefulWidget {
     required this.isDragging,
     required this.isResizing,
     this.canEdit = true,
-    required this.onTap,
+    this.onTap,
     this.onSettingsTap,
     this.onDeleteTap,
     this.onDragStart,
@@ -414,15 +414,23 @@ class _GridCellState extends State<GridCell> {
                     onDragEnd: widget.onDragEnd,
                   ),
                   Expanded(
-                    child: GestureDetector(
-                      onTap: widget.onTap,
-                      behavior: HitTestBehavior.translucent,
-                      child: WidgetRenderer(
-                        model: widget.model,
-                        selected: widget.selected,
-                        chromeless: true,
-                      ),
-                    ),
+                    child: widget.canEdit
+                        ? GestureDetector(
+                            onTap: widget.onTap,
+                            behavior: HitTestBehavior.translucent,
+                            child: WidgetRenderer(
+                              model: widget.model,
+                              selected: widget.selected,
+                              chromeless: true,
+                            ),
+                          )
+                        : IgnorePointer(
+                            child: WidgetRenderer(
+                              model: widget.model,
+                              selected: widget.selected,
+                              chromeless: true,
+                            ),
+                          ),
                   ),
                 ],
               ),

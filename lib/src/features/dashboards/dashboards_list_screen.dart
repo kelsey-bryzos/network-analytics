@@ -34,6 +34,10 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
   /// revert on Cancel (live preview updates _widgets in place, so we need this).
   WidgetModel? _selectedOriginal;
 
+  /// Snapshot of ALL widgets BEFORE the global dashboard settings dialog was
+  /// opened — used to revert on Cancel (live preview updates _widgets in place).
+  List<WidgetModel>? _globalSettingsOriginalWidgets;
+
   /// The widget list is held DIRECTLY in State — no providers, no caching,
   /// no timing issues. `setState` triggers an immediate rebuild.
   List<WidgetModel> _widgets = [];
@@ -233,6 +237,24 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
           ),
         );
       }
+    });
+  }
+
+  /// Apply global dashboard settings to all widgets for live preview.
+  /// Does NOT persist — just updates local _widgets state.
+  void _applyGlobalSettingsPreview(Map<String, dynamic> settings) {
+    final colorScheme = settings['colorScheme'] as String?;
+    final timeRange = settings['timeRange'] as String?;
+    final showGridLines = settings['showGridLines'] as bool?;
+
+    setState(() {
+      _widgets = _widgets.map((w) {
+        final updatedSettings = Map<String, dynamic>.from(w.settings);
+        if (colorScheme != null) updatedSettings['colorScheme'] = colorScheme;
+        if (timeRange != null) updatedSettings['timeRange'] = timeRange;
+        if (showGridLines != null) updatedSettings['gridLines'] = showGridLines;
+        return w.copyWith(settings: updatedSettings);
+      }).toList();
     });
   }
 
@@ -1240,16 +1262,31 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
                       onSelect: (d) => _switchDashboard(d.id),
                       onCreate: _createDashboard,
                       onDelete: (d) => _deleteDashboard(d, items),
-                      onSettings: () => showDialog<void>(
-                        context: context,
-                        builder: (_) =>
-                            _DashboardSettingsDialog(dashboardId: dashId),
-                      ).then((_) {
-                        // After settings dialog closes, reload widgets and
-                        // reconfigure auto-refresh timer from saved settings.
-                        _loadWidgets(dashId);
-                        _configureAutoRefresh(dashId);
-                      }),
+                      onSettings: () {
+                        // Snapshot all widgets before opening dialog for Cancel revert
+                        _globalSettingsOriginalWidgets = _widgets.map((w) => w.copyWith()).toList();
+                        showDialog<bool>(
+                          context: context,
+                          builder: (_) => _DashboardSettingsDialog(
+                            dashboardId: dashId,
+                            onPreview: (settings) => _applyGlobalSettingsPreview(settings),
+                          ),
+                        ).then((applied) {
+                          if (applied == true) {
+                            // User clicked Apply — reload from DB and reconfigure
+                            _loadWidgets(dashId);
+                            _configureAutoRefresh(dashId);
+                          } else {
+                            // User clicked Cancel or closed dialog — revert to original
+                            if (_globalSettingsOriginalWidgets != null) {
+                              setState(() {
+                                _widgets = _globalSettingsOriginalWidgets!;
+                              });
+                            }
+                          }
+                          _globalSettingsOriginalWidgets = null;
+                        });
+                      },
                       onAddWidget: () => _showAddWidgetDialog(dashId),
                       onShare: () => _shareDashboard(dashId, currentDash.name),
                     ),
@@ -1845,7 +1882,7 @@ class _AddWidgetDialogState extends State<_AddWidgetDialog> {
                   IconButton(
                     tooltip: 'Close',
                     icon: const Icon(Icons.close, size: 18),
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: () => Navigator.pop(context, false),
                   ),
                 ],
               ),
@@ -2179,7 +2216,9 @@ Future<String?> _promptName(BuildContext ctx, String title) async {
 
 class _DashboardSettingsDialog extends ConsumerStatefulWidget {
   final String dashboardId;
-  const _DashboardSettingsDialog({required this.dashboardId});
+  /// Called on every setting change for live preview; receives current settings map.
+  final void Function(Map<String, dynamic> settings)? onPreview;
+  const _DashboardSettingsDialog({required this.dashboardId, this.onPreview});
   @override
   ConsumerState<_DashboardSettingsDialog> createState() =>
       _DashboardSettingsDialogState();
@@ -2275,7 +2314,7 @@ class _DashboardSettingsDialogState
     return false;
   }
 
-  Future<void> _save() async {
+  Future<void> _saveAndClose() async {
     setState(() => _saving = true);
     final client = ref.read(supabaseProvider);
     try {
@@ -2323,7 +2362,7 @@ class _DashboardSettingsDialogState
 
     if (mounted) {
       setState(() => _saving = false);
-      Navigator.pop(context);
+      Navigator.pop(context, true); // Return true to indicate Apply was clicked
     }
   }
 
@@ -2358,11 +2397,14 @@ class _DashboardSettingsDialogState
         _saving = false;
         _hasAppliedOverride = false;
       });
-      Navigator.pop(context);
+      Navigator.pop(context, true); // Return true — this is also a persisted change
     }
   }
 
-  void _set(String k, dynamic v) => setState(() => _s[k] = v);
+  void _set(String k, dynamic v) {
+    setState(() => _s[k] = v);
+    widget.onPreview?.call(Map<String, dynamic>.from(_s));
+  }
 
   Widget _section(String label, Widget child) {
     return Padding(
@@ -2514,12 +2556,12 @@ class _DashboardSettingsDialogState
                     ),
                   const Spacer(),
                   TextButton(
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: () => Navigator.pop(context, false),
                     child: const Text('Cancel'),
                   ),
                   const SizedBox(width: 8),
                   ElevatedButton(
-                    onPressed: (_busy || _saving) ? null : _save,
+                    onPressed: (_busy || _saving) ? null : _saveAndClose,
                     child: const Text('Apply'),
                   ),
                 ],

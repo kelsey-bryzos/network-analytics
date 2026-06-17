@@ -38,6 +38,10 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
   /// opened — used to revert on Cancel (live preview updates _widgets in place).
   List<WidgetModel>? _globalSettingsOriginalWidgets;
 
+  /// Preview override for theme — when non-null, overrides currentDash.settings['theme']
+  /// for live preview while the global settings dialog is open.
+  String? _themePreviewOverride;
+
   /// The widget list is held DIRECTLY in State — no providers, no caching,
   /// no timing issues. `setState` triggers an immediate rebuild.
   List<WidgetModel> _widgets = [];
@@ -247,11 +251,16 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
     final colorScheme = settings['colorScheme'] as String?;
     final timeRange = settings['timeRange'] as String?;
     final showGridLines = settings['showGridLines'] as bool?;
+    final theme = settings['theme'] as String?;
 
-    debugPrint('[GlobalSettings] Applying: colorScheme=$colorScheme, timeRange=$timeRange, showGridLines=$showGridLines');
+    debugPrint('[GlobalSettings] Applying: colorScheme=$colorScheme, timeRange=$timeRange, showGridLines=$showGridLines, theme=$theme');
     debugPrint('[GlobalSettings] Widget count before: ${_widgets.length}');
 
     setState(() {
+      // Update theme preview override (affects background/chrome)
+      if (theme != null) _themePreviewOverride = theme;
+
+      // Update widget-level settings
       _widgets = _widgets.map((w) {
         final updatedSettings = Map<String, dynamic>.from(w.settings);
         if (colorScheme != null) updatedSettings['colorScheme'] = colorScheme;
@@ -1245,7 +1254,9 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
         final currentDash =
             items.firstWhere((d) => d.id == dashId, orElse: () => items.first);
 
-        final isLightTheme = currentDash.settings['theme'] == 'light';
+        // Use preview override if set (during global settings dialog), else use saved setting
+        final effectiveTheme = _themePreviewOverride ?? currentDash.settings['theme'];
+        final isLightTheme = effectiveTheme == 'light';
         final chromeMuted = isLightTheme ? const Color(0xFF333333) : OpticsColors.textMuted;
 
         return Row(
@@ -1289,7 +1300,11 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
                               });
                             }
                           }
-                          _globalSettingsOriginalWidgets = null;
+                          // Clear preview overrides
+                          setState(() {
+                            _globalSettingsOriginalWidgets = null;
+                            _themePreviewOverride = null;
+                          });
                         });
                       },
                       onAddWidget: () => _showAddWidgetDialog(dashId),

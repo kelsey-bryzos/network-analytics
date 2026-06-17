@@ -1190,13 +1190,6 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Double-check: guests and viewers must NEVER see edit controls.
-    // canEditProvider should already return false for them, but we add this
-    // explicit guard as defense-in-depth against any race/caching issues.
-    final role = ref.watch(activeTenantRoleProvider).value;
-    final isGuestOrViewer = role == 'guest' || role == 'viewer';
-    final canEdit = ref.watch(canEditProvider) && !isGuestOrViewer;
-
     // Whenever the active tenant changes, drop our cached per-dashboard
     // widget state so we don't end up showing widgets that belong to the
     // previous tenant (or pointing `dashId` at a dashboard the new tenant
@@ -1259,6 +1252,11 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
 
         final currentDash =
             items.firstWhere((d) => d.id == dashId, orElse: () => items.first);
+
+        // IRONCLAD PERMISSION CHECK: Use the dashboard-specific provider
+        // that checks BOTH tenant role AND dashboard ownership.
+        // Shared dashboards are ALWAYS view-only.
+        final canEdit = ref.watch(canEditDashboardProvider(currentDash));
 
         // Use preview override if set (during global settings dialog), else use saved setting
         final effectiveTheme = _themePreviewOverride ?? currentDash.settings['theme'];
@@ -1372,7 +1370,8 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
                     Expanded(
                       child: _widgets.isEmpty
                           ? _EmptyDashboard(
-                              onAdd: () => _showAddWidgetDialog(dashId))
+                              onAdd: () => _showAddWidgetDialog(dashId),
+                              dashboard: currentDash)
                           : CanvasZoom(
                               child: GestureDetector(
                                 onTap: () {
@@ -1505,12 +1504,10 @@ class _HeaderBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Double-check: guests and viewers must NEVER see edit controls.
-    // canEditProvider should already return false for them, but we add this
-    // explicit guard as defense-in-depth against any race/caching issues.
-    final role = ref.watch(activeTenantRoleProvider).value;
-    final isGuestOrViewer = role == 'guest' || role == 'viewer';
-    final canEdit = ref.watch(canEditProvider) && !isGuestOrViewer;
+    // IRONCLAD PERMISSION CHECK: Use the dashboard-specific provider
+    // that checks BOTH tenant role AND dashboard ownership.
+    // Shared dashboards are ALWAYS view-only.
+    final canEdit = ref.watch(canEditDashboardProvider(current));
     final fg = isLightTheme ? const Color(0xFF111111) : OpticsColors.textSecondary;
     return Row(
       children: [
@@ -2146,9 +2143,9 @@ class _EmptyState extends ConsumerWidget {
   const _EmptyState({required this.onCreate});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final role = ref.watch(activeTenantRoleProvider).value;
-    final isGuestOrViewer = role == 'guest' || role == 'viewer';
-    final canEdit = ref.watch(canEditProvider) && !isGuestOrViewer;
+    // No dashboards exist yet, so we check tenant-level edit permission.
+    // Guests and viewers can never create dashboards.
+    final canEdit = ref.watch(canEditProvider);
     return Center(
       child: OpticsCard(
         child: SizedBox(
@@ -2187,12 +2184,14 @@ class _EmptyState extends ConsumerWidget {
 
 class _EmptyDashboard extends ConsumerWidget {
   final VoidCallback onAdd;
-  const _EmptyDashboard({required this.onAdd});
+  final Dashboard dashboard;
+  const _EmptyDashboard({required this.onAdd, required this.dashboard});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final role = ref.watch(activeTenantRoleProvider).value;
-    final isGuestOrViewer = role == 'guest' || role == 'viewer';
-    final canEdit = ref.watch(canEditProvider) && !isGuestOrViewer;
+    // IRONCLAD PERMISSION CHECK: Use the dashboard-specific provider
+    // that checks BOTH tenant role AND dashboard ownership.
+    // Shared dashboards are ALWAYS view-only.
+    final canEdit = ref.watch(canEditDashboardProvider(dashboard));
     return Center(
       child: OpticsCard(
         child: SizedBox(

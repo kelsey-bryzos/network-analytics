@@ -1051,6 +1051,32 @@ final canOwnProvider = Provider<bool>((ref) {
   return roleAtLeast(role, 'owner');
 });
 
+/// IRONCLAD dashboard edit permission check.
+///
+/// A user can edit a dashboard if and ONLY if:
+/// 1. Their tenant role is 'editor' or higher, AND
+/// 2. They are the OWNER of the dashboard (created_by == current user)
+///
+/// Shared dashboards are ALWAYS view-only — the viewer is not the owner.
+/// Guests and viewers can NEVER edit any dashboard, regardless of ownership.
+///
+/// This is the SINGLE SOURCE OF TRUTH for dashboard edit permissions.
+/// All UI code must use this provider when determining edit controls.
+final canEditDashboardProvider =
+    Provider.family<bool, Dashboard?>((ref, dashboard) {
+  if (dashboard == null) return false;
+
+  // Check 1: User must have editor+ role in the active tenant
+  final role = ref.watch(activeTenantRoleProvider).value;
+  if (!roleAtLeast(role, 'editor')) return false;
+
+  // Check 2: User must be the dashboard owner
+  final uid = ref.watch(currentUserIdProvider);
+  if (!dashboard.isOwnedBy(uid)) return false;
+
+  return true;
+});
+
 /// True if the *current user* is an `owner` of ANY tenant. Owners are Bryzos
 /// admins — they can create new organizations and edit data sources across
 /// every org they belong to.

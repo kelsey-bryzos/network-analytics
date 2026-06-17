@@ -32,6 +32,9 @@ class Dashboard {
   final Map<String, dynamic> settings;
   final DateTime updatedAt;
 
+  /// The user who created (owns) this dashboard. Null for legacy dashboards.
+  final String? createdBy;
+
   Dashboard({
     required this.id,
     required this.tenantId,
@@ -39,6 +42,7 @@ class Dashboard {
     this.description,
     required this.settings,
     required this.updatedAt,
+    this.createdBy,
   });
 
   factory Dashboard.fromMap(Map<String, dynamic> m) => Dashboard(
@@ -53,7 +57,12 @@ class Dashboard {
             (m['settings'] as Map?)?.cast<String, dynamic>() ??
             {},
         updatedAt: DateTime.parse(m['updated_at'] as String),
+        createdBy: m['created_by'] as String?,
       );
+
+  /// Returns true if the given [userId] is the owner of this dashboard.
+  /// For shared dashboards, the viewer is NOT the owner and cannot edit.
+  bool isOwnedBy(String? userId) => userId != null && createdBy == userId;
 }
 
 enum WidgetKind {

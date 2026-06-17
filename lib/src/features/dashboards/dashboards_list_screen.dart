@@ -260,12 +260,13 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
       // Update theme preview override (affects background/chrome)
       if (theme != null) _themePreviewOverride = theme;
 
-      // Update widget-level settings
+      // Update widget-level settings (including theme for WidgetThemeColors)
       _widgets = _widgets.map((w) {
         final updatedSettings = Map<String, dynamic>.from(w.settings);
         if (colorScheme != null) updatedSettings['colorScheme'] = colorScheme;
         if (timeRange != null) updatedSettings['timeRange'] = timeRange;
         if (showGridLines != null) updatedSettings['gridLines'] = showGridLines;
+        if (theme != null) updatedSettings['theme'] = theme;
         return w.copyWith(settings: updatedSettings);
       }).toList();
     });

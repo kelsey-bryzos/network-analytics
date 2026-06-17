@@ -243,9 +243,13 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
   /// Apply global dashboard settings to all widgets for live preview.
   /// Does NOT persist — just updates local _widgets state.
   void _applyGlobalSettingsPreview(Map<String, dynamic> settings) {
+    debugPrint('[GlobalSettings] _applyGlobalSettingsPreview called with: $settings');
     final colorScheme = settings['colorScheme'] as String?;
     final timeRange = settings['timeRange'] as String?;
     final showGridLines = settings['showGridLines'] as bool?;
+
+    debugPrint('[GlobalSettings] Applying: colorScheme=$colorScheme, timeRange=$timeRange, showGridLines=$showGridLines');
+    debugPrint('[GlobalSettings] Widget count before: ${_widgets.length}');
 
     setState(() {
       _widgets = _widgets.map((w) {
@@ -256,6 +260,7 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
         return w.copyWith(settings: updatedSettings);
       }).toList();
     });
+    debugPrint('[GlobalSettings] Widget count after setState: ${_widgets.length}');
   }
 
   /// Called when the user picks a canned widget from the library dialog.
@@ -2403,6 +2408,7 @@ class _DashboardSettingsDialogState
 
   void _set(String k, dynamic v) {
     setState(() => _s[k] = v);
+    debugPrint('[GlobalSettings] _set: $k = $v, calling onPreview with $_s');
     widget.onPreview?.call(Map<String, dynamic>.from(_s));
   }
 

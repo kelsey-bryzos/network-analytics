@@ -485,12 +485,14 @@ class _InactiveTenantCard extends ConsumerWidget {
               ],
             ),
           ),
-          OutlinedButton(
-            // Manage Settings: switch tenant (if needed) and expand this card.
-            onPressed: () => onManage(),
-            child: const Text('Manage Settings'),
-          ),
-          const SizedBox(width: 8),
+          if (role != 'guest') ...[
+            OutlinedButton(
+              // Manage Settings: switch tenant (if needed) and expand this card.
+              onPressed: () => onManage(),
+              child: const Text('Manage Settings'),
+            ),
+            const SizedBox(width: 8),
+          ],
           ElevatedButton.icon(
             // View Data: switch tenant, WAIT for switch to complete (so the
             // header logo + dashboards reflect the new tenant), then navigate.

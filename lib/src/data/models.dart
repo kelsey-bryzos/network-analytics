@@ -66,7 +66,6 @@ enum WidgetKind {
   combo,
   pie,
   donut,
-  gauge,
   table,
   map,
   markdown;
@@ -115,7 +114,7 @@ enum WidgetKind {
       'pie': WidgetKind.pie,
       'donut': WidgetKind.donut,
       'doughnut': WidgetKind.donut,
-      'gauge': WidgetKind.gauge,
+
       'table': WidgetKind.table,
       'grid': WidgetKind.table,
       'list': WidgetKind.table,

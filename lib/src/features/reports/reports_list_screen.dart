@@ -2689,7 +2689,7 @@ class _MiniWidget extends StatelessWidget {
         ],
       );
     }
-    if (t == 'pie' || t == 'donut' || t == 'gauge') {
+    if (t == 'pie' || t == 'donut') {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

@@ -242,7 +242,6 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
             ('Combo', WidgetKind.combo),
             ('Pie', WidgetKind.pie),
             ('Donut', WidgetKind.donut),
-            ('Gauge', WidgetKind.gauge),
             ('Table', WidgetKind.table),
           ],
           value: _kind,

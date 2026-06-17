@@ -490,8 +490,6 @@ class _WidgetRendererCore extends StatelessWidget {
       case WidgetKind.pie:
       case WidgetKind.donut:
         return _pie(donut: model.kind == WidgetKind.donut);
-      case WidgetKind.gauge:
-        return _gauge();
       case WidgetKind.table:
         return _table();
       case WidgetKind.map:
@@ -1422,99 +1420,6 @@ class _WidgetRendererCore extends StatelessWidget {
         ),
       ],
     );
-  }
-
-  // ══════════════════════════════════════════════════════════════════
-  // ── GAUGE ───────────────────────────────────────────────────────
-  // ══════════════════════════════════════════════════════════════════
-
-  Widget _gauge() {
-    double v, maxv;
-    if (_hasMulti) {
-      final ms = _multiSeries!;
-      v = ms.fold(0.0, (a, s) => a + s.last);
-      final numPeriods = ms.map((s) => s.data.length).reduce(math.max);
-      double peakSum = 0;
-      for (int p = 0; p < numPeriods; p++) {
-        final sum = ms.fold(0.0, (a, s) => a + (p < s.data.length ? s.data[p] : 0));
-        if (sum > peakSum) peakSum = sum;
-      }
-      maxv = peakSum * 1.2;
-    } else {
-      v = _series.isEmpty ? 0.0 : _series.first;
-      maxv = _series.length >= 2 ? _series[1] : 100.0;
-    }
-    final pct = maxv == 0 ? 0.0 : (v / maxv).clamp(0.0, 1.0);
-
-    final color = pct >= 0.9 ? OpticsColors.success
-        : pct >= 0.7 ? OpticsColors.accentCyan
-        : pct >= 0.5 ? OpticsColors.warning
-        : OpticsColors.danger;
-
-    return LayoutBuilder(builder: (context, constraints) {
-      final availH = constraints.maxHeight;
-      final availW = constraints.maxWidth;
-      final ringSize = math.min(availW * 0.6, availH - 50).clamp(50.0, 120.0);
-      final strokeW = (ringSize / 10).clamp(4.0, 10.0);
-      final showLabel = availH > ringSize + 30;
-
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _chartHeader(),
-          Expanded(
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: ringSize, height: ringSize,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        SizedBox(
-                          width: ringSize, height: ringSize,
-                          child: CircularProgressIndicator(
-                            value: pct, strokeWidth: strokeW, strokeCap: StrokeCap.round,
-                            backgroundColor: _wt.border, color: color),
-                        ),
-                        Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text('${(pct * 100).toStringAsFixed(1)}%',
-                                style: ringSize < 80
-                                    ? TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: _wt.bodyText)
-                                    : OpticsTextStyles.headingMd.copyWith(fontWeight: FontWeight.w700)),
-                            Text('${_fmtNum(v)} / ${_fmtNum(maxv)}',
-                                style: TextStyle(fontSize: ringSize < 80 ? 8 : 9, color: _wt.mutedText)),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (showLabel) ...[
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: color.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(4)),
-                      child: Text(
-                        pct >= 0.9 ? 'Excellent'
-                            : pct >= 0.7 ? 'Good'
-                            : pct >= 0.5 ? 'Fair'
-                            : 'Needs Attention',
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ],
-      );
-    });
   }
 
   // ══════════════════════════════════════════════════════════════════

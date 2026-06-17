@@ -222,7 +222,7 @@ class _ColumnReorder {
 
 enum _BuilderView { table, blended, widgetView }
 
-enum _ChartKind { kpi, bar, hbar, line, area, combo, pie, donut, gauge, table }
+enum _ChartKind { kpi, bar, hbar, line, area, combo, pie, donut, table }
 
 extension _ChartKindX on _ChartKind {
   String get wire => name;
@@ -235,7 +235,6 @@ extension _ChartKindX on _ChartKind {
       case 'combo': return _ChartKind.combo;
       case 'pie':   return _ChartKind.pie;
       case 'donut': return _ChartKind.donut;
-      case 'gauge': return _ChartKind.gauge;
       case 'table': return _ChartKind.table;
       case 'bar':
       default:      return _ChartKind.bar;
@@ -251,7 +250,6 @@ extension _ChartKindX on _ChartKind {
       case _ChartKind.combo: return 'Combo';
       case _ChartKind.pie:   return 'Pie';
       case _ChartKind.donut: return 'Donut';
-      case _ChartKind.gauge: return 'Gauge';
       case _ChartKind.table: return 'Table';
     }
   }
@@ -265,7 +263,6 @@ extension _ChartKindX on _ChartKind {
       case _ChartKind.combo: return Icons.insights;
       case _ChartKind.pie:   return Icons.pie_chart_outline;
       case _ChartKind.donut: return Icons.donut_large;
-      case _ChartKind.gauge: return Icons.speed;
       case _ChartKind.table: return Icons.table_chart_outlined;
     }
   }
@@ -1930,8 +1927,6 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       case 'pie':
       case 'donut':
         return Icons.pie_chart_outline;
-      case 'gauge':
-        return Icons.speed_outlined;
       case 'table':
         return Icons.table_chart_outlined;
       case 'map':
@@ -3120,7 +3115,6 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       case _ChartKind.combo: return _comboChart(data, palette);
       case _ChartKind.pie:   return _pieChart(data, palette, donut: false);
       case _ChartKind.donut: return _pieChart(data, palette, donut: true);
-      case _ChartKind.gauge: return _gaugeChart(data, palette);
       case _ChartKind.table: return _tableChart(rows);
       case _ChartKind.kpi:   return _kpiPreview(rows); // unreachable
     }
@@ -3517,51 +3511,6 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         ),
       ]),
     );
-  }
-
-  Widget _gaugeChart(List<_Aggregated> data, List<Color> palette) {
-    final total = data.fold<double>(0, (a, b) => a + b.value);
-    final max = data.fold<double>(0, (m, d) => d.value > m ? d.value : m);
-    // Gauge fills 0..(target) where target = max * 1.25 (gives headroom).
-    final target = max == 0 ? 1 : max * 1.25;
-    final pct = (total / target).clamp(0.0, 1.0).toDouble();
-    final color = palette.first;
-    return LayoutBuilder(builder: (ctx, c) {
-      final dia = (c.maxWidth < c.maxHeight ? c.maxWidth : c.maxHeight) * 0.85;
-      return Center(
-        child: SizedBox(
-          width: dia,
-          height: dia,
-          child: Stack(alignment: Alignment.center, children: [
-            SizedBox.expand(
-              child: CircularProgressIndicator(
-                value: pct,
-                strokeWidth: 14,
-                backgroundColor:
-                    OpticsColors.border.withValues(alpha: 0.25),
-                valueColor: AlwaysStoppedAnimation(color),
-              ),
-            ),
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(_fmt(total),
-                    style: TextStyle(
-                      fontSize: dia * 0.18,
-                      fontWeight: FontWeight.w800,
-                      color: color,
-                    )),
-                const SizedBox(height: 4),
-                Text('${(pct * 100).toStringAsFixed(0)}% of target',
-                    style: const TextStyle(
-                        fontSize: 11,
-                        color: OpticsColors.textMuted)),
-              ],
-            ),
-          ]),
-        ),
-      );
-    });
   }
 
   Widget _tableChart(List<Map<String, dynamic>> rows) {

@@ -80,7 +80,6 @@ class V2ReportView extends ConsumerWidget {
     }
     switch (query.viz.chartType) {
       case 'kpi':
-      case 'gauge':
         return _kpi(rows);
       case 'bar':
       case 'hbar':

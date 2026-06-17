@@ -413,28 +413,6 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // ── GAUGE WIDGETS ────────────────────────────────────────
-    // ═══════════════════════════════════════════════════════════
-    if (kind == WidgetKind.gauge) {
-      if (n.contains('delivery') || n.contains('otd')) {
-        return {'_data': [94, 100], '_unit': '%'};
-      }
-      if (n.contains('conversion') && n.contains('quote')) {
-        return {'_data': [71, 100], '_unit': '%'};
-      }
-      if (n.contains('conversion') && n.contains('search')) {
-        return {'_data': [31, 100], '_unit': '%'};
-      }
-      if (n.contains('conversion') && n.contains('purchase')) {
-        return {'_data': [85, 100], '_unit': '%'};
-      }
-      if (n.contains('credit') || n.contains('utilization')) {
-        return {'_data': [68, 100], '_unit': '%'};
-      }
-      return {'_data': [82, 100], '_unit': '%'};
-    }
-
-    // ═══════════════════════════════════════════════════════════
     // ── SHAPE-BASED WIDGETS (multi-series by metal shape) ────
     // ═══════════════════════════════════════════════════════════
     if (n.contains('shape')) {
@@ -1760,7 +1738,6 @@ class _AddWidgetDialogState extends State<_AddWidgetDialog> {
         'combo' => Icons.stacked_line_chart,
         'pie' => Icons.pie_chart_outline,
         'donut' => Icons.donut_large,
-        'gauge' => Icons.speed,
         'table' => Icons.table_chart_outlined,
         'map' => Icons.map_outlined,
         'markdown' => Icons.text_fields,
@@ -1791,7 +1768,6 @@ class _AddWidgetDialogState extends State<_AddWidgetDialog> {
         'combo' => 'Combo',
         'pie' => 'Pie',
         'donut' => 'Donut',
-        'gauge' => 'Gauge',
         'table' => 'Table',
         'map' => 'Map',
         'markdown' => 'Text',

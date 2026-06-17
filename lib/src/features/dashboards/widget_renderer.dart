@@ -474,11 +474,17 @@ class _WidgetRendererCore extends StatelessWidget {
         return _hasMulti ? _multiLine() : _singleLine();
       case WidgetKind.barVertical:
       case WidgetKind.barGrouped:
-        return _hasMulti ? _groupedBar() : _singleBar();
+        return _shouldRenderHorizontal()
+            ? _barHorizontal()
+            : (_hasMulti ? _groupedBar() : _singleBar());
       case WidgetKind.barStacked:
-        return _hasMulti ? _groupedBar(stacked: true) : _singleBar();
+        return _shouldRenderHorizontal()
+            ? _barHorizontal()
+            : (_hasMulti ? _groupedBar(stacked: true) : _singleBar());
       case WidgetKind.barHorizontal:
-        return _barHorizontal();
+        return _shouldRenderVerticalOverride()
+            ? (_hasMulti ? _groupedBar() : _singleBar())
+            : _barHorizontal();
       case WidgetKind.combo:
         return _combo();
       case WidgetKind.pie:
@@ -832,6 +838,53 @@ class _WidgetRendererCore extends StatelessWidget {
   // ══════════════════════════════════════════════════════════════════
   // ── BAR CHARTS ──────────────────────────────────────────────────
   // ══════════════════════════════════════════════════════════════════
+
+  /// User-selected bar orientation: 'Auto' | 'Vertical' | 'Horizontal'.
+  /// Defaults to 'Auto' for any widget that hasn't been touched since
+  /// this feature shipped — backwards compatible with existing widgets.
+  String get _barOrientation =>
+      (model.settings['barOrientation'] as String?) ?? 'Auto';
+
+  /// Heuristic — decides whether a *vertical-by-default* bar widget
+  /// should flip to horizontal. Triggers on any of:
+  ///  • >8 categories (too many vertical bars cramp labels)
+  ///  • Longest label >12 chars (won't fit under vertical bars)
+  ///  • Label contains a space or '@' (names, emails, multi-word values)
+  bool _autoPreferHorizontal() {
+    final labels = _hasMulti ? _multiLabels : _labels;
+    if (labels.isEmpty) return false;
+    if (labels.length > 8) return true;
+    var maxLen = 0;
+    var hasMultiWord = false;
+    for (final l in labels) {
+      if (l.length > maxLen) maxLen = l.length;
+      if (l.contains(' ') || l.contains('@')) hasMultiWord = true;
+    }
+    if (maxLen > 12) return true;
+    if (hasMultiWord) return true;
+    return false;
+  }
+
+  /// True iff a normally-vertical bar widget should render horizontally,
+  /// based on the user's setting (or the auto-heuristic).
+  bool _shouldRenderHorizontal() {
+    switch (_barOrientation) {
+      case 'Horizontal':
+        return true;
+      case 'Vertical':
+        return false;
+      case 'Auto':
+      default:
+        return _autoPreferHorizontal();
+    }
+  }
+
+  /// True iff a normally-horizontal bar widget should render vertically
+  /// because the user explicitly chose Vertical. (Auto keeps horizontal
+  /// because the kind was authored as horizontal on purpose.)
+  bool _shouldRenderVerticalOverride() {
+    return _barOrientation == 'Vertical';
+  }
 
   Widget _singleBar() {
     var labels = _hasMulti ? _multiLabels : _labels;

@@ -36,6 +36,7 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
   late String _timeRange;
   late int _maxItems;
   late String _autoRefresh;
+  late String _barOrientation;
   late Map<String, bool> _toggles;
   late Map<String, bool> _filters;
   int _page = 0;
@@ -49,6 +50,7 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
   late final String _origTimeRange;
   late final int _origMaxItems;
   late final String _origAutoRefresh;
+  late final String _origBarOrientation;
   late final Map<String, bool> _origToggles;
   late final Map<String, bool> _origFilters;
 
@@ -82,6 +84,7 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
         ?? (brz['max_items'] as num?)?.toInt()
         ?? 10;
     _origAutoRefresh = s['autoRefresh'] as String? ?? 'Off';
+    _origBarOrientation = s['barOrientation'] as String? ?? 'Auto';
     _origToggles = {
       'Data Labels': (s['dataLabels'] as bool?) ?? false,
       'Legend': (s['legend'] as bool?) ?? true,
@@ -106,6 +109,7 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
     _timeRange = _origTimeRange;
     _maxItems = _origMaxItems;
     _autoRefresh = _origAutoRefresh;
+    _barOrientation = _origBarOrientation;
     _toggles = Map<String, bool>.from(_origToggles);
     _filters = Map<String, bool>.from(_origFilters);
   }
@@ -128,6 +132,7 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
         'timeRange': _timeRange,
         'maxItems': _maxItems,
         'autoRefresh': _autoRefresh,
+        'barOrientation': _barOrientation,
         'dataLabels': _toggles['Data Labels'],
         'legend': _toggles['Legend'],
         'gridLines': _toggles['Grid Lines'],
@@ -155,6 +160,7 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
       _timeRange = _origTimeRange;
       _maxItems = _origMaxItems;
       _autoRefresh = _origAutoRefresh;
+      _barOrientation = _origBarOrientation;
       _toggles = Map<String, bool>.from(_origToggles);
       _filters = Map<String, bool>.from(_origFilters);
     });
@@ -242,6 +248,32 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
           value: _kind,
           onChanged: (v) => setState(() => _kind = v),
         ),
+        if (_kind == WidgetKind.barVertical ||
+            _kind == WidgetKind.barHorizontal ||
+            _kind == WidgetKind.barGrouped ||
+            _kind == WidgetKind.barStacked) ...[
+          _label('Bar orientation'),
+          _ChipGroup<String>(
+            options: const [
+              ('Auto', 'Auto'),
+              ('Vertical', 'Vertical'),
+              ('Horizontal', 'Horizontal'),
+            ],
+            value: _barOrientation,
+            onChanged: (v) => setState(() => _barOrientation = v),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'Auto picks the best orientation based on label length and category count.',
+              style: TextStyle(
+                fontSize: 11,
+                color: OpticsColors.textSecondary,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
         _label('Color scheme'),
         _ChipGroup<String>(
           options: const [

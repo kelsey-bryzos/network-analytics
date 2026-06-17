@@ -1444,13 +1444,18 @@ class _HeaderBar extends ConsumerWidget {
         ),
         const Spacer(),
         if (canEdit) ...[
-          _ActionButton(
-            icon: Icons.share_outlined,
-            label: 'Share',
-            onTap: onShare,
-            isLightTheme: isLightTheme,
-          ),
-          const SizedBox(width: 8),
+          // Share Dashboard is currently restricted to Bryzos admins+ only.
+          // Other tenants don't see it yet; we may broaden this later.
+          if ((ref.watch(activeTenantObjectProvider).value?.slug == 'bryzos') &&
+              (ref.watch(canAdminProvider))) ...[
+            _ActionButton(
+              icon: Icons.share_outlined,
+              label: 'Share',
+              onTap: onShare,
+              isLightTheme: isLightTheme,
+            ),
+            const SizedBox(width: 8),
+          ],
           _ActionButton(
             icon: Icons.tune_outlined,
             label: 'Settings',

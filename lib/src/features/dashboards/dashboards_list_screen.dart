@@ -1015,7 +1015,7 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: OpticsColors.background,
-        title: Text('Share "$dashName"', style: OpticsTextStyles.h2),
+        title: Text('Share "$dashName"', style: OpticsTextStyles.headingMd),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,

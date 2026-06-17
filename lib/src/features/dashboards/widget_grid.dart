@@ -165,71 +165,90 @@ class _WidgetGridState extends State<WidgetGrid> {
           selected: widget.selectedId?.id == w.id,
           isDragging: isDragging,
           isResizing: isResizing,
+          canEdit: widget.canEdit,
           onTap: () => widget.onSelect(w),
-          onSettingsTap: () => widget.onSelect(w),
-          onDeleteTap:
-              widget.onDelete == null ? null : () => widget.onDelete!(w),
+          onSettingsTap:
+              widget.canEdit ? () => widget.onSelect(w) : null,
+          onDeleteTap: (widget.canEdit && widget.onDelete != null)
+              ? () => widget.onDelete!(w)
+              : null,
           // ── Drag (header bar) — absolute-global tracking ────
-          onDragStart: (globalPos) {
-            setState(() {
-              _draggingId = w.id;
-              _dragOffset = Offset.zero;
-              _dragStartGX = globalPos.dx;
-              _dragStartGY = globalPos.dy;
-              _dragOrigX = w.x;
-              _dragOrigY = w.y;
-            });
-          },
-          onDragUpdate: (globalPos) {
-            setState(() {
-              _dragOffset = Offset(
-                globalPos.dx - _dragStartGX,
-                globalPos.dy - _dragStartGY,
-              );
-            });
-          },
-          onDragEnd: () {
-            final colDelta = (_dragOffset.dx / cellW).round();
-            final rowDelta = (_dragOffset.dy / cellH).round();
-            final maxX = (widget.columns - w.w).toDouble();
-            final newX = (_dragOrigX + colDelta).clamp(0.0, maxX);
-            final newY = (_dragOrigY + rowDelta).clamp(0.0, double.infinity);
-            final moved = w.copyWith(x: newX, y: newY);
-            _commitChange(moved);
-            setState(() {
-              _draggingId = null;
-              _dragOffset = Offset.zero;
-            });
-          },
+          onDragStart: !widget.canEdit
+              ? null
+              : (globalPos) {
+                  setState(() {
+                    _draggingId = w.id;
+                    _dragOffset = Offset.zero;
+                    _dragStartGX = globalPos.dx;
+                    _dragStartGY = globalPos.dy;
+                    _dragOrigX = w.x;
+                    _dragOrigY = w.y;
+                  });
+                },
+          onDragUpdate: !widget.canEdit
+              ? null
+              : (globalPos) {
+                  setState(() {
+                    _dragOffset = Offset(
+                      globalPos.dx - _dragStartGX,
+                      globalPos.dy - _dragStartGY,
+                    );
+                  });
+                },
+          onDragEnd: !widget.canEdit
+              ? null
+              : () {
+                  final colDelta = (_dragOffset.dx / cellW).round();
+                  final rowDelta = (_dragOffset.dy / cellH).round();
+                  final maxX = (widget.columns - w.w).toDouble();
+                  final newX =
+                      (_dragOrigX + colDelta).clamp(0.0, maxX);
+                  final newY = (_dragOrigY + rowDelta)
+                      .clamp(0.0, double.infinity);
+                  final moved = w.copyWith(x: newX, y: newY);
+                  _commitChange(moved);
+                  setState(() {
+                    _draggingId = null;
+                    _dragOffset = Offset.zero;
+                  });
+                },
           // ── Resize (corner grip) — absolute-global, commits live ──
-          onResizeStart: (globalPos) {
-            setState(() {
-              _resizingId = w.id;
-              _rzStartGX = globalPos.dx;
-              _rzStartGY = globalPos.dy;
-              _rzOrigW = w.w;
-              _rzOrigH = w.h;
-            });
-          },
-          onResizeUpdate: (globalPos) {
-            final dx = globalPos.dx - _rzStartGX;
-            final dy = globalPos.dy - _rzStartGY;
-            final colDelta = (dx / cellW).round();
-            final rowDelta = (dy / cellH).round();
-            const minW = 4.0;
-            const minH = 3.0;
-            final maxAvailW = (widget.columns - w.x).toDouble();
-            final newW = (_rzOrigW + colDelta).clamp(minW, maxAvailW);
-            final newH = (_rzOrigH + rowDelta).clamp(minH, 1000.0);
-            if (newW != w.w || newH != w.h) {
-              _commitChange(w.copyWith(w: newW, h: newH));
-            }
-          },
-          onResizeEnd: () {
-            setState(() {
-              _resizingId = null;
-            });
-          },
+          onResizeStart: !widget.canEdit
+              ? null
+              : (globalPos) {
+                  setState(() {
+                    _resizingId = w.id;
+                    _rzStartGX = globalPos.dx;
+                    _rzStartGY = globalPos.dy;
+                    _rzOrigW = w.w;
+                    _rzOrigH = w.h;
+                  });
+                },
+          onResizeUpdate: !widget.canEdit
+              ? null
+              : (globalPos) {
+                  final dx = globalPos.dx - _rzStartGX;
+                  final dy = globalPos.dy - _rzStartGY;
+                  final colDelta = (dx / cellW).round();
+                  final rowDelta = (dy / cellH).round();
+                  const minW = 4.0;
+                  const minH = 3.0;
+                  final maxAvailW =
+                      (widget.columns - w.x).toDouble();
+                  final newW =
+                      (_rzOrigW + colDelta).clamp(minW, maxAvailW);
+                  final newH = (_rzOrigH + rowDelta).clamp(minH, 1000.0);
+                  if (newW != w.w || newH != w.h) {
+                    _commitChange(w.copyWith(w: newW, h: newH));
+                  }
+                },
+          onResizeEnd: !widget.canEdit
+              ? null
+              : () {
+                  setState(() {
+                    _resizingId = null;
+                  });
+                },
         ),
       ),
     );
@@ -295,15 +314,16 @@ class GridCell extends StatefulWidget {
   final bool selected;
   final bool isDragging;
   final bool isResizing;
+  final bool canEdit;
   final VoidCallback onTap;
-  final VoidCallback onSettingsTap;
+  final VoidCallback? onSettingsTap;
   final VoidCallback? onDeleteTap;
-  final void Function(Offset globalPos) onDragStart;
-  final void Function(Offset globalPos) onDragUpdate;
-  final VoidCallback onDragEnd;
-  final void Function(Offset globalPos) onResizeStart;
-  final void Function(Offset globalPos) onResizeUpdate;
-  final VoidCallback onResizeEnd;
+  final void Function(Offset globalPos)? onDragStart;
+  final void Function(Offset globalPos)? onDragUpdate;
+  final VoidCallback? onDragEnd;
+  final void Function(Offset globalPos)? onResizeStart;
+  final void Function(Offset globalPos)? onResizeUpdate;
+  final VoidCallback? onResizeEnd;
 
   const GridCell({
     super.key,
@@ -311,15 +331,16 @@ class GridCell extends StatefulWidget {
     required this.selected,
     required this.isDragging,
     required this.isResizing,
+    this.canEdit = true,
     required this.onTap,
-    required this.onSettingsTap,
+    this.onSettingsTap,
     this.onDeleteTap,
-    required this.onDragStart,
-    required this.onDragUpdate,
-    required this.onDragEnd,
-    required this.onResizeStart,
-    required this.onResizeUpdate,
-    required this.onResizeEnd,
+    this.onDragStart,
+    this.onDragUpdate,
+    this.onDragEnd,
+    this.onResizeStart,
+    this.onResizeUpdate,
+    this.onResizeEnd,
   });
 
   @override
@@ -384,7 +405,7 @@ class _GridCellState extends State<GridCell> {
                 children: [
                   _WidgetHeader(
                     title: widget.model.title,
-                    showActions: showChrome,
+                    showActions: showChrome && widget.canEdit,
                     widgetSettings: widget.model.settings,
                     onSettingsTap: widget.onSettingsTap,
                     onDeleteTap: widget.onDeleteTap,
@@ -406,15 +427,19 @@ class _GridCellState extends State<GridCell> {
                 ],
               ),
             ),
-            if (showChrome)
+            if (showChrome &&
+                widget.canEdit &&
+                widget.onResizeStart != null &&
+                widget.onResizeUpdate != null &&
+                widget.onResizeEnd != null)
               Positioned(
                 right: 0,
                 bottom: 0,
                 child: _CornerHandle(
                   active: widget.isResizing,
-                  onPanStart: widget.onResizeStart,
-                  onPanUpdate: widget.onResizeUpdate,
-                  onPanEnd: widget.onResizeEnd,
+                  onPanStart: widget.onResizeStart!,
+                  onPanUpdate: widget.onResizeUpdate!,
+                  onPanEnd: widget.onResizeEnd!,
                 ),
               ),
           ],
@@ -430,11 +455,11 @@ class _WidgetHeader extends StatefulWidget {
   final String title;
   final bool showActions;
   final Map<String, dynamic> widgetSettings;
-  final VoidCallback onSettingsTap;
+  final VoidCallback? onSettingsTap;
   final VoidCallback? onDeleteTap;
-  final void Function(Offset globalPos) onDragStart;
-  final void Function(Offset globalPos) onDragUpdate;
-  final VoidCallback onDragEnd;
+  final void Function(Offset globalPos)? onDragStart;
+  final void Function(Offset globalPos)? onDragUpdate;
+  final VoidCallback? onDragEnd;
 
   const _WidgetHeader({
     required this.title,
@@ -464,34 +489,37 @@ class _WidgetHeaderState extends State<_WidgetHeader> {
     return Listener(
       behavior: HitTestBehavior.opaque,
       onPointerDown: (event) {
+        if (widget.onDragStart == null) return;
         if (event.kind == PointerDeviceKind.touch ||
             event.buttons == kPrimaryButton) {
           _dragging = true;
           _dragPointer = event.pointer;
-          widget.onDragStart(event.position);
+          widget.onDragStart!(event.position);
         }
       },
       onPointerMove: (event) {
         if (_dragging && event.pointer == _dragPointer) {
-          widget.onDragUpdate(event.position);
+          widget.onDragUpdate?.call(event.position);
         }
       },
       onPointerUp: (event) {
         if (_dragging && event.pointer == _dragPointer) {
           _dragging = false;
           _dragPointer = null;
-          widget.onDragEnd();
+          widget.onDragEnd?.call();
         }
       },
       onPointerCancel: (event) {
         if (_dragging && event.pointer == _dragPointer) {
           _dragging = false;
           _dragPointer = null;
-          widget.onDragEnd();
+          widget.onDragEnd?.call();
         }
       },
       child: MouseRegion(
-        cursor: SystemMouseCursors.grab,
+        cursor: widget.onDragStart == null
+            ? SystemMouseCursors.basic
+            : SystemMouseCursors.grab,
         child: Builder(builder: (context) {
           final wt = WidgetThemeColors.fromSettings(widget.widgetSettings);
           return Container(
@@ -505,12 +533,14 @@ class _WidgetHeaderState extends State<_WidgetHeader> {
           ),
           child: Row(
             children: [
-              Tooltip(
-                message: 'Drag to move widget',
-                child: Icon(Icons.drag_indicator_rounded,
-                    size: 14, color: wt.mutedText),
-              ),
-              const SizedBox(width: 6),
+              if (widget.onDragStart != null) ...[
+                Tooltip(
+                  message: 'Drag to move widget',
+                  child: Icon(Icons.drag_indicator_rounded,
+                      size: 14, color: wt.mutedText),
+                ),
+                const SizedBox(width: 6),
+              ],
               Expanded(
                 child: Text(
                   widget.title.toUpperCase(),
@@ -532,11 +562,12 @@ class _WidgetHeaderState extends State<_WidgetHeader> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      _HdrBtn(
-                        icon: Icons.tune_rounded,
-                        tooltip: 'Settings',
-                        onTap: widget.onSettingsTap,
-                      ),
+                      if (widget.onSettingsTap != null)
+                        _HdrBtn(
+                          icon: Icons.tune_rounded,
+                          tooltip: 'Settings',
+                          onTap: widget.onSettingsTap!,
+                        ),
                       if (widget.onDeleteTap != null)
                         _HdrBtn(
                           icon: Icons.close_rounded,

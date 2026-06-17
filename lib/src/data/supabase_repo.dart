@@ -745,6 +745,18 @@ class SupabaseRepo {
     return data['storage_path'] as String?;
   }
 
+  /// Share a dashboard with another user by email
+  Future<void> shareDashboard(String dashboardId, String email) async {
+    final res = await client.functions.invoke(
+      'share-dashboard',
+      body: {'dashboard_id': dashboardId, 'email': email},
+      headers: _fnHeaders(),
+    );
+    if (res.status != 200 && res.status != 201) {
+      throw Exception(res.data?['error'] ?? 'Unknown error sharing dashboard');
+    }
+  }
+
   /// Create a short-lived signed URL for an artifact in the `exports`
   /// bucket so the user can download / open it from the browser.
   Future<String?> signedExportUrl(String storagePath,

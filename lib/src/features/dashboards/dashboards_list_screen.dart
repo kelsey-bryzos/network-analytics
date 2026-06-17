@@ -989,16 +989,8 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
     final messenger = ScaffoldMessenger.of(context);
     try {
       messenger.showSnackBar(SnackBar(content: Text('Sharing dashboard with $email...')));
-      final client = ref.read(supabaseProvider);
-      final res = await client.functions.invoke(
-        'share-dashboard',
-        body: {'dashboard_id': dashId, 'email': email},
-      );
-      if (res.status == 200 || res.status == 201) {
-        messenger.showSnackBar(SnackBar(content: Text('Dashboard shared successfully with $email.')));
-      } else {
-        throw Exception(res.data['error'] ?? 'Unknown error');
-      }
+      await ref.read(repoProvider).shareDashboard(dashId, email);
+      messenger.showSnackBar(SnackBar(content: Text('Dashboard shared successfully with $email.')));
     } catch (e) {
       messenger.showSnackBar(
         SnackBar(

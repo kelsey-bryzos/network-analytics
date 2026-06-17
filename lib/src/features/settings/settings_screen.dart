@@ -278,7 +278,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       // Clean up any stale "running" sync rows so the UI never shows
       // "Sync appears stuck" due to a crashed Edge Function.
       client.rpc('clean_stale_sync_runs').catchError((_) {});
-      final rows = await client.from('memberships').select('role, tenants(id, name, slug, logo_url, app_name, display_order)');
+      // Explicitly scope to the current user. RLS also allows visibility of
+      // other members in the active tenant (for the Team Roles & Members
+      // panel), which would otherwise leak those rows into the org list and
+      // misrepresent the signed-in user's own role on that tenant.
+      final uid = client.auth.currentUser?.id;
+      if (uid == null) {
+        if (mounted) setState(() { _tenants = []; _loading = false; });
+        return;
+      }
+      final rows = await client
+          .from('memberships')
+          .select('role, tenants(id, name, slug, logo_url, app_name, display_order)')
+          .eq('user_id', uid);
       if (mounted) {
         final raw = (rows as List).map((r) => (r as Map).cast<String, dynamic>()).toList();
         // Deduplicate by tenant ID — a user can theoretically have multiple

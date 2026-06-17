@@ -39,10 +39,21 @@ final routerProvider = Provider<GoRouter>((ref) {
       final atAcceptInvite = state.matchedLocation == '/accept-invite';
       final atWelcome = state.matchedLocation == '/welcome';
       final atResetPassword = state.matchedLocation == '/reset-password';
+      
       // /accept-invite, /welcome, and /reset-password are unauthenticated routes.
       if (atAcceptInvite || atWelcome || atResetPassword) return null;
+      
       if (!loggedIn && !atSignIn) return '/sign-in';
-      if (loggedIn && atSignIn) return '/dashboards';
+      
+      if (loggedIn) {
+        final activeTenant = Supabase.instance.client.auth.currentUser?.appMetadata['active_tenant_id'];
+        if (activeTenant == null && state.matchedLocation != '/settings' && !atSignIn) {
+          return '/settings';
+        }
+        if (atSignIn) {
+          return activeTenant == null ? '/settings' : '/dashboards';
+        }
+      }
       return null;
     },
     routes: [

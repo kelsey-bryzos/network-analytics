@@ -18,9 +18,11 @@
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../config/feature_flags.dart';
 import '../../data/models.dart';
@@ -636,8 +638,8 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
   }
 
   /// Download the bytes from `url` and prompt the user (desktop) or save
-  /// to the platform's downloads folder (mobile) — never opens a browser
-  /// window for the artifact.
+  /// to the platform's downloads folder (mobile). On web, opens the signed
+  /// URL directly and lets the browser handle the download.
   Future<void> _downloadToDisk(
     BuildContext ctx, {
     required String url,
@@ -650,6 +652,20 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
     final defaultFileName =
         '${safeName.isEmpty ? 'optics-report' : safeName}.$format';
 
+    // On web, use url_launcher to open the signed URL in a new tab.
+    // The browser will handle the download based on Content-Disposition.
+    if (kIsWeb) {
+      final uri = Uri.parse(url);
+      try {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        if (ctx.mounted) _toast(ctx, '$fmtLabel download started.');
+      } catch (e) {
+        if (ctx.mounted) _toast(ctx, '$fmtLabel download failed: $e');
+      }
+      return;
+    }
+
+    // Desktop/Mobile: Fetch bytes and save via FilePicker or direct file write.
     // Fetch the artifact bytes from the signed URL.
     final resp = await HttpClient().getUrl(Uri.parse(url));
     final httpResp = await resp.close();
@@ -3327,6 +3343,19 @@ Future<void> downloadToDiskHelper(BuildContext ctx, {required String url, requir
   final safeName = report.name.replaceAll(RegExp(r'[^A-Za-z0-9 _\-\.]'), '').trim();
   final defaultFileName = '${safeName.isEmpty ? 'optics-report' : safeName}.$format';
 
+  // On web, use url_launcher to open the signed URL in a new tab.
+  if (kIsWeb) {
+    final uri = Uri.parse(url);
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (ctx.mounted) showToastHelper(ctx, '$fmtLabel download started.');
+    } catch (e) {
+      if (ctx.mounted) showToastHelper(ctx, '$fmtLabel download failed: $e');
+    }
+    return;
+  }
+
+  // Desktop/Mobile: Fetch bytes and save via FilePicker.
   final resp = await HttpClient().getUrl(Uri.parse(url));
   final httpResp = await resp.close();
   if (httpResp.statusCode != 200) {

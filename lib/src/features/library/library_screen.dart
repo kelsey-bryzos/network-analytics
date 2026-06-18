@@ -22,6 +22,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   @override
   Widget build(BuildContext context) {
     final items = ref.watch(libraryProvider);
+    // PERMISSION CHECK: Only editors+ can combine library items
+    final canEdit = ref.watch(canEditProvider);
     return Padding(
       padding: const EdgeInsets.all(OpticsSpacing.xl),
       child: Column(
@@ -31,7 +33,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             children: [
               const Text('LIBRARY', style: OpticsTextStyles.headingXl),
               const SizedBox(width: 16),
-              if (_selected.length == 2)
+              // Combine button only for editors+
+              if (_selected.length == 2 && canEdit)
                 ElevatedButton.icon(
                   icon: const Icon(Icons.merge_type, size: 16),
                   label: const Text('Combine'),
@@ -159,7 +162,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                                       ],
                                     ),
                                   ),
-                                  if (it.kind == 'report')
+                                  // Clone button only for editors+
+                                  if (it.kind == 'report' && canEdit)
                                     OutlinedButton(
                                       onPressed: () => _cloneReport(it.id),
                                       style: OutlinedButton.styleFrom(

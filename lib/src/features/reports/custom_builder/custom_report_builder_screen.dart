@@ -342,6 +342,8 @@ class _CustomReportBuilderScreenState
   }
 
   Widget _buildToolbar(_BuilderState st) {
+    // PERMISSION CHECK: Only editors+ can save reports
+    final canEdit = ref.watch(canEditProvider);
     return Container(
       padding: const EdgeInsets.symmetric(
           horizontal: OpticsSpacing.xl, vertical: OpticsSpacing.xl),
@@ -352,35 +354,38 @@ class _CustomReportBuilderScreenState
         children: [
           const Text('REPORT BUILDER', style: OpticsTextStyles.headingXl),
           const Spacer(),
-          if (st.dirty)
-            Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: OpticsSpacing.sm, vertical: 4),
-              decoration: BoxDecoration(
-                color: OpticsColors.accentOrange.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(OpticsRadii.xs),
-              ),
-              child: Text(
-                'UNSAVED',
-                style: OpticsTextStyles.sectionLabel.copyWith(
-                  color: OpticsColors.accentOrange,
-                  fontSize: 11,
+          // Save buttons only for editors+
+          if (canEdit) ...[
+            if (st.dirty)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: OpticsSpacing.sm, vertical: 4),
+                decoration: BoxDecoration(
+                  color: OpticsColors.accentOrange.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(OpticsRadii.xs),
+                ),
+                child: Text(
+                  'UNSAVED',
+                  style: OpticsTextStyles.sectionLabel.copyWith(
+                    color: OpticsColors.accentOrange,
+                    fontSize: 11,
+                  ),
                 ),
               ),
+            const SizedBox(width: OpticsSpacing.md),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.save_outlined, size: 16),
+              label: const Text('Save'),
+              onPressed: _saving ? null : () => _save(close: false),
             ),
-          const SizedBox(width: OpticsSpacing.md),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.save_outlined, size: 16),
-            label: const Text('Save'),
-            onPressed: _saving ? null : () => _save(close: false),
-          ),
-          const SizedBox(width: OpticsSpacing.sm),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.check, size: 16),
-            label: const Text('Save & Close'),
-            onPressed: _saving ? null : () => _save(close: true),
-          ),
-          const SizedBox(width: OpticsSpacing.md),
+            const SizedBox(width: OpticsSpacing.sm),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.check, size: 16),
+              label: const Text('Save & Close'),
+              onPressed: _saving ? null : () => _save(close: true),
+            ),
+            const SizedBox(width: OpticsSpacing.md),
+          ],
           IconButton(
             tooltip: 'Back to Reports Library',
             icon: const Icon(Icons.close, size: 18, color: OpticsColors.textSecondary),

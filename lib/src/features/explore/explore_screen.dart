@@ -1233,6 +1233,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   Widget _buildHeader(AsyncValue<DataSource?> sourceAsync) {
     final src = sourceAsync.asData?.value;
     final shared = _report?.sharedWithTenant ?? false;
+    // PERMISSION CHECK: Only editors+ can save, publish, share reports
+    final canEdit = ref.watch(canEditProvider);
     return Row(
       children: [
         const Text('Report Builder', style: OpticsTextStyles.headingXl),
@@ -1258,78 +1260,90 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
           ),
         ],
         const SizedBox(width: 16),
-        // Inline editable title.
-        Flexible(
-          child: SizedBox(
-            width: 320,
-            child: TextFormField(
-              key: ValueKey(_report?.id ?? 'new'),
-              initialValue: _title,
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: OpticsColors.textPrimary,
+        // Inline editable title — only show for editors+
+        if (canEdit)
+          Flexible(
+            child: SizedBox(
+              width: 320,
+              child: TextFormField(
+                key: ValueKey(_report?.id ?? 'new'),
+                initialValue: _title,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: OpticsColors.textPrimary,
+                ),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  hintText: 'Untitled Report',
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                ),
+                onChanged: (v) {
+                  _title = v.trim().isEmpty ? 'Untitled Report' : v.trim();
+                  _markDirty();
+                },
               ),
-              decoration: const InputDecoration(
-                isDense: true,
-                hintText: 'Untitled Report',
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              ),
-              onChanged: (v) {
-                _title = v.trim().isEmpty ? 'Untitled Report' : v.trim();
-                _markDirty();
-              },
+            ),
+          )
+        else
+          Flexible(
+            child: Text(
+              _title.toUpperCase(),
+              style: OpticsTextStyles.headingMd,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
-        ),
         const SizedBox(width: 12),
-        _saveStatusChip(),
+        if (canEdit) _saveStatusChip(),
         const Spacer(),
-        IconButton(
-          tooltip: shared
-              ? 'Shared with tenant — click to unshare'
-              : 'Share with tenant',
-          icon: Icon(
-            shared ? Icons.group : Icons.group_outlined,
-            size: 18,
-            color: shared ? OpticsColors.accentGreen : OpticsColors.textSecondary,
-          ),
-          onPressed: _columns.isEmpty ? null : _toggleShare,
-        ),
-        OutlinedButton.icon(
-          icon: const Icon(Icons.save_outlined, size: 14),
-          label: const Text('Save & Close'),
-          onPressed: _columns.isEmpty ? null : _saveAndClose,
-        ),
-        const SizedBox(width: 8),
-        OutlinedButton.icon(
-          icon: const Icon(Icons.note_add_outlined, size: 14),
-          label: const Text('Build New Report'),
-          onPressed: _columns.isEmpty ? null : _buildNewReport,
-        ),
-        const SizedBox(width: 8),
-        Builder(builder: (context) {
-          final published = _report?.status == ReportStatus.live && !_dirty;
-          final baseStyle = Theme.of(context).elevatedButtonTheme.style;
-          final style = published
-              ? (baseStyle ?? const ButtonStyle()).copyWith(
-                  backgroundColor:
-                      WidgetStatePropertyAll(OpticsColors.accentGreen),
-                  foregroundColor:
-                      const WidgetStatePropertyAll(Colors.white),
-                )
-              : baseStyle;
-          return ElevatedButton.icon(
-            style: style,
+        // Share, Save, Build New, Publish — only for editors+
+        if (canEdit) ...[
+          IconButton(
+            tooltip: shared
+                ? 'Shared with tenant — click to unshare'
+                : 'Share with tenant',
             icon: Icon(
-              published ? Icons.check_circle : Icons.publish,
-              size: 14,
+              shared ? Icons.group : Icons.group_outlined,
+              size: 18,
+              color: shared ? OpticsColors.accentGreen : OpticsColors.textSecondary,
             ),
-            label: Text(published ? 'Published' : 'Publish'),
-            onPressed: _columns.isEmpty ? null : _publish,
-          );
-        }),
+            onPressed: _columns.isEmpty ? null : _toggleShare,
+          ),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.save_outlined, size: 14),
+            label: const Text('Save & Close'),
+            onPressed: _columns.isEmpty ? null : _saveAndClose,
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.note_add_outlined, size: 14),
+            label: const Text('Build New Report'),
+            onPressed: _columns.isEmpty ? null : _buildNewReport,
+          ),
+          const SizedBox(width: 8),
+          Builder(builder: (context) {
+            final published = _report?.status == ReportStatus.live && !_dirty;
+            final baseStyle = Theme.of(context).elevatedButtonTheme.style;
+            final style = published
+                ? (baseStyle ?? const ButtonStyle()).copyWith(
+                    backgroundColor:
+                        WidgetStatePropertyAll(OpticsColors.accentGreen),
+                    foregroundColor:
+                        const WidgetStatePropertyAll(Colors.white),
+                  )
+                : baseStyle;
+            return ElevatedButton.icon(
+              style: style,
+              icon: Icon(
+                published ? Icons.check_circle : Icons.publish,
+                size: 14,
+              ),
+              label: Text(published ? 'Published' : 'Publish'),
+              onPressed: _columns.isEmpty ? null : _publish,
+            );
+          }),
+        ],
       ],
     );
   }

@@ -85,8 +85,9 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
                 exportReportHelper(context, ref, widget.report, 'xlsx');
               },
             ),
-            // Share — Editors+ only (Guests/Viewers cannot share)
-            if (ref.watch(canEditProvider)) ...[
+            // Share — Editors+ only (Guests/Viewers cannot share).
+            // Hidden for canned reports (system-wide by default).
+            if (!widget.report.isCanned && ref.watch(canEditProvider)) ...[
               const SizedBox(width: OpticsSpacing.sm),
               _toolbarBtn(
                 icon: Icons.share_outlined,
@@ -99,7 +100,11 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
             // Add to Dashboard — Editors+ only (Guests/Viewers cannot add)
             if (!effectiveIsTableView && ref.watch(canEditProvider)) ...[
               const SizedBox(width: OpticsSpacing.sm),
-              _AddToDashboardBtn(widgetData: widget.widgetData, report: widget.report),
+              _AddToDashboardBtn(
+                widgetData: widget.widgetData,
+                report: widget.report,
+                dataSourceId: widget.dataSourceId,
+              ),
             ],
           ],
         ),
@@ -223,7 +228,12 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
 class _AddToDashboardBtn extends ConsumerStatefulWidget {
   final Map<String, dynamic> widgetData;
   final Report report;
-  const _AddToDashboardBtn({required this.widgetData, required this.report});
+  final String? dataSourceId;
+  const _AddToDashboardBtn({
+    required this.widgetData,
+    required this.report,
+    required this.dataSourceId,
+  });
   @override
   ConsumerState<_AddToDashboardBtn> createState() => _AddToDashboardBtnState();
 }
@@ -264,11 +274,19 @@ class _AddToDashboardBtnState extends ConsumerState<_AddToDashboardBtn> {
     try {
       final kindStr = widget.widgetData['type'] as String? ?? 'barVertical';
       final kind = WidgetKind.fromString(kindStr);
+      final binding =
+          Map<String, dynamic>.from((widget.widgetData['binding'] as Map?) ?? const {});
+      if (binding['brz'] is Map && widget.dataSourceId != null) {
+        final brz = Map<String, dynamic>.from(binding['brz'] as Map);
+        brz['data_source_id'] = widget.dataSourceId;
+        binding['brz'] = brz;
+      }
+
       await ref.read(repoProvider).createWidget(
         dashboardId: selectedId,
         title: widget.widgetData['title'] as String? ?? widget.report.name,
         kind: kind,
-        binding: widget.widgetData['binding'] as Map<String, dynamic>? ?? {},
+        binding: binding,
         settings: widget.widgetData['settings'] as Map<String, dynamic>? ?? {},
       );
       if (mounted) {

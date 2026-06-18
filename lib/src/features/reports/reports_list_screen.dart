@@ -1647,10 +1647,14 @@ class _PreviewDrawer extends StatelessWidget {
         ?.map((id) => MapEntry(id, _lookup(id)))
         .toList();
 
+    final drawerWidth = (MediaQuery.of(context).size.width - 24)
+        .clamp(360.0, 520.0)
+        .toDouble();
+
     return Material(
       color: Colors.transparent,
       child: Container(
-        width: 520,
+        width: drawerWidth,
         height: double.infinity,
         decoration: const BoxDecoration(
           color: OpticsColors.surface,
@@ -3352,7 +3356,7 @@ Future<void> downloadToDiskHelper(BuildContext ctx, {required String url, requir
     final uri = Uri.parse(url);
     try {
       // By using platformDefault, it avoids strict popup blocking on some browsers.
-      await launchUrl(uri);
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
       if (ctx.mounted) showToastHelper(ctx, '$fmtLabel download started.');
     } catch (e) {
       if (ctx.mounted) showToastHelper(ctx, '$fmtLabel download failed: $e');

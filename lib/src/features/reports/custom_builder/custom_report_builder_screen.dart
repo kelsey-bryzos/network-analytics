@@ -190,11 +190,40 @@ class _CustomReportBuilderScreenState
   bool _hydrated = false;
   bool _saving = false;
   String? _lastError;
+  bool _permissionChecked = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _hydrate());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkPermissionAndHydrate();
+    });
+  }
+
+  /// Check if user has edit permission before allowing access to this screen.
+  /// Viewers and guests are redirected back to /reports.
+  Future<void> _checkPermissionAndHydrate() async {
+    if (_permissionChecked) return;
+    _permissionChecked = true;
+    
+    // Check permission using the same provider as the rest of the app
+    final canEdit = ref.read(canEditProvider);
+    if (!canEdit) {
+      // User doesn't have permission — redirect to reports list
+      if (mounted) {
+        context.go('/reports');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You do not have permission to create or edit reports.'),
+            backgroundColor: OpticsColors.danger,
+          ),
+        );
+      }
+      return;
+    }
+    
+    // Permission OK — proceed with hydration
+    _hydrate();
   }
 
   Future<void> _hydrate() async {

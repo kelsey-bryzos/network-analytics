@@ -50,6 +50,7 @@ import '../../data/supabase_repo.dart';
 import '../../design/canvas_zoom.dart';
 import '../../design/optics_card.dart';
 import '../../design/theme.dart';
+import '../../shared/secure_error.dart';
 
 // ── Providers ─────────────────────────────────────────────────────────────
 
@@ -600,9 +601,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Save failed: $e')),
-      );
+      showSecureErrorSnackBar(context, ref, 'Save failed.', e);
     }
   }
 
@@ -623,9 +622,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Publish failed: $e')),
-      );
+      showSecureErrorSnackBar(context, ref, 'Publish failed.', e);
     }
   }
 
@@ -699,9 +696,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Share failed: $e')),
-      );
+      showSecureErrorSnackBar(context, ref, 'Share failed.', e);
     }
   }
 
@@ -1219,8 +1214,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
               loading: () =>
                   const Center(child: CircularProgressIndicator(strokeWidth: 2)),
               error: (e, st) => Center(
-                child: Text('Failed to load data sources: $e',
-                    style: const TextStyle(color: OpticsColors.danger)),
+                child: SecureErrorText(
+                  genericMessage: 'Failed to load data sources.',
+                  error: e,
+                ),
               ),
             ),
           ),
@@ -1541,8 +1538,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                   const Center(child: CircularProgressIndicator(strokeWidth: 2)),
               error: (e, st) => Padding(
                 padding: const EdgeInsets.all(12),
-                child: Text('Could not load catalog: $e',
-                    style: const TextStyle(color: OpticsColors.danger)),
+                child: SecureErrorText(
+                  genericMessage: 'Could not load catalog.',
+                  error: e,
+                ),
               ),
             ),
           ),
@@ -2030,9 +2029,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
               error: (e, st) => Center(
                 child: Padding(
                   padding: const EdgeInsets.all(24),
-                  child: Text('Could not load rows: $e',
-                      style: const TextStyle(color: OpticsColors.danger),
-                      textAlign: TextAlign.center),
+                  child: SecureErrorText(
+                    genericMessage: 'Could not load rows.',
+                    error: e,
+                  ),
                 ),
               ),
             ),
@@ -2624,9 +2624,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         loading: () => const Center(
             child: CircularProgressIndicator(strokeWidth: 2)),
         error: (e, st) => Center(
-          child: Text('Preview error: $e',
-              style: const TextStyle(
-                  fontSize: 12, color: OpticsColors.danger)),
+          child: SecureErrorText(
+            genericMessage: 'Preview error.',
+            error: e,
+          ),
         ),
       ),
     );
@@ -2706,8 +2707,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
               loading: () => const Center(
                   child: CircularProgressIndicator(strokeWidth: 2)),
               error: (e, st) => Center(
-                child: Text('Could not load rows: $e',
-                    style: const TextStyle(color: OpticsColors.danger)),
+                child: SecureErrorText(
+                  genericMessage: 'Could not load rows.',
+                  error: e,
+                ),
               ),
             ),
           ),

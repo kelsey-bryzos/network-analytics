@@ -22,8 +22,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../data/models.dart';
 import '../../../data/supabase_repo.dart';
 import '../../../design/theme.dart';
+import '../../../shared/secure_error.dart';
 import '../report_viewer_screen.dart' show restDataSourceIdProvider;
 import 'custom_report_query_v2.dart';
 import 'custom_report_validator.dart';
@@ -288,7 +290,7 @@ class _CustomReportBuilderScreenState
         'name': st.title,
         'description': st.description,
         'layout': layout,
-        'status': 'live',
+        'status': 'draft',
         'query_version': 2,
       };
       String? newId = st.reportId;
@@ -327,6 +329,28 @@ class _CustomReportBuilderScreenState
     }
   }
 
+  Future<void> _publish() async {
+    // Save first, then flip status to live
+    await _save(close: false);
+    final st = ref.read(_builderProvider);
+    final reportId = st.reportId;
+    if (reportId == null) return;
+    try {
+      await ref.read(repoProvider).setReportStatus(reportId, ReportStatus.live);
+      ref.invalidate(reportsProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('"${st.title}" published.')),
+        );
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) {
+        showSecureErrorSnackBar(context, ref, 'Publish failed.', e);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final st = ref.watch(_builderProvider);
@@ -354,14 +378,18 @@ class _CustomReportBuilderScreenState
           child: catalog.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, _) => Center(
-                child: Text('Failed to load catalog: $e',
-                    style: const TextStyle(color: OpticsColors.danger))),
+                child: SecureErrorText(
+                  genericMessage: 'Failed to load catalog.',
+                  error: e,
+                )),
             data: (cat) => rels.when(
               loading: () =>
                   const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(
-                  child: Text('Failed to load relationships: $e',
-                      style: const TextStyle(color: OpticsColors.danger))),
+                  child: SecureErrorText(
+                    genericMessage: 'Failed to load relationships.',
+                    error: e,
+                  )),
               data: (relMap) => _buildBody(st, cat, relMap),
             ),
           ),
@@ -412,6 +440,16 @@ class _CustomReportBuilderScreenState
               icon: const Icon(Icons.check, size: 16),
               label: const Text('Save & Close'),
               onPressed: _saving ? null : () => _save(close: true),
+            ),
+            const SizedBox(width: OpticsSpacing.sm),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.publish, size: 16),
+              label: const Text('Publish'),
+              onPressed: _saving ? null : _publish,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: OpticsColors.accentGreen,
+                foregroundColor: Colors.white,
+              ),
             ),
             const SizedBox(width: OpticsSpacing.md),
           ],

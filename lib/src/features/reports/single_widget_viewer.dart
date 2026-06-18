@@ -5,6 +5,7 @@ import '../../data/models.dart';
 import '../../data/supabase_repo.dart';
 import '../../design/optics_card.dart';
 import '../../design/theme.dart';
+import '../../shared/secure_error.dart';
 import '../dashboards/widget_renderer.dart';
 import 'reports_list_screen.dart';
 
@@ -275,7 +276,7 @@ class _AddToDashboardBtnState extends ConsumerState<_AddToDashboardBtn> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to add: $e')));
+        showSecureErrorSnackBar(context, ref, 'Failed to add widget.', e);
       }
     } finally {
       if (mounted) setState(() => _busy = false);

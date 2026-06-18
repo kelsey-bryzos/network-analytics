@@ -164,7 +164,8 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
   String get _fetchKey {
     final brz = _brz;
     if (brz == null) return '';
-    return '${brz['data_source_id']}|${brz['metric']}|$_timeRange|$_maxItems';
+    final tid = ref.read(activeTenantProvider) ?? '';
+    return '${brz['data_source_id']}|${brz['metric']}|$_timeRange|$_maxItems|$tid';
   }
 
   @override
@@ -1461,86 +1462,149 @@ class _WidgetRendererCore extends StatelessWidget {
       for (final c in cols) TextAlign.left,
     ];
 
+    // Compute a minimum comfortable width for the table.
+    // Base width: 32 for the '#' column, plus padding.
+    // Each column gets (flex * 22) minimum width.
+    final minColWidths = <double>[];
+    for (final c in cols) {
+      minColWidths.add(_flexForCol(c) * 22.0);
+    }
+    final minTableWidth = 32.0 + minColWidths.fold<double>(0, (a, b) => a + b) + (cols.length * 8.0) + 16.0;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _chartHeader(),
-        // Frozen header
-        Container(
-          padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
-          decoration: BoxDecoration(
-            color: _wt.headerBg,
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(6)),
-          ),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 32,
-                child: Text('#',
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: _wt.mutedText)),
-              ),
-              for (int c = 0; c < cols.length; c++)
-                Expanded(
-                  flex: _flexForCol(cols[c]),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Text(
-                      headers[c],
-                      style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: _wt.mutedText),
-                      textAlign: aligns[c],
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-        // Scrollable body
         Expanded(
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                for (int i = 0; i < rows.length; i++)
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(12, 7, 4, 7),
-                    color: i.isOdd
-                        ? _wt.headerBg.withValues(alpha: 0.3)
-                        : Colors.transparent,
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 32,
-                          child: Text('${i + 1}',
-                              style: TextStyle(
-                                  fontSize: 11, color: _wt.mutedText)),
-                        ),
-                        for (int c = 0; c < cols.length; c++)
-                          Expanded(
-                            flex: _flexForCol(cols[c]),
-                            child: Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 4),
-                              child: Text(
-                                _formatCell(cols[c], rows[i][cols[c]]),
-                                style: TextStyle(
-                                    fontSize: 11, color: _wt.bodyText),
-                                textAlign: aligns[c],
-                                overflow: TextOverflow.ellipsis,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final needsScroll = constraints.maxWidth < minTableWidth;
+
+              Widget _buildHeaderRow() {
+                return Container(
+                  width: needsScroll ? minTableWidth : null,
+                  padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+                  decoration: BoxDecoration(
+                    color: _wt.headerBg,
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                  ),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 32,
+                        child: Text('#',
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: _wt.mutedText)),
+                      ),
+                      for (int c = 0; c < cols.length; c++)
+                        needsScroll
+                            ? SizedBox(
+                                width: minColWidths[c],
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                                  child: Text(
+                                    headers[c],
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: _wt.mutedText),
+                                    textAlign: aligns[c],
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              )
+                            : Expanded(
+                                flex: _flexForCol(cols[c]),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                                  child: Text(
+                                    headers[c],
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: _wt.mutedText),
+                                    textAlign: aligns[c],
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                      ],
+                    ],
+                  ),
+                );
+              }
+
+              Widget _buildBodyRow(int i) {
+                return Container(
+                  width: needsScroll ? minTableWidth : null,
+                  padding: const EdgeInsets.fromLTRB(12, 7, 4, 7),
+                  color: i.isOdd
+                      ? _wt.headerBg.withValues(alpha: 0.3)
+                      : Colors.transparent,
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 32,
+                        child: Text('${i + 1}',
+                            style: TextStyle(fontSize: 11, color: _wt.mutedText)),
+                      ),
+                      for (int c = 0; c < cols.length; c++)
+                        needsScroll
+                            ? SizedBox(
+                                width: minColWidths[c],
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                                  child: Text(
+                                    _formatCell(cols[c], rows[i][cols[c]]),
+                                    style: TextStyle(fontSize: 11, color: _wt.bodyText),
+                                    textAlign: aligns[c],
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              )
+                            : Expanded(
+                                flex: _flexForCol(cols[c]),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                                  child: Text(
+                                    _formatCell(cols[c], rows[i][cols[c]]),
+                                    style: TextStyle(fontSize: 11, color: _wt.bodyText),
+                                    textAlign: aligns[c],
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ),
+                    ],
+                  ),
+                );
+              }
+
+              final tableContent = Column(
+                children: [
+                  _buildHeaderRow(),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: [
+                          for (int i = 0; i < rows.length; i++) _buildBodyRow(i),
+                        ],
+                      ),
                     ),
                   ),
-              ],
-            ),
+                ],
+              );
+
+              if (needsScroll) {
+                return Scrollbar(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: tableContent,
+                  ),
+                );
+              }
+              return tableContent;
+            },
           ),
         ),
       ],
@@ -1679,7 +1743,7 @@ class _WidgetRendererCore extends StatelessWidget {
         _chartHeader(),
         // Frozen header
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.fromLTRB(12, 8, 24, 8),
           decoration: BoxDecoration(
             color: _wt.headerBg,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(6))),
@@ -1717,7 +1781,7 @@ class _WidgetRendererCore extends StatelessWidget {
     // Smart dollar formatting: never show $0.0M for sub-million values
     final valueStr = _fmtSmartValue(_series[dataIdx], _unit);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      padding: const EdgeInsets.fromLTRB(12, 7, 24, 7),
       color: isOdd ? _wt.headerBg.withValues(alpha: 0.3) : Colors.transparent,
       child: Row(
         children: [
@@ -1780,7 +1844,7 @@ class _WidgetRendererCore extends StatelessWidget {
         _chartHeader(),
         // Frozen header
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.fromLTRB(12, 8, 24, 8),
           decoration: BoxDecoration(
             color: _wt.headerBg,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(6))),
@@ -1848,7 +1912,7 @@ class _WidgetRendererCore extends StatelessWidget {
     final revenueStr = _fmtSmartMoney(revenue);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      padding: const EdgeInsets.fromLTRB(12, 7, 24, 7),
       color: rank % 2 == 1 ? _wt.headerBg.withValues(alpha: 0.3) : Colors.transparent,
       child: Row(
         children: [

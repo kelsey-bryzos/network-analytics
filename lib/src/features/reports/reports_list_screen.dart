@@ -26,6 +26,7 @@ import '../../config/feature_flags.dart';
 import '../../data/models.dart';
 import '../../data/supabase_repo.dart';
 import '../../design/theme.dart';
+import '../../shared/secure_error.dart';
 import '../dashboards/widget_renderer.dart';
 import 'custom_builder/custom_report_query_v2.dart';
 import 'custom_builder/v2_report_view.dart';
@@ -162,8 +163,10 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
               loading: () =>
                   const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(
-                child: Text('$e',
-                    style: const TextStyle(color: OpticsColors.danger)),
+                child: SecureErrorText(
+                  genericMessage: 'Could not load reports.',
+                  error: e,
+                ),
               ),
               data: (allReports) {
                 final visible = _applyFilters(allReports);
@@ -2195,9 +2198,10 @@ class _PagePreviewSurface extends ConsumerWidget {
       error: (e, _) => SizedBox(
         height: 320,
         child: Center(
-          child: Text('Data source unavailable: $e',
-              style: const TextStyle(
-                  fontSize: 11, color: OpticsColors.textMuted)),
+          child: SecureErrorText(
+            genericMessage: 'Data source unavailable.',
+            error: e,
+          ),
         ),
       ),
       data: (dsId) {
@@ -3327,6 +3331,20 @@ Future<void> downloadToDiskHelper(BuildContext ctx, {required String url, requir
   final safeName = report.name.replaceAll(RegExp(r'[^A-Za-z0-9 _\-\.]'), '').trim();
   final defaultFileName = '${safeName.isEmpty ? 'optics-report' : safeName}.$format';
 
+  // On web, use url_launcher to open the signed URL.
+  if (kIsWeb) {
+    final uri = Uri.parse(url);
+    try {
+      // By using platformDefault, it avoids strict popup blocking on some browsers.
+      await launchUrl(uri);
+      if (ctx.mounted) showToastHelper(ctx, '$fmtLabel download started.');
+    } catch (e) {
+      if (ctx.mounted) showToastHelper(ctx, '$fmtLabel download failed: $e');
+    }
+    return;
+  }
+
+  // Desktop/Mobile: Fetch bytes and save via FilePicker.
   final resp = await HttpClient().getUrl(Uri.parse(url));
   final httpResp = await resp.close();
   if (httpResp.statusCode != 200) {

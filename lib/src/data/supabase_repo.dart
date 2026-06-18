@@ -7,7 +7,12 @@ final supabaseProvider = Provider<SupabaseClient>(
   (_) => Supabase.instance.client,
 );
 
+final _authChangeProvider = StreamProvider<AuthState>((ref) {
+  return ref.watch(supabaseProvider).auth.onAuthStateChange;
+});
+
 final activeTenantProvider = StateProvider<String?>((ref) {
+  ref.watch(_authChangeProvider); // React to login/logout
   final user = ref.watch(supabaseProvider).auth.currentUser;
   return user?.appMetadata['active_tenant_id'] as String?;
 });
@@ -584,6 +589,33 @@ class SupabaseRepo {
     return out;
   }
 
+  /// Change a user's role in a tenant (via Edge Function for reliability).
+  Future<void> changeUserRole(String tenantId, String userId, String role) async {
+    final res = await client.functions.invoke('manage-member', body: {
+      'action': 'change_role',
+      'tenant_id': tenantId,
+      'target_user_id': userId,
+      'new_role': role,
+    });
+    if (res.status != 200) {
+      final msg = (res.data is Map ? res.data['error'] : null) ?? 'Failed to change role';
+      throw Exception(msg);
+    }
+  }
+
+  /// Remove a user from a tenant (via Edge Function for reliability).
+  Future<void> removeUser(String tenantId, String userId) async {
+    final res = await client.functions.invoke('manage-member', body: {
+      'action': 'remove',
+      'tenant_id': tenantId,
+      'target_user_id': userId,
+    });
+    if (res.status != 200) {
+      final msg = (res.data is Map ? res.data['error'] : null) ?? 'Failed to remove user';
+      throw Exception(msg);
+    }
+  }
+
   /// Fetch the system-curated relationships + display expressions used by
   /// the join-aware Report Builder to surface virtual "Buyer Name",
   /// "Buyer Company", etc. columns.
@@ -885,11 +917,15 @@ final repoProvider = Provider<SupabaseRepo>(
 );
 
 final dashboardsListProvider = FutureProvider<List<Dashboard>>((ref) {
+  ref.watch(activeTenantProvider); // React to tenant switch
+  ref.watch(currentUserIdProvider); // React to login/logout
   return ref.watch(repoProvider).listDashboards();
 });
 
 final dashboardWidgetsProvider =
     FutureProvider.family<List<WidgetModel>, String>((ref, dashId) {
+  ref.watch(activeTenantProvider); // React to tenant switch
+  ref.watch(currentUserIdProvider); // React to login/logout
   return ref.watch(repoProvider).listWidgets(dashId);
 });
 
@@ -949,6 +985,7 @@ final activeTenantPendingInvitesProvider =
 });
 
 final dataSourcesProvider = FutureProvider<List<DataSource>>((ref) {
+  ref.watch(activeTenantProvider); // React to tenant switch
   return ref.watch(repoProvider).listDataSources();
 });
 
@@ -1029,6 +1066,7 @@ bool roleAtLeast(String? role, String minimum) =>
 
 /// The currently signed-in user's id (or null when signed out).
 final currentUserIdProvider = Provider<String?>((ref) {
+  ref.watch(_authChangeProvider); // React to login/logout
   return ref.watch(supabaseProvider).auth.currentUser?.id;
 });
 
@@ -1097,6 +1135,7 @@ final canEditDashboardProvider =
 /// admins — they can create new organizations and edit data sources across
 /// every org they belong to.
 final isBryzosOwnerProvider = FutureProvider<bool>((ref) async {
+  ref.watch(currentUserIdProvider); // React to login/logout
   final client = ref.watch(supabaseProvider);
   final uid = client.auth.currentUser?.id;
   if (uid == null) return false;
@@ -1117,6 +1156,7 @@ final libraryProvider = FutureProvider<List<LibraryItem>>((ref) {
   // Re-fetch when the active tenant changes so we never show another
   // tenant's library items after a switch.
   ref.watch(activeTenantProvider);
+  ref.watch(currentUserIdProvider); // React to login/logout
   return ref.watch(repoProvider).listLibrary();
 });
 
@@ -1125,5 +1165,6 @@ final reportsProvider = FutureProvider<List<Report>>((ref) {
   // (`tenant_id = current_tenant_id()`), but without this watch the cached
   // list from the previous tenant would persist after `switch-tenant`.
   ref.watch(activeTenantProvider);
+  ref.watch(currentUserIdProvider); // React to login/logout
   return ref.watch(repoProvider).listReports();
 });

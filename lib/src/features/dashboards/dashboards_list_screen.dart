@@ -1751,20 +1751,19 @@ class _AddWidgetDialogState extends State<_AddWidgetDialog> {
   static const Map<String, String> _categoryLabels = {
     'executive':  'Executive',
     'engagement': 'Engagement',
+    'users':      'Users',
     'searches':   'Searches',
     'quoting':    'Quoting',
     'orders':     'Orders',
-    'pricing':    'Pricing',
-    'chat':       'Chat',
     'bom':        'BOM',
-    'bpn':        'BPN',
+    'part#':      'Part#',
     'custom':     'Custom',
   };
 
-  // Priority order — most prominent categories appear first.
+  // Display order — left to right as specified.
   static const List<String> _categoryOrder = [
-    'executive', 'engagement', 'searches', 'quoting',
-    'orders', 'pricing', 'chat', 'bom', 'bpn',
+    'executive', 'engagement', 'users', 'searches',
+    'quoting', 'orders', 'bom', 'part#',
   ];
 
   String _labelFor(String raw) =>
@@ -1821,13 +1820,12 @@ class _AddWidgetDialogState extends State<_AddWidgetDialog> {
   Color _colorForCategory(String cat) => switch (cat.toLowerCase()) {
         'executive'   => const Color(0xFFF43F5E),
         'engagement'  => const Color(0xFF818CF8),
+        'users'       => const Color(0xFF38BDF8),
         'searches'    => const Color(0xFFA78BFA),
         'quoting'     => const Color(0xFFFBBF24),
         'orders'      => const Color(0xFF34D399),
-        'pricing'     => const Color(0xFF4ADE80),
-        'chat'        => const Color(0xFF38BDF8),
         'bom'         => const Color(0xFFE879F9),
-        'bpn'         => const Color(0xFFF97316),
+        'part#'       => const Color(0xFFF97316),
         'custom'      => OpticsColors.textSecondary,
         _ => OpticsColors.textSecondary,
       };

@@ -787,7 +787,8 @@ class _ActiveTenantCardState extends ConsumerState<_ActiveTenantCard> {
           ),
           const Divider(color: OpticsColors.border, height: 1),
 
-          // Data Sources
+          // Data Sources — visible to Owner/Admin/Editor (view-only for Admin/Editor)
+          // Only Owner can ADD/EDIT/DELETE data sources; others see name + sync status only.
           Padding(
             padding: const EdgeInsets.all(OpticsSpacing.lg),
             child: Column(
@@ -820,13 +821,17 @@ class _ActiveTenantCardState extends ConsumerState<_ActiveTenantCard> {
                   ],
                 ),
                 const SizedBox(height: OpticsSpacing.md),
-                _TenantDataSourcesList(tenantId: widget.tenant['id'] as String),
+                // Pass current user's role so the list can show view-only for non-owners
+                _TenantDataSourcesList(
+                  tenantId: widget.tenant['id'] as String,
+                  userRole: widget.role,
+                ),
               ],
             ),
           ),
           const Divider(color: OpticsColors.border, height: 1),
 
-          // Team Members
+          // Team Members — Admin+ can manage; Editor sees read-only list
           Padding(
             padding: const EdgeInsets.all(OpticsSpacing.lg),
             child: Column(
@@ -840,15 +845,25 @@ class _ActiveTenantCardState extends ConsumerState<_ActiveTenantCard> {
                   ],
                 ),
                 const SizedBox(height: OpticsSpacing.md),
-                _TeamList(tenantId: widget.tenant['id'] as String),
-                const SizedBox(height: OpticsSpacing.lg),
-                const Text('PENDING INVITES', style: _orgSectionLabel),
-                const SizedBox(height: OpticsSpacing.md),
-                _PendingInvitesList(tenantId: widget.tenant['id'] as String),
-                const SizedBox(height: OpticsSpacing.lg),
-                const Text('INVITE TEAMMATE', style: _orgSectionLabel),
-                const SizedBox(height: OpticsSpacing.md),
-                _InvitePanel(tenantId: widget.tenant['id'] as String),
+                // Pass role so team list knows whether to show role dropdowns
+                _TeamList(
+                  tenantId: widget.tenant['id'] as String,
+                  userRole: widget.role,
+                ),
+                // Pending Invites — Admin+ only
+                if (widget.role == 'owner' || widget.role == 'admin') ...[
+                  const SizedBox(height: OpticsSpacing.lg),
+                  const Text('PENDING INVITES', style: _orgSectionLabel),
+                  const SizedBox(height: OpticsSpacing.md),
+                  _PendingInvitesList(tenantId: widget.tenant['id'] as String),
+                ],
+                // Invite Panel — Admin+ only
+                if (widget.role == 'owner' || widget.role == 'admin') ...[
+                  const SizedBox(height: OpticsSpacing.lg),
+                  const Text('INVITE TEAMMATE', style: _orgSectionLabel),
+                  const SizedBox(height: OpticsSpacing.md),
+                  _InvitePanel(tenantId: widget.tenant['id'] as String),
+                ],
               ],
             ),
           ),
@@ -907,7 +922,8 @@ _DomainTagInfo? _getDomainTag(String email, bool isBryzosStaff) {
 
 class _TeamList extends ConsumerWidget {
   final String tenantId;
-  const _TeamList({required this.tenantId});
+  final String userRole;
+  const _TeamList({required this.tenantId, required this.userRole});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1710,9 +1726,14 @@ const TextStyle _orgSectionLabel = TextStyle(
 
 /// Inline list of data sources scoped to a specific tenant, used inside the
 /// Organization Settings card. Replaces the standalone Data Sources page.
+///
+/// PERMISSION RULES:
+/// - Owner: Can view, test, edit, delete, change cadence, manually refresh
+/// - Admin/Editor: Can view display name and sync status ONLY (read-only)
 class _TenantDataSourcesList extends ConsumerWidget {
   final String tenantId;
-  const _TenantDataSourcesList({required this.tenantId});
+  final String userRole;
+  const _TenantDataSourcesList({required this.tenantId, required this.userRole});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1745,7 +1766,7 @@ class _TenantDataSourcesList extends ConsumerWidget {
             for (final s in items)
               Padding(
                 padding: const EdgeInsets.only(bottom: OpticsSpacing.sm),
-                child: _TenantDataSourceRow(source: s),
+                child: _TenantDataSourceRow(source: s, userRole: userRole),
               ),
           ],
         );
@@ -1756,7 +1777,8 @@ class _TenantDataSourcesList extends ConsumerWidget {
 
 class _TenantDataSourceRow extends ConsumerStatefulWidget {
   final DataSource source;
-  const _TenantDataSourceRow({required this.source});
+  final String userRole;
+  const _TenantDataSourceRow({required this.source, required this.userRole});
 
   @override
   ConsumerState<_TenantDataSourceRow> createState() =>
@@ -2068,8 +2090,9 @@ class _TenantDataSourceRowState extends ConsumerState<_TenantDataSourceRow> {
               ],
             ),
           ),
-          // Auto-refresh cadence picker (editor+ can change; viewer sees disabled).
-          if (ref.watch(canEditProvider)) ...[
+          // Auto-refresh cadence picker, manual refresh — Owner only can change.
+          // Admin/Editor can only VIEW the data source (name + sync status).
+          if (widget.userRole == 'owner') ...[
             Tooltip(
               message: 'Scheduled auto-refresh',
               child: DropdownButton<int>(
@@ -2132,19 +2155,22 @@ class _TenantDataSourceRowState extends ConsumerState<_TenantDataSourceRow> {
             ),
           ),
           const SizedBox(width: 12),
-          OutlinedButton(
-            onPressed: _testing ? null : _runTest,
-            child: _testing
-                ? const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Test'),
-          ),
-          const SizedBox(width: 8),
+          // Test button — Owner only (Admin/Editor can only view)
+          if (widget.userRole == 'owner') ...[
+            OutlinedButton(
+              onPressed: _testing ? null : _runTest,
+              child: _testing
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Test'),
+            ),
+            const SizedBox(width: 8),
+          ],
           // Edit/Delete: owner-only.
-          if (ref.watch(isBryzosOwnerProvider).value ?? false) ...[
+          if (widget.userRole == 'owner') ...[
           IconButton(
             tooltip: 'Edit',
             iconSize: 18,

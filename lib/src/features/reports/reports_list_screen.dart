@@ -1421,7 +1421,7 @@ class _RowContent extends StatelessWidget {
         _iconBtn(
           Icons.schedule_outlined,
           'Schedule',
-          !isArchived ? onSchedule : null,
+          canEdit && !isArchived ? onSchedule : null,
         ),
         _iconBtn(
           Icons.share_outlined,

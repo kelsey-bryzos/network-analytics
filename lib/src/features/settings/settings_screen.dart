@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/models.dart';
 import '../../data/supabase_repo.dart';
+import '../dashboards/dashboards_list_screen.dart' show activeDashboardIdProvider;
 import '../../design/optics_card.dart';
 import '../../design/theme.dart';
 import 'role_info_tooltip.dart';
@@ -142,7 +143,7 @@ void _showSecureErrorSnackBar(BuildContext context, WidgetRef ref, String generi
   if (isBryzos) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('$generic $error'),
+        content: Text('$generic $error', style: const TextStyle(color: Colors.white)),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 5),
         backgroundColor: OpticsColors.danger,
@@ -151,13 +152,13 @@ void _showSecureErrorSnackBar(BuildContext context, WidgetRef ref, String generi
   } else {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(generic),
+        content: Text(generic, style: const TextStyle(color: Colors.white)),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 8), // Give them time to click report
         backgroundColor: OpticsColors.danger,
         action: SnackBarAction(
           label: 'Report Error',
-          textColor: OpticsColors.surfaceElevated,
+          textColor: Colors.white,
           onPressed: () {
             ref.read(supabaseProvider).functions.invoke(
               'send-error-report',
@@ -336,12 +337,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         // settings card shows fresh data after switching.
         ref.invalidate(_tenantDataSourcesProvider(tenantId));
         ref.invalidate(dashboardsListProvider);
+        // Reset the active dashboard so the user doesn't see stale data
+        // from the previous tenant's dashboard while the new one loads.
+        ref.read(activeDashboardIdProvider.notifier).state = null;
         // Reports and library are tenant-scoped too — drop the cached
         // lists so the new tenant doesn't briefly see the previous
         // tenant's reports while RLS would otherwise refilter on next
         // fetch.
         ref.invalidate(reportsProvider);
         ref.invalidate(libraryProvider);
+        // Also invalidate tenant role so permission checks refresh
+        ref.invalidate(activeTenantRoleProvider);
       }
     } catch (e) {
       debugPrint('[Optics] Switch tenant error: $e');
@@ -851,14 +857,14 @@ class _ActiveTenantCardState extends ConsumerState<_ActiveTenantCard> {
                   userRole: widget.role,
                 ),
                 // Pending Invites — Admin+ only
-                if (widget.role == 'owner' || widget.role == 'admin') ...[
+                if (widget.role.toLowerCase() == 'owner' || widget.role.toLowerCase() == 'admin') ...[
                   const SizedBox(height: OpticsSpacing.lg),
                   const Text('PENDING INVITES', style: _orgSectionLabel),
                   const SizedBox(height: OpticsSpacing.md),
                   _PendingInvitesList(tenantId: widget.tenant['id'] as String),
                 ],
                 // Invite Panel — Admin+ only
-                if (widget.role == 'owner' || widget.role == 'admin') ...[
+                if (widget.role.toLowerCase() == 'owner' || widget.role.toLowerCase() == 'admin') ...[
                   const SizedBox(height: OpticsSpacing.lg),
                   const Text('INVITE TEAMMATE', style: _orgSectionLabel),
                   const SizedBox(height: OpticsSpacing.md),
@@ -953,104 +959,10 @@ class _TeamList extends ConsumerWidget {
 
             final domainTag = _getDomainTag(email, isBryzosStaff);
 
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // Avatar circle
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: domainTag != null
-                          ? domainTag.color.withValues(alpha: 0.18)
-                          : OpticsColors.surfaceElevated,
-                      shape: BoxShape.circle,
-                      border: domainTag != null
-                          ? Border.all(color: domainTag.color.withValues(alpha: 0.5), width: 1)
-                          : null,
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      avatarChar,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        color: domainTag != null
-                            ? domainTag.color.withValues(alpha: 0.9)
-                            : OpticsColors.textSecondary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Name + email stack
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            if (fullName.isNotEmpty)
-                              Text(fullName, style: OpticsTextStyles.body),
-                            if (domainTag != null) ...[
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: domainTag.color.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(3),
-                                  border: Border.all(
-                                    color: domainTag.color.withValues(alpha: 0.4),
-                                  ),
-                                ),
-                                child: Text(
-                                  domainTag.label,
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w700,
-                                    color: domainTag.color.withValues(alpha: 0.9),
-                                    letterSpacing: 0.8,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                        if (email.isNotEmpty)
-                          Text(
-                            email,
-                            style: OpticsTextStyles.bodySm.copyWith(
-                              color: OpticsColors.textMuted,
-                              fontSize: 11,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // Role badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: role == 'OWNER'
-                          ? OpticsColors.accentCyan.withValues(alpha: 0.1)
-                          : OpticsColors.surfaceElevated,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      role,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: role == 'OWNER'
-                            ? OpticsColors.accentCyan
-                            : OpticsColors.textSecondary,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            return _TeamRow(
+              member: m,
+              tenantId: tenantId,
+              currentUserRole: userRole,
             );
           }).toList(),
         );
@@ -1066,6 +978,242 @@ class _TeamList extends ConsumerWidget {
 
 /// Lists outstanding (un-accepted) invites for the active tenant, with a
 /// revoke (×) button per row. Release Plan §1.9.
+class _TeamRow extends ConsumerStatefulWidget {
+  final Map<String, dynamic> member;
+  final String tenantId;
+  final String currentUserRole;
+
+  const _TeamRow({
+    required this.member,
+    required this.tenantId,
+    required this.currentUserRole,
+  });
+
+  @override
+  ConsumerState<_TeamRow> createState() => _TeamRowState();
+}
+
+class _TeamRowState extends ConsumerState<_TeamRow> {
+  bool _working = false;
+
+  Future<void> _changeRole(String newRole) async {
+    setState(() => _working = true);
+    try {
+      await ref.read(repoProvider).changeUserRole(
+            widget.tenantId,
+            widget.member['user_id'] as String,
+            newRole,
+          );
+      ref.invalidate(_tenantMembersProvider(widget.tenantId));
+    } catch (e) {
+      if (mounted) {
+        _showSecureErrorSnackBar(context, ref, 'Failed to update role.', e);
+      }
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
+
+  Future<void> _removeUser() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OpticsColors.surface,
+        title: const Text('REMOVE USER', style: OpticsTextStyles.headingMd),
+        content: const Text('Are you sure you want to remove this user from the organization?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel', style: TextStyle(color: OpticsColors.textSecondary)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: OpticsColors.danger),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Remove', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _working = true);
+    try {
+      await ref.read(repoProvider).removeUser(
+            widget.tenantId,
+            widget.member['user_id'] as String,
+          );
+      ref.invalidate(_tenantMembersProvider(widget.tenantId));
+    } catch (e) {
+      if (mounted) {
+        _showSecureErrorSnackBar(context, ref, 'Failed to remove user.', e);
+      }
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = widget.member;
+    final role = (m['role'] as String).toLowerCase();
+    final roleUpper = role.toUpperCase();
+    final displayName = (m['display_name'] as String?) ?? '';
+    final fullName = (m['full_name'] as String?) ?? displayName;
+    final email = (m['email'] as String?) ?? '';
+    final isBryzosStaff = m['is_bryzos_staff'] == true;
+
+    // Current user's own role determines what they can do
+    final cuRole = widget.currentUserRole.toLowerCase();
+    final canManage = cuRole == 'owner' || cuRole == 'admin';
+    final isOwner = cuRole == 'owner';
+
+    // Users cannot change their own role or remove themselves via this UI
+    final currentUserId = ref.read(supabaseProvider).auth.currentUser?.id;
+    final isSelf = currentUserId == m['user_id'];
+
+    final avatarChar = fullName.isNotEmpty
+        ? fullName[0].toUpperCase()
+        : (email.isNotEmpty ? email[0].toUpperCase() : '?');
+
+    final domainTag = _getDomainTag(email, isBryzosStaff);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Avatar circle
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: domainTag != null
+                  ? domainTag.color.withValues(alpha: 0.18)
+                  : OpticsColors.surfaceElevated,
+              shape: BoxShape.circle,
+              border: domainTag != null
+                  ? Border.all(color: domainTag.color.withValues(alpha: 0.5), width: 1)
+                  : null,
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              avatarChar,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: domainTag != null
+                    ? domainTag.color.withValues(alpha: 0.9)
+                    : OpticsColors.textSecondary,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Name + email stack
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    if (fullName.isNotEmpty) Text(fullName, style: OpticsTextStyles.body),
+                    if (domainTag != null) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: domainTag.color.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(3),
+                          border: Border.all(
+                            color: domainTag.color.withValues(alpha: 0.4),
+                          ),
+                        ),
+                        child: Text(
+                          domainTag.label,
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: domainTag.color.withValues(alpha: 0.9),
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                if (email.isNotEmpty)
+                  Text(
+                    email,
+                    style: OpticsTextStyles.bodySm.copyWith(
+                      color: OpticsColors.textMuted,
+                      fontSize: 11,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+
+          if (_working)
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else if (canManage && !isSelf) ...[
+            // Editable role dropdown
+            DropdownButton<String>(
+              value: role,
+              isDense: true,
+              underline: const SizedBox.shrink(),
+              style: OpticsTextStyles.bodySm.copyWith(color: OpticsColors.textPrimary),
+              dropdownColor: OpticsColors.surface,
+              items: (isOwner ? const ['viewer', 'editor', 'admin', 'owner'] : const ['viewer', 'editor', 'admin'])
+                  .map((r) => DropdownMenuItem(
+                        value: r,
+                        child: Text(r.toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                      ))
+                  .toList(),
+              onChanged: (v) {
+                if (v != null && v != role) _changeRole(v);
+              },
+            ),
+            const SizedBox(width: 8),
+            Tooltip(
+              message: 'Remove User',
+              child: IconButton(
+                iconSize: 18,
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.close, color: OpticsColors.textMuted),
+                onPressed: _removeUser,
+              ),
+            ),
+          ] else ...[
+            // Read-only role badge
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: roleUpper == 'OWNER'
+                    ? OpticsColors.accentCyan.withValues(alpha: 0.1)
+                    : OpticsColors.surfaceElevated,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                roleUpper,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: roleUpper == 'OWNER' ? OpticsColors.accentCyan : OpticsColors.textSecondary,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _PendingInvitesList extends ConsumerWidget {
   final String tenantId;
   const _PendingInvitesList({required this.tenantId});

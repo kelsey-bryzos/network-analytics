@@ -8,6 +8,7 @@ import '../../data/supabase_repo.dart';
 import '../../design/canvas_zoom.dart';
 import '../../design/optics_card.dart';
 import '../../design/theme.dart';
+import '../../shared/secure_error.dart';
 import '../reports/report_viewer_screen.dart' show restDataSourceIdProvider;
 import 'time_range_options.dart';
 import 'time_range_picker.dart';
@@ -75,12 +76,7 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
       } catch (e, st) {
         debugPrint('[Optics] Error persisting widget ${w.id}: $e\n$st');
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: OpticsColors.danger,
-            content: Text('Could not save widget changes: $e'),
-          ),
-        );
+        showSecureErrorSnackBar(context, ref, 'Could not save widget changes.', e);
       }
     });
   }
@@ -112,7 +108,7 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
       final sources = await repo.listDataSources();
       if (sources.isEmpty) {
         messenger.showSnackBar(const SnackBar(
-          content: Text('No data sources connected for this tenant.'),
+          content: Text('No data sources connected for this tenant.', style: const TextStyle(color: Colors.white)),
         ));
         return;
       }
@@ -128,7 +124,7 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
       if (failures.isNotEmpty) {
         messenger.showSnackBar(SnackBar(
           backgroundColor: OpticsColors.danger,
-          content: Text('Could not start sync: ${failures.join('; ')}'),
+          content: Text('Could not start data sync. Please try again.', style: const TextStyle(color: Colors.white)),
         ));
       } else {
         messenger.showSnackBar(SnackBar(
@@ -187,13 +183,10 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
       }
       if (!mounted) return;
       _loadWidgets(dashId);
-      messenger.showSnackBar(const SnackBar(content: Text('Data refresh complete.')));
+      messenger.showSnackBar(const SnackBar(content: Text('Data refresh complete.', style: TextStyle(color: Colors.white))));
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(SnackBar(
-          backgroundColor: OpticsColors.danger,
-          content: Text('Refresh failed: $e'),
-        ));
+        showSecureErrorSnackBar(context, ref, 'Data refresh failed.', e);
       }
     } finally {
       _progressTimer?.cancel();
@@ -232,13 +225,7 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
     }).catchError((e, st) {
       debugPrint('[Optics] _loadWidgets ERR dashId=$dashId: $e\n$st');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: OpticsColors.danger,
-            content: Text('Failed to load widgets: $e'),
-            duration: const Duration(seconds: 6),
-          ),
-        );
+        showSecureErrorSnackBar(context, ref, 'Failed to load widgets.', e);
       }
     });
   }
@@ -991,12 +978,7 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
       setState(() {
         _widgets = previous;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: OpticsColors.danger,
-          content: Text('Could not remove widget: $e'),
-        ),
-      );
+      showSecureErrorSnackBar(context, ref, 'Could not remove widget.', e);
     }
   }
 
@@ -1007,16 +989,11 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
     if (!mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     try {
-      messenger.showSnackBar(SnackBar(content: Text('Sharing dashboard with $email...')));
+      messenger.showSnackBar(SnackBar(content: Text('Sharing dashboard with $email...', style: const TextStyle(color: Colors.white))));
       await ref.read(repoProvider).shareDashboard(dashId, email);
-      messenger.showSnackBar(SnackBar(content: Text('Dashboard shared successfully with $email.')));
+      messenger.showSnackBar(SnackBar(content: Text('Dashboard shared successfully with $email.', style: const TextStyle(color: Colors.white))));
     } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(
-          backgroundColor: OpticsColors.danger,
-          content: Text('Failed to share: $e'),
-        ),
-      );
+      if (mounted) showSecureErrorSnackBar(context, ref, 'Failed to share dashboard.', e);
     }
   }
 
@@ -1082,12 +1059,7 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
     } catch (e, st) {
       debugPrint('[Optics] Error creating dashboard: $e\n$st');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: OpticsColors.danger,
-          content: Text('Could not create dashboard: $e'),
-        ),
-      );
+      showSecureErrorSnackBar(context, ref, 'Could not create dashboard.', e);
     }
   }
 
@@ -1178,12 +1150,7 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
     } catch (e, st) {
       debugPrint('[Optics] Error deleting dashboard: $e\n$st');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: OpticsColors.danger,
-          content: Text('Could not delete dashboard: $e'),
-        ),
-      );
+      showSecureErrorSnackBar(context, ref, 'Could not delete dashboard.', e);
     }
   }
 
@@ -1212,8 +1179,10 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
     return dashboards.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(
-        child: Text('Failed to load: $e',
-            style: const TextStyle(color: OpticsColors.danger)),
+        child: SecureErrorText(
+          genericMessage: 'Failed to load dashboards.',
+          error: e,
+        ),
       ),
       data: (items) {
         if (items.isEmpty) {

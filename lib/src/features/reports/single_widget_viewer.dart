@@ -76,7 +76,7 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
               ),
             ),
             const Spacer(),
-            // Export / Share
+            // Export — available to all users (viewers can export)
             _toolbarBtn(
               icon: Icons.file_download_outlined,
               label: 'Export',
@@ -84,18 +84,22 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
                 exportReportHelper(context, ref, widget.report, 'xlsx');
               },
             ),
-            const SizedBox(width: OpticsSpacing.sm),
-            _toolbarBtn(
-              icon: Icons.share_outlined,
-              label: 'Share',
-              onTap: () {
-                shareReportHelper(context, ref, widget.report);
-              },
-            ),
-            const SizedBox(width: OpticsSpacing.sm),
-            // Add to Dashboard
-            if (!effectiveIsTableView)
+            // Share — Editors+ only (Guests/Viewers cannot share)
+            if (ref.watch(canEditProvider)) ...[
+              const SizedBox(width: OpticsSpacing.sm),
+              _toolbarBtn(
+                icon: Icons.share_outlined,
+                label: 'Share',
+                onTap: () {
+                  shareReportHelper(context, ref, widget.report);
+                },
+              ),
+            ],
+            // Add to Dashboard — Editors+ only (Guests/Viewers cannot add)
+            if (!effectiveIsTableView && ref.watch(canEditProvider)) ...[
+              const SizedBox(width: OpticsSpacing.sm),
               _AddToDashboardBtn(widgetData: widget.widgetData, report: widget.report),
+            ],
           ],
         ),
         const SizedBox(height: OpticsSpacing.md),

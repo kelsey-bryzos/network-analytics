@@ -20,8 +20,7 @@ class _NavItem {
 
 const _navItems = [
   _NavItem(Icons.dashboard_outlined, 'Dashboards', '/dashboards'),
-  _NavItem(Icons.auto_awesome_mosaic_outlined, 'Library', '/library'),
-  _NavItem(Icons.description_outlined, 'Reports', '/reports'),
+  _NavItem(Icons.description_outlined, 'Reports Library', '/reports'),
   _NavItem(Icons.travel_explore_outlined, 'Report Builder', '/reports/new'),
   _NavItem(Icons.settings_outlined, 'Settings', '/settings'),
 ];

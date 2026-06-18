@@ -6,6 +6,7 @@ import '../../data/models.dart';
 import '../../data/supabase_repo.dart';
 import '../../design/optics_card.dart';
 import '../../design/theme.dart';
+import '../../shared/secure_error.dart';
 import '../dashboards/widget_renderer.dart';
 import 'custom_builder/custom_report_query_v2.dart';
 import 'custom_builder/v2_report_view.dart';
@@ -28,8 +29,10 @@ class ReportViewerScreen extends ConsumerWidget {
       child: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
-          child: Text('$e',
-              style: const TextStyle(color: OpticsColors.danger)),
+          child: SecureErrorText(
+            genericMessage: 'Could not load report.',
+            error: e,
+          ),
         ),
         data: (report) {
           if (report == null) {

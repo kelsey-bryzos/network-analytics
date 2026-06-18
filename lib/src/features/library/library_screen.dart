@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/supabase_repo.dart';
 import '../../design/optics_card.dart';
 import '../../design/theme.dart';
+import '../../shared/secure_error.dart';
 
 // ignore: unused_import
 
@@ -34,11 +35,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               const Text('LIBRARY', style: OpticsTextStyles.headingXl),
               const SizedBox(width: 16),
               // Combine button only for editors+
-              if (_selected.length == 2 && canEdit)
+              if (canEdit)
                 ElevatedButton.icon(
                   icon: const Icon(Icons.merge_type, size: 16),
                   label: const Text('Combine'),
-                  onPressed: _combineSelected,
+                  onPressed: _selected.length == 2 ? _combineSelected : null,
                 ),
               if (_selected.isNotEmpty)
                 Padding(
@@ -79,8 +80,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               loading: () =>
                   const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(
-                child: Text('$e',
-                    style: const TextStyle(color: OpticsColors.danger)),
+                child: SecureErrorText(
+                  genericMessage: 'Could not load library.',
+                  error: e,
+                ),
               ),
               data: (all) {
                 final filtered = all.where((it) {
@@ -240,6 +243,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   void _onCardTap(String id, String kind) {
     if (kind != 'metric' && kind != 'widget') return;
+    // Only editors+ can select items (for combine operation)
+    final canEdit = ref.read(canEditProvider);
+    if (!canEdit) return;
     setState(() {
       if (_selected.contains(id)) {
         _selected.remove(id);

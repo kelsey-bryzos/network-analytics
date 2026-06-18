@@ -11,6 +11,7 @@ import 'package:intl/intl.dart';
 
 import '../../../data/supabase_repo.dart';
 import '../../../design/theme.dart';
+import '../../../shared/secure_error.dart';
 import 'custom_report_query_v2.dart';
 
 class _V2Args {
@@ -58,8 +59,10 @@ class V2ReportView extends ConsumerWidget {
     return rowsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(
-        child: Text('$e',
-            style: const TextStyle(color: OpticsColors.danger)),
+        child: SecureErrorText(
+          genericMessage: 'Could not load report data.',
+          error: e,
+        ),
       ),
       data: (rows) => _render(rows),
     );

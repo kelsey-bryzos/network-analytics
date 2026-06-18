@@ -548,9 +548,25 @@ class _WidgetRendererCore extends StatelessWidget {
     double v, prev;
     final meta = model.binding['_meta'];
     if (meta is Map && meta['total'] != null) {
-      v = (meta['total'] as num).toDouble();
-      final p = meta['prior'];
-      prev = p is num ? p.toDouble() : v;
+      final totalRaw = meta['totalRaw'];
+      final priorRaw = meta['priorRaw'];
+      final totalVal = totalRaw is num ? totalRaw.toDouble() : (meta['total'] as num).toDouble();
+      final priorVal = priorRaw is num
+          ? priorRaw.toDouble()
+          : (meta['prior'] is num ? (meta['prior'] as num).toDouble() : totalVal);
+
+      // Back-compat guard: some older payloads store raw dollars in `_meta.total`
+      // while `_unit` is `$K`/`$M`. Normalize to scaled units so formatter does not
+      // double-scale.
+      final metric = ((model.binding['brz'] as Map?)?['metric'] as String?) ?? '';
+      if (totalRaw is! num && metric == 'avg_order_price_trend') {
+        final scale = _unit == r'$M' ? 1e6 : _unit == r'$K' ? 1e3 : 1.0;
+        v = scale > 1 ? totalVal / scale : totalVal;
+        prev = scale > 1 ? priorVal / scale : priorVal;
+      } else {
+        v = totalVal;
+        prev = priorVal;
+      }
     } else if (_hasMulti) {
       final ms = _multiSeries!;
       v = ms.fold(0.0, (a, s) => a + s.last);

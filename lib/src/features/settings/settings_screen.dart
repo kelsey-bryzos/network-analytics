@@ -497,7 +497,8 @@ class _InactiveTenantCard extends ConsumerWidget {
               ],
             ),
           ),
-          if (role != 'guest') ...[
+          // Only Owner, Admin, Editor can manage settings. Viewer and Guest cannot.
+          if (role == 'owner' || role == 'admin' || role == 'editor') ...[
             OutlinedButton(
               // Manage Settings: switch tenant (if needed) and expand this card.
               onPressed: () => onManage(),

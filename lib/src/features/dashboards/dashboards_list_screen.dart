@@ -1256,7 +1256,8 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
         // IRONCLAD PERMISSION CHECK: Use the dashboard-specific provider
         // that checks BOTH tenant role AND dashboard ownership.
         // Shared dashboards are ALWAYS view-only.
-        final canEdit = ref.watch(canEditDashboardProvider(currentDash));
+        // Default to FALSE while loading — never allow edit access during async check.
+        final canEdit = ref.watch(canEditDashboardProvider(currentDash)).valueOrNull ?? false;
 
         // Use preview override if set (during global settings dialog), else use saved setting
         final effectiveTheme = _themePreviewOverride ?? currentDash.settings['theme'];
@@ -1507,7 +1508,8 @@ class _HeaderBar extends ConsumerWidget {
     // IRONCLAD PERMISSION CHECK: Use the dashboard-specific provider
     // that checks BOTH tenant role AND dashboard ownership.
     // Shared dashboards are ALWAYS view-only.
-    final canEdit = ref.watch(canEditDashboardProvider(current));
+    // Default to FALSE while loading — never allow edit access during async check.
+    final canEdit = ref.watch(canEditDashboardProvider(current)).valueOrNull ?? false;
     final fg = isLightTheme ? const Color(0xFF111111) : OpticsColors.textSecondary;
     return Row(
       children: [
@@ -2191,7 +2193,8 @@ class _EmptyDashboard extends ConsumerWidget {
     // IRONCLAD PERMISSION CHECK: Use the dashboard-specific provider
     // that checks BOTH tenant role AND dashboard ownership.
     // Shared dashboards are ALWAYS view-only.
-    final canEdit = ref.watch(canEditDashboardProvider(dashboard));
+    // Default to FALSE while loading — never allow edit access during async check.
+    final canEdit = ref.watch(canEditDashboardProvider(dashboard)).valueOrNull ?? false;
     return Center(
       child: OpticsCard(
         child: SizedBox(

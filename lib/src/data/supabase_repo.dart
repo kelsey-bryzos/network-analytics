@@ -1054,8 +1054,12 @@ final canOwnProvider = Provider<bool>((ref) {
 /// IRONCLAD dashboard edit permission check.
 ///
 /// A user can edit a dashboard if and ONLY if:
-/// 1. Their tenant role is 'editor' or higher, AND
-/// 2. They are the OWNER of the dashboard (created_by == current user)
+/// 1. They are the OWNER of the dashboard (created_by == current user), AND
+/// 2. Their role in the DASHBOARD'S TENANT is 'editor' or higher
+///
+/// CRITICAL: We check the role in the DASHBOARD'S tenant, NOT the user's
+/// active tenant. This prevents the bug where a user with admin role in
+/// TenantA can edit dashboards in TenantB (where they might be guest).
 ///
 /// Shared dashboards are ALWAYS view-only — the viewer is not the owner.
 /// Guests and viewers can NEVER edit any dashboard, regardless of ownership.
@@ -1063,18 +1067,30 @@ final canOwnProvider = Provider<bool>((ref) {
 /// This is the SINGLE SOURCE OF TRUTH for dashboard edit permissions.
 /// All UI code must use this provider when determining edit controls.
 final canEditDashboardProvider =
-    Provider.family<bool, Dashboard?>((ref, dashboard) {
+    FutureProvider.family<bool, Dashboard?>((ref, dashboard) async {
   if (dashboard == null) return false;
 
-  // Check 1: User must have editor+ role in the active tenant
-  final role = ref.watch(activeTenantRoleProvider).value;
-  if (!roleAtLeast(role, 'editor')) return false;
-
-  // Check 2: User must be the dashboard owner
+  // Check 1: User must be the dashboard owner (first because it's fast/sync)
   final uid = ref.watch(currentUserIdProvider);
   if (!dashboard.isOwnedBy(uid)) return false;
 
-  return true;
+  // Check 2: User must have editor+ role in the DASHBOARD'S tenant (not active tenant)
+  // This is the critical fix — we query the user's role in the dashboard's tenant_id
+  final client = ref.watch(supabaseProvider);
+  if (uid == null) return false;
+  
+  try {
+    final row = await client
+        .from('memberships')
+        .select('role')
+        .eq('tenant_id', dashboard.tenantId)
+        .eq('user_id', uid)
+        .maybeSingle();
+    final role = (row as Map?)?['role'] as String?;
+    return roleAtLeast(role, 'editor');
+  } catch (_) {
+    return false;
+  }
 });
 
 /// True if the *current user* is an `owner` of ANY tenant. Owners are Bryzos

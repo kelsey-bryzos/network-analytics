@@ -6,6 +6,7 @@ import '../../data/supabase_repo.dart';
 import '../../design/optics_card.dart';
 import '../../design/theme.dart';
 import '../../shared/secure_error.dart';
+import '../dashboards/time_range_options.dart';
 import '../dashboards/widget_renderer.dart';
 import 'reports_list_screen.dart';
 
@@ -219,15 +220,23 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
 
     final kind = WidgetKind.fromString(type);
     final settings = Map<String, dynamic>.from((w['settings'] as Map?) ?? const {});
+    if (widget.report.isCanned) {
+      settings['timeRange'] = kTimeRangeMaximum;
+    }
     if (metric == 'avg_order_price_trend') {
       settings['sortBy'] = 'None';
       settings['barOrientation'] = 'Vertical';
       settings['maxItems'] = 12;
     }
 
-    if (binding['brz'] is Map && effectiveDataSourceId != null) {
+    if (binding['brz'] is Map) {
       final brz = Map<String, dynamic>.from(binding['brz'] as Map);
-      brz['data_source_id'] = effectiveDataSourceId;
+      if (effectiveDataSourceId != null) {
+        brz['data_source_id'] = effectiveDataSourceId;
+      }
+      if (widget.report.isCanned) {
+        brz['time_range'] = kTimeRangeMaximum;
+      }
       binding['brz'] = brz;
     }
 

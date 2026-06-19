@@ -153,6 +153,9 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
     return kDefaultTimeRange;
   }
 
+  String get _backendTimeRange =>
+      _timeRange == kTimeRangeMaximum ? 'All' : _timeRange;
+
   int get _maxItems {
     final s = (widget.model.settings['maxItems'] as num?)?.toInt();
     if (s != null && s > 0) return s;
@@ -165,7 +168,7 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
     final brz = _brz;
     if (brz == null) return '';
     final tid = ref.read(activeTenantProvider) ?? '';
-    return '${brz['data_source_id']}|${brz['metric']}|$_timeRange|$_maxItems|$tid';
+    return '${brz['data_source_id']}|${brz['metric']}|$_backendTimeRange|$_maxItems|$tid';
   }
 
   @override
@@ -200,7 +203,7 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
       final res = await ref.read(repoProvider).widgetDataBryzos(
             dataSourceId: dataSourceId,
             metric: metric,
-            timeRange: _timeRange,
+            timeRange: _backendTimeRange,
             maxItems: _maxItems > 0 ? _maxItems : 10,
           );
       if (!mounted) return;

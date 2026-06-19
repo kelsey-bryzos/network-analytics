@@ -419,14 +419,10 @@ final restDataSourceIdProvider = FutureProvider<String?>((ref) async {
   final activeTenantId = ref.watch(activeTenantProvider);
   final all = await ref.watch(dataSourcesProvider.future);
 
-  if (activeTenantId != null) {
-    for (final ds in all) {
-      if (ds.kind == 'rest' && ds.tenantId == activeTenantId) return ds.id;
-    }
-  }
+  if (activeTenantId == null) return null;
 
   for (final ds in all) {
-    if (ds.kind == 'rest') return ds.id;
+    if (ds.kind == 'rest' && ds.tenantId == activeTenantId) return ds.id;
   }
   return null;
 });

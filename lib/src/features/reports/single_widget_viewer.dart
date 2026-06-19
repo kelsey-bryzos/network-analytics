@@ -36,13 +36,19 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
     final widgetBindingDsId = brz?['data_source_id'] as String?;
 
     final dsList = ref.watch(dataSourcesProvider).asData?.value ?? const <DataSource>[];
-    final firstRestId = dsList.where((d) => d.kind == 'rest').map((d) => d.id).cast<String?>().firstWhere(
-      (v) => v != null,
-      orElse: () => null,
-    );
-    final firstAnyId = dsList.isNotEmpty ? dsList.first.id : null;
+    final activeTenantId = ref.watch(activeTenantProvider);
 
-    return widgetBindingDsId ?? widget.dataSourceId ?? firstRestId ?? firstAnyId;
+    String? tenantRestId;
+    if (activeTenantId != null) {
+      for (final ds in dsList) {
+        if (ds.kind == 'rest' && ds.tenantId == activeTenantId) {
+          tenantRestId = ds.id;
+          break;
+        }
+      }
+    }
+
+    return widgetBindingDsId ?? widget.dataSourceId ?? tenantRestId;
   }
 
   @override

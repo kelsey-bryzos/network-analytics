@@ -3396,7 +3396,7 @@ Future<void> downloadToDiskHelper(BuildContext ctx, {required String url, requir
   if (kIsWeb) {
     final uri = Uri.parse(url);
     try {
-      final launched = await launchUrl(uri, mode: LaunchMode.platformDefault, webOnlyWindowName: '_blank');
+      final launched = await launchUrl(uri, mode: LaunchMode.platformDefault, webOnlyWindowName: '_self');
       if (ctx.mounted) {
         showToastHelper(ctx, launched ? '$fmtLabel download started.' : '$fmtLabel download could not be opened.');
       }

@@ -705,12 +705,12 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
     final fmtLabel = format.toUpperCase();
     final defaultFileName = fileName;
 
-    // On web, use url_launcher to open the signed URL in a new tab.
+    // On web, open the signed URL outside the current SPA tab.
     // The browser will handle the download based on Content-Disposition.
     if (kIsWeb) {
       final uri = Uri.parse(url);
       try {
-        final launched = await launchUrl(uri, mode: LaunchMode.platformDefault, webOnlyWindowName: '_self');
+        final launched = await launchUrl(uri, mode: LaunchMode.platformDefault, webOnlyWindowName: '_blank');
         if (ctx.mounted) {
           _toast(ctx, launched ? '$fmtLabel download started.' : '$fmtLabel download could not be opened.');
         }
@@ -2966,11 +2966,11 @@ Future<void> downloadToDiskHelper(BuildContext ctx, {required String url, requir
   final fmtLabel = format.toUpperCase();
   final defaultFileName = fileName;
 
-  // On web, use url_launcher to open the signed URL.
+  // On web, open the signed URL outside the current SPA tab.
   if (kIsWeb) {
     final uri = Uri.parse(url);
     try {
-      final launched = await launchUrl(uri, mode: LaunchMode.platformDefault, webOnlyWindowName: '_self');
+      final launched = await launchUrl(uri, mode: LaunchMode.platformDefault, webOnlyWindowName: '_blank');
       if (ctx.mounted) {
         showToastHelper(ctx, launched ? '$fmtLabel download started.' : '$fmtLabel download could not be opened.');
       }

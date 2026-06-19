@@ -45,7 +45,7 @@ class WelcomeScreen extends StatelessWidget {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(18),
                     border: Border.all(
-                      color: const Color(0xFF3DB8FF).withOpacity(0.4),
+                      color: const Color(0xFF3DB8FF).withValues(alpha: 0.4),
                       width: 1,
                     ),
                     color: OpticsColors.surface,
@@ -202,14 +202,14 @@ class _PlatformCardState extends State<_PlatformCard> {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           decoration: BoxDecoration(
             color: widget.primary
-                ? widget.accent.withOpacity(_hovered ? 0.18 : 0.10)
+                ? widget.accent.withValues(alpha: _hovered ? 0.18 : 0.10)
                 : OpticsColors.surface,
             borderRadius: BorderRadius.circular(OpticsRadii.md),
             border: Border.all(
               color: _hovered
-                  ? widget.accent.withOpacity(0.6)
+                  ? widget.accent.withValues(alpha: 0.6)
                   : widget.primary
-                      ? widget.accent.withOpacity(0.3)
+                      ? widget.accent.withValues(alpha: 0.3)
                       : OpticsColors.border,
             ),
           ),
@@ -219,7 +219,7 @@ class _PlatformCardState extends State<_PlatformCard> {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: widget.accent.withOpacity(0.12),
+                  color: widget.accent.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(widget.icon, color: widget.accent, size: 22),

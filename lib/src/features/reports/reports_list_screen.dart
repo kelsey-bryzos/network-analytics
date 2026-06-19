@@ -1115,7 +1115,11 @@ class _ReportsTable extends StatelessWidget {
               onChanged: (v) => onToggleSelectAll(rows, v ?? false),
               visualDensity: VisualDensity.compact,
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              activeColor: OpticsColors.accentCyan,
+              fillColor: WidgetStateProperty.resolveWith<Color?>(
+                (states) => states.contains(WidgetState.selected)
+                    ? OpticsColors.accentCyan
+                    : null,
+              ),
               side: const BorderSide(color: OpticsColors.textMuted),
             ),
           ),
@@ -1276,7 +1280,11 @@ class _RowContent extends StatelessWidget {
               onChanged: (_) => onToggleSelect(),
               visualDensity: VisualDensity.compact,
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              activeColor: OpticsColors.accentCyan,
+              fillColor: WidgetStateProperty.resolveWith<Color?>(
+                (states) => states.contains(WidgetState.selected)
+                    ? OpticsColors.accentCyan
+                    : null,
+              ),
               side: const BorderSide(color: OpticsColors.textMuted),
             ),
           ),
@@ -2086,7 +2094,7 @@ class ShareReportDialogState extends ConsumerState<ShareReportDialog> {
                   style: TextStyle(
                       fontSize: 11, color: OpticsColors.textSecondary),
                 ),
-                activeColor: OpticsColors.accentCyan,
+                activeThumbColor: OpticsColors.accentCyan,
               ),
               const SizedBox(height: 4),
               const Text(
@@ -3252,7 +3260,7 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
                                 value: enabled,
                                 onChanged: (v) =>
                                     _toggleEnabled(s['id'] as String, v),
-                                activeColor: OpticsColors.accentCyan,
+                                activeThumbColor: OpticsColors.accentCyan,
                               ),
                               IconButton(
                                 tooltip: 'Delete schedule',
@@ -3302,7 +3310,11 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
             onChanged: onChanged,
             visualDensity: VisualDensity.compact,
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            activeColor: OpticsColors.accentCyan,
+            fillColor: WidgetStateProperty.resolveWith<Color?>(
+              (states) => states.contains(WidgetState.selected)
+                  ? OpticsColors.accentCyan
+                  : null,
+            ),
             side: const BorderSide(color: OpticsColors.textMuted),
           ),
           const SizedBox(width: 4),

@@ -1528,7 +1528,7 @@ class _InvitePanelState extends ConsumerState<_InvitePanel> {
                     : const ['viewer', 'editor', 'admin'];
                 if (_role != null && !roles.contains(_role)) _role = null;
                 return DropdownButtonFormField<String>(
-                  value: _role,
+                  initialValue: _role,
                   isDense: true,
                   decoration: const InputDecoration(isDense: true),
                   dropdownColor: OpticsColors.surfaceElevated,

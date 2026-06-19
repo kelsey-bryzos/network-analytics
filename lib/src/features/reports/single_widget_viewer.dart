@@ -6,6 +6,7 @@ import '../../data/supabase_repo.dart';
 import '../../design/optics_card.dart';
 import '../../design/theme.dart';
 import '../../shared/secure_error.dart';
+import '../dashboards/time_range_options.dart';
 import '../dashboards/widget_renderer.dart';
 import 'reports_list_screen.dart';
 
@@ -187,19 +188,21 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
     
     final kind = WidgetKind.fromString(type);
     final settings = Map<String, dynamic>.from((w['settings'] as Map?) ?? const {});
-
-    if (effectiveIsTableView) {
-      if (binding['brz'] is Map) {
-        final brz = Map<String, dynamic>.from(binding['brz'] as Map);
-        brz['time_range'] = 'All';
-        binding['brz'] = brz;
-      }
+    if (widget.report.isCanned) {
+      settings['timeRange'] = kTimeRangeMaximum;
     }
 
-    if (binding['brz'] is Map && widget.dataSourceId != null) {
-      final brz = Map<String, dynamic>.from(binding['brz'] as Map);
-      brz['data_source_id'] = widget.dataSourceId;
-      binding['brz'] = brz;
+    if (effectiveIsTableView || widget.report.isCanned || widget.dataSourceId != null) {
+      if (binding['brz'] is Map) {
+        final brz = Map<String, dynamic>.from(binding['brz'] as Map);
+        if (widget.dataSourceId != null) {
+          brz['data_source_id'] = widget.dataSourceId;
+        }
+        if (effectiveIsTableView || widget.report.isCanned) {
+          brz['time_range'] = kTimeRangeMaximum;
+        }
+        binding['brz'] = brz;
+      }
     }
 
     final model = WidgetModel(

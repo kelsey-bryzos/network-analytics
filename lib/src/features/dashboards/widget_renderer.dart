@@ -380,7 +380,6 @@ class _WidgetRendererCore extends StatelessWidget {
     if (metric == 'avg_order_price_trend') return 'None';
     return model.settings['sortBy'] as String? ?? 'Value ↓';
   }
-  String get _groupByKey => model.settings['groupBy'] as String? ?? 'Category';
   int get _maxItems => (model.settings['maxItems'] as num?)?.toInt() ?? 0;
 
   List<Color> get _palette {
@@ -1480,9 +1479,7 @@ class _WidgetRendererCore extends StatelessWidget {
     // Column order = first row's key insertion order.
     final cols = rows.first.keys.toList();
     final headers = [for (final c in cols) _humanizeKey(c)];
-    final aligns = <TextAlign>[
-      for (final c in cols) TextAlign.left,
-    ];
+    final aligns = List<TextAlign>.filled(cols.length, TextAlign.left);
 
     // Compute a minimum comfortable width for the table.
     // Base width: 32 for the '#' column, plus padding.
@@ -1641,18 +1638,6 @@ class _WidgetRendererCore extends StatelessWidget {
         .map((w) =>
             w.isEmpty ? w : (w[0].toUpperCase() + w.substring(1)))
         .join(' ');
-  }
-
-  /// A column is treated as numeric if >50% of its non-null values are nums.
-  bool _isNumericColumn(String key, List<Map<String, dynamic>> rows) {
-    int total = 0, nums = 0;
-    for (final r in rows) {
-      final v = r[key];
-      if (v == null) continue;
-      total++;
-      if (v is num) nums++;
-    }
-    return total > 0 && nums * 2 > total;
   }
 
   int _flexForCol(String key) {

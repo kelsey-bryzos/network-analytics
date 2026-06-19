@@ -3505,5 +3505,5 @@ Future<void> shareReportHelper(BuildContext ctx, WidgetRef ref, Report r) async 
     context: ctx,
     builder: (_) => ShareReportDialog(report: r),
   );
-  ref.refresh(reportsProvider);
+  ref.invalidate(reportsProvider);
 }

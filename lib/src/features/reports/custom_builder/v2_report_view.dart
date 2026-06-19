@@ -604,6 +604,3 @@ double? _toDouble(dynamic v) {
   if (v is num) return v.toDouble();
   return double.tryParse(v.toString());
 }
-
-bool _looksLikeIsoDate(String s) =>
-    s.length >= 10 && RegExp(r'^\d{4}-\d{2}-\d{2}').hasMatch(s);

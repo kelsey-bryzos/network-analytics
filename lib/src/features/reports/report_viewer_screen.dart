@@ -7,6 +7,7 @@ import '../../data/supabase_repo.dart';
 import '../../design/optics_card.dart';
 import '../../design/theme.dart';
 import '../../shared/secure_error.dart';
+import '../dashboards/time_range_options.dart';
 import '../dashboards/widget_renderer.dart';
 import 'custom_builder/custom_report_query_v2.dart';
 import 'custom_builder/v2_report_view.dart';
@@ -126,6 +127,7 @@ class ReportViewerScreen extends ConsumerWidget {
                               pageCount: pages.length,
                               tenantId: report.tenantId,
                               dataSourceId: dsId,
+                              isCanned: report.isCanned,
                             ),
                           );
                         },
@@ -224,6 +226,7 @@ class _PageBlock extends StatelessWidget {
   final int pageCount;
   final String tenantId;
   final String? dataSourceId;
+  final bool isCanned;
 
   const _PageBlock({
     required this.page,
@@ -231,6 +234,7 @@ class _PageBlock extends StatelessWidget {
     required this.pageCount,
     required this.tenantId,
     required this.dataSourceId,
+    required this.isCanned,
   });
 
   @override
@@ -297,12 +301,18 @@ class _PageBlock extends StatelessWidget {
     final settings =
         Map<String, dynamic>.from((w['settings'] as Map?) ?? const {});
 
-    // Inject the active tenant's REST data source id into the brz binding
-    // so WidgetRenderer can fetch live data.
-    if (binding['brz'] is Map && dataSourceId != null) {
+    if (binding['brz'] is Map) {
       final brz = Map<String, dynamic>.from(binding['brz'] as Map);
-      brz['data_source_id'] = dataSourceId;
+      if (dataSourceId != null) {
+        brz['data_source_id'] = dataSourceId;
+      }
+      if (isCanned) {
+        brz['time_range'] = kTimeRangeMaximum;
+      }
       binding['brz'] = brz;
+    }
+    if (isCanned) {
+      settings['timeRange'] = kTimeRangeMaximum;
     }
 
     // Sizing: KPIs are compact tiles; charts and tables get wider blocks.

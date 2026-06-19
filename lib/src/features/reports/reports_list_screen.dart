@@ -681,8 +681,10 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
     if (kIsWeb) {
       final uri = Uri.parse(url);
       try {
-        await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
-        if (ctx.mounted) _toast(ctx, '$fmtLabel download started.');
+        final launched = await launchUrl(uri, mode: LaunchMode.platformDefault, webOnlyWindowName: '_blank');
+        if (ctx.mounted) {
+          _toast(ctx, launched ? '$fmtLabel download started.' : '$fmtLabel download could not be opened.');
+        }
       } catch (e) {
         if (ctx.mounted) _toast(ctx, '$fmtLabel download failed: $e');
       }
@@ -3391,8 +3393,10 @@ Future<void> downloadToDiskHelper(BuildContext ctx, {required String url, requir
   if (kIsWeb) {
     final uri = Uri.parse(url);
     try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
-      if (ctx.mounted) showToastHelper(ctx, '$fmtLabel download started.');
+      final launched = await launchUrl(uri, mode: LaunchMode.platformDefault, webOnlyWindowName: '_blank');
+      if (ctx.mounted) {
+        showToastHelper(ctx, launched ? '$fmtLabel download started.' : '$fmtLabel download could not be opened.');
+      }
     } catch (e) {
       if (ctx.mounted) showToastHelper(ctx, '$fmtLabel download failed: $e');
     }

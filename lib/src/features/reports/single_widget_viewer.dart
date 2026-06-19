@@ -30,6 +30,21 @@ class SingleWidgetViewer extends ConsumerStatefulWidget {
 class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
   bool _isTableView = true;
 
+  String? _resolveDataSourceId(Map<String, dynamic> w) {
+    final binding = Map<String, dynamic>.from((w['binding'] as Map?) ?? const {});
+    final brz = binding['brz'] is Map ? Map<String, dynamic>.from(binding['brz'] as Map) : null;
+    final widgetBindingDsId = brz?['data_source_id'] as String?;
+
+    final dsList = ref.watch(dataSourcesProvider).asData?.value ?? const <DataSource>[];
+    final firstRestId = dsList.where((d) => d.kind == 'rest').map((d) => d.id).cast<String?>().firstWhere(
+      (v) => v != null,
+      orElse: () => null,
+    );
+    final firstAnyId = dsList.isNotEmpty ? dsList.first.id : null;
+
+    return widget.dataSourceId ?? widgetBindingDsId ?? firstRestId ?? firstAnyId;
+  }
+
   @override
   Widget build(BuildContext context) {
     final wTop = Map<String, dynamic>.from(widget.widgetData);
@@ -44,8 +59,7 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
       metricTop.endsWith('_log')
     );
     final effectiveIsTableView = _isTableView || isTableOnly;
-    final dsList = ref.watch(dataSourcesProvider).asData?.value ?? const <DataSource>[];
-    final effectiveDataSourceId = widget.dataSourceId ?? (dsList.isNotEmpty ? dsList.first.id : null);
+    final effectiveDataSourceId = _resolveDataSourceId(wTop);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -173,8 +187,7 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
   Widget _buildWidgetRenderer() {
     final w = Map<String, dynamic>.from(widget.widgetData);
     final binding = Map<String, dynamic>.from((w['binding'] as Map?) ?? const {});
-    final dsList = ref.watch(dataSourcesProvider).asData?.value ?? const <DataSource>[];
-    final effectiveDataSourceId = widget.dataSourceId ?? (dsList.isNotEmpty ? dsList.first.id : null);
+    final effectiveDataSourceId = _resolveDataSourceId(w);
     final brz = binding['brz'] is Map ? Map<String, dynamic>.from(binding['brz'] as Map) : null;
     final metric = brz?['metric'] as String? ?? '';
     final isTableOnly = w['type'] == 'table' && (
@@ -191,8 +204,10 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
     if (effectiveIsTableView) {
       type = 'table';
     } else {
-      if (type == 'table' || type == 'kpi') {
-        type = metric == 'avg_order_price_trend' ? 'line' : 'barVertical';
+      if (metric == 'avg_order_price_trend') {
+        type = 'line';
+      } else if (type == 'table' || type == 'kpi') {
+        type = 'barVertical';
       }
     }
 

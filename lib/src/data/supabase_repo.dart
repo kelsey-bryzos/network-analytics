@@ -766,11 +766,16 @@ class SupabaseRepo {
   Future<String?> exportReport({
     required String reportId,
     required String format, // 'pdf' | 'xlsx'
+    String? exportName,
   }) async {
     final slug = format == 'xlsx' ? 'export-excel' : 'export-pdf';
     final res = await client.functions.invoke(
       slug,
-      body: {'report_id': reportId},
+      body: {
+        'report_id': reportId,
+        if (exportName != null && exportName.trim().isNotEmpty)
+          'export_name': exportName.trim(),
+      },
       headers: _fnHeaders(),
     );
     final data = (res.data as Map?)?.cast<String, dynamic>() ?? {};

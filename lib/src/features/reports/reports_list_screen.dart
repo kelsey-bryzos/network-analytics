@@ -643,8 +643,11 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
         reportId = handle;
       }
       final repo = ref.read(repoProvider);
-      final path =
-          await repo.exportReport(reportId: reportId, format: format);
+      final path = await repo.exportReport(
+        reportId: reportId,
+        format: format,
+        exportName: r.name,
+      );
       if (path == null) {
         if (ctx.mounted) _toast(ctx, '$fmtLabel export failed.');
         return;
@@ -681,7 +684,7 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
     if (kIsWeb) {
       final uri = Uri.parse(url);
       try {
-        final launched = await launchUrl(uri, mode: LaunchMode.platformDefault, webOnlyWindowName: '_blank');
+        final launched = await launchUrl(uri, mode: LaunchMode.platformDefault, webOnlyWindowName: '_self');
         if (ctx.mounted) {
           _toast(ctx, launched ? '$fmtLabel download started.' : '$fmtLabel download could not be opened.');
         }
@@ -3447,7 +3450,11 @@ Future<void> exportReportHelper(BuildContext ctx, WidgetRef ref, Report r, Strin
       reportId = handle;
     }
     final repo = ref.read(repoProvider);
-    final path = await repo.exportReport(reportId: reportId, format: format);
+    final path = await repo.exportReport(
+      reportId: reportId,
+      format: format,
+      exportName: r.name,
+    );
     if (path == null) {
       if (ctx.mounted) showToastHelper(ctx, '$fmtLabel export failed.');
       return;

@@ -498,35 +498,51 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
               canEdit: canEdit,
               onEdit: () {
                 Navigator.pop(ctx);
-                _edit(context, ref, r);
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _edit(context, ref, r);
+                });
               },
               onShare: () {
                 Navigator.pop(ctx);
-                _share(context, ref, r);
+                Future<void>.delayed(const Duration(milliseconds: 120), () {
+                  _share(context, ref, r);
+                });
               },
               onExportPdf: () {
                 Navigator.pop(ctx);
-                _export(context, ref, r, 'pdf');
+                Future<void>.delayed(const Duration(milliseconds: 120), () {
+                  _export(context, ref, r, 'pdf');
+                });
               },
               onExportExcel: () {
                 Navigator.pop(ctx);
-                _export(context, ref, r, 'xlsx');
+                Future<void>.delayed(const Duration(milliseconds: 120), () {
+                  _export(context, ref, r, 'xlsx');
+                });
               },
               onSchedule: () {
                 Navigator.pop(ctx);
-                _schedule(context, ref, r);
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _schedule(context, ref, r);
+                });
               },
               onArchive: () {
                 Navigator.pop(ctx);
-                _archive(context, ref, r);
+                Future<void>.delayed(const Duration(milliseconds: 120), () {
+                  _archive(context, ref, r);
+                });
               },
               onRestore: () {
                 Navigator.pop(ctx);
-                _restore(context, ref, r);
+                Future<void>.delayed(const Duration(milliseconds: 120), () {
+                  _restore(context, ref, r);
+                });
               },
               onDelete: () {
                 Navigator.pop(ctx);
-                _delete(context, ref, r);
+                Future<void>.delayed(const Duration(milliseconds: 120), () {
+                  _delete(context, ref, r);
+                });
               },
             ),
           ),
@@ -549,7 +565,11 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
     // report — also opens in the wizard.
     if (r.isCanned) {
       final cloned = await _cloneReport(ctx, ref, r, purpose: 'edit');
-      if (cloned == null || !ctx.mounted) return;
+      if (cloned == null) {
+        if (ctx.mounted) _toast(ctx, 'Could not open editor for this canned report.');
+        return;
+      }
+      if (!ctx.mounted) return;
       // ignore: unused_result
       ref.refresh(reportsProvider);
       if (OpticsFlags.customBuilderV2) {
@@ -576,7 +596,8 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
       {required String purpose}) async {
     final client = ref.read(supabaseProvider);
     final tid =
-        client.auth.currentUser?.appMetadata['active_tenant_id'] as String?;
+        (client.auth.currentUser?.appMetadata['active_tenant_id'] as String?) ??
+            ref.read(activeTenantProvider);
     final body = <String, dynamic>{'purpose': purpose};
     if (r.id.startsWith('lib:')) {
       body['library_item_id'] = r.id.substring(4);
@@ -660,7 +681,7 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
     if (kIsWeb) {
       final uri = Uri.parse(url);
       try {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
         if (ctx.mounted) _toast(ctx, '$fmtLabel download started.');
       } catch (e) {
         if (ctx.mounted) _toast(ctx, '$fmtLabel download failed: $e');
@@ -1647,8 +1668,8 @@ class _PreviewDrawer extends StatelessWidget {
         ?.map((id) => MapEntry(id, _lookup(id)))
         .toList();
 
-    final drawerWidth = (MediaQuery.of(context).size.width - 24)
-        .clamp(360.0, 520.0)
+    final drawerWidth = (MediaQuery.of(context).size.width * 0.62)
+        .clamp(420.0, 980.0)
         .toDouble();
 
     return Material(
@@ -1974,12 +1995,16 @@ class _PreviewDrawer extends StatelessWidget {
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, size: 14, color: color),
         const SizedBox(width: 6),
-        Text(label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: color,
-            )),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: color,
+          ),
+        ),
         if (hasChevron) ...[
           const SizedBox(width: 4),
           Icon(Icons.expand_more, size: 14, color: color),
@@ -1989,21 +2014,28 @@ class _PreviewDrawer extends StatelessWidget {
   }
 
   Widget _meta(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label.toUpperCase(),
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 220),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label.toUpperCase(),
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.8,
+                color: OpticsColors.textMuted,
+              )),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.8,
-              color: OpticsColors.textMuted,
-            )),
-        const SizedBox(height: 2),
-        Text(value,
-            style: const TextStyle(
-                fontSize: 12, color: OpticsColors.textPrimary)),
-      ],
+                fontSize: 12, color: OpticsColors.textPrimary),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2512,7 +2544,10 @@ class _LivePagePreview extends StatelessWidget {
     return SizedBox(
       width: width,
       height: height,
-      child: WidgetRenderer(model: model),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: WidgetRenderer(model: model),
+      ),
     );
   }
 }
@@ -3330,7 +3365,8 @@ void showToastHelper(BuildContext ctx, String msg) {
 
 Future<String?> cloneReportHelper(BuildContext ctx, WidgetRef ref, Report r, {required String purpose}) async {
   final client = ref.read(supabaseProvider);
-  final tid = client.auth.currentUser?.appMetadata['active_tenant_id'] as String?;
+  final tid = (client.auth.currentUser?.appMetadata['active_tenant_id'] as String?) ??
+      ref.read(activeTenantProvider);
   final body = <String, dynamic>{'purpose': purpose};
   if (r.id.startsWith('lib:')) {
     body['library_item_id'] = r.id.substring(4);
@@ -3355,8 +3391,7 @@ Future<void> downloadToDiskHelper(BuildContext ctx, {required String url, requir
   if (kIsWeb) {
     final uri = Uri.parse(url);
     try {
-      // By using platformDefault, it avoids strict popup blocking on some browsers.
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
       if (ctx.mounted) showToastHelper(ctx, '$fmtLabel download started.');
     } catch (e) {
       if (ctx.mounted) showToastHelper(ctx, '$fmtLabel download failed: $e');

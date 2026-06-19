@@ -375,7 +375,11 @@ class _WidgetRendererCore extends StatelessWidget {
 
   String get _timeRange =>
       migrateTimeRange(model.settings['timeRange'] as String?);
-  String get _sortBy => model.settings['sortBy'] as String? ?? 'Value ↓';
+  String get _sortBy {
+    final metric = ((model.binding['brz'] as Map?)?['metric'] as String?) ?? '';
+    if (metric == 'avg_order_price_trend') return 'None';
+    return model.settings['sortBy'] as String? ?? 'Value ↓';
+  }
   String get _groupByKey => model.settings['groupBy'] as String? ?? 'Category';
   int get _maxItems => (model.settings['maxItems'] as num?)?.toInt() ?? 0;
 
@@ -442,6 +446,8 @@ class _WidgetRendererCore extends StatelessWidget {
   List<int> _sortedIndices(List<String> labels, List<double> values) {
     final indices = List.generate(labels.length, (i) => i);
     switch (_sortBy) {
+      case 'None':
+        return indices;
       case 'Value ↓':
         indices.sort((a, b) => values[b].compareTo(values[a]));
         break;
@@ -1750,6 +1756,10 @@ class _WidgetRendererCore extends StatelessWidget {
     final total = _series.fold<double>(0, (a, b) => a + b);
 
     var indices = _sortedIndices(_labels, _series);
+    final metric = ((model.binding['brz'] as Map?)?['metric'] as String?) ?? '';
+    if (_sortBy == 'None' && metric == 'avg_order_price_trend') {
+      indices = indices.reversed.toList();
+    }
     indices = _limitIndices(indices);
 
     // Sticky header: frozen header row + scrollable body rows
@@ -1794,8 +1804,11 @@ class _WidgetRendererCore extends StatelessWidget {
   Widget _singleTableRow(int rank, int dataIdx, double total) {
     final pct = total > 0 ? _series[dataIdx] / total * 100 : 0.0;
     final isOdd = rank % 2 == 1;
-    // Smart dollar formatting: never show $0.0M for sub-million values
-    final valueStr = _fmtSmartValue(_series[dataIdx], _unit);
+    final unitMult = _unit == r'$M' ? 1e6 : _unit == r'$K' ? 1e3 : 1.0;
+    final isMoney = _unit.isNotEmpty && _unit.codeUnitAt(0) == 36;
+    final valueStr = isMoney
+        ? _fmtExactMoney(_series[dataIdx] * unitMult)
+        : _fmtSmartValue(_series[dataIdx], _unit);
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 7, 24, 7),
       color: isOdd ? _wt.headerBg.withValues(alpha: 0.3) : Colors.transparent,

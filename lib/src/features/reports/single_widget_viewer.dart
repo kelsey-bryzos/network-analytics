@@ -44,6 +44,8 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
       metricTop.endsWith('_log')
     );
     final effectiveIsTableView = _isTableView || isTableOnly;
+    final dsList = ref.watch(dataSourcesProvider).asData?.value ?? const <DataSource>[];
+    final effectiveDataSourceId = widget.dataSourceId ?? (dsList.isNotEmpty ? dsList.first.id : null);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -103,7 +105,7 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
               _AddToDashboardBtn(
                 widgetData: widget.widgetData,
                 report: widget.report,
-                dataSourceId: widget.dataSourceId,
+                dataSourceId: effectiveDataSourceId,
               ),
             ],
           ],
@@ -171,6 +173,8 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
   Widget _buildWidgetRenderer() {
     final w = Map<String, dynamic>.from(widget.widgetData);
     final binding = Map<String, dynamic>.from((w['binding'] as Map?) ?? const {});
+    final dsList = ref.watch(dataSourcesProvider).asData?.value ?? const <DataSource>[];
+    final effectiveDataSourceId = widget.dataSourceId ?? (dsList.isNotEmpty ? dsList.first.id : null);
     final brz = binding['brz'] is Map ? Map<String, dynamic>.from(binding['brz'] as Map) : null;
     final metric = brz?['metric'] as String? ?? '';
     final isTableOnly = w['type'] == 'table' && (
@@ -187,11 +191,18 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
     if (effectiveIsTableView) {
       type = 'table';
     } else {
-      if (type == 'table' || type == 'kpi') type = 'barVertical';
+      if (type == 'table' || type == 'kpi') {
+        type = metric == 'avg_order_price_trend' ? 'line' : 'barVertical';
+      }
     }
-    
+
     final kind = WidgetKind.fromString(type);
     final settings = Map<String, dynamic>.from((w['settings'] as Map?) ?? const {});
+    if (metric == 'avg_order_price_trend') {
+      settings['sortBy'] = 'None';
+      settings['barOrientation'] = 'Vertical';
+      settings['maxItems'] = 12;
+    }
 
     if (effectiveIsTableView) {
       if (binding['brz'] is Map) {
@@ -201,9 +212,9 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
       }
     }
 
-    if (binding['brz'] is Map && widget.dataSourceId != null) {
+    if (binding['brz'] is Map && effectiveDataSourceId != null) {
       final brz = Map<String, dynamic>.from(binding['brz'] as Map);
-      brz['data_source_id'] = widget.dataSourceId;
+      brz['data_source_id'] = effectiveDataSourceId;
       binding['brz'] = brz;
     }
 

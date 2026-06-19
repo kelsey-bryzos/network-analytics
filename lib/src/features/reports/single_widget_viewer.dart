@@ -42,7 +42,7 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
     );
     final firstAnyId = dsList.isNotEmpty ? dsList.first.id : null;
 
-    return widget.dataSourceId ?? widgetBindingDsId ?? firstRestId ?? firstAnyId;
+    return widgetBindingDsId ?? widget.dataSourceId ?? firstRestId ?? firstAnyId;
   }
 
   @override
@@ -217,14 +217,6 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
       settings['sortBy'] = 'None';
       settings['barOrientation'] = 'Vertical';
       settings['maxItems'] = 12;
-    }
-
-    if (effectiveIsTableView) {
-      if (binding['brz'] is Map) {
-        final brz = Map<String, dynamic>.from(binding['brz'] as Map);
-        brz['time_range'] = 'All';
-        binding['brz'] = brz;
-      }
     }
 
     if (binding['brz'] is Map && effectiveDataSourceId != null) {

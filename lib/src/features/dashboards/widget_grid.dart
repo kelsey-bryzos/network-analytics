@@ -76,7 +76,6 @@ class _WidgetGridState extends State<WidgetGrid> {
 
     return LayoutBuilder(
       builder: (ctx, constraints) {
-        final cellW = constraints.maxWidth / widget.columns;
         final cellH = widget.cellHeight;
 
         // Canvas auto-grows so widgets can be dragged below the current

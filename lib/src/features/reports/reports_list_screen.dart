@@ -36,6 +36,31 @@ import 'report_viewer_screen.dart' show restDataSourceIdProvider;
 
 enum _Filter { all, mine, shared, canned, archived }
 
+String _safeExportPart(String raw) {
+  final v = raw.replaceAll(RegExp(r'[^A-Za-z0-9 _\-\.]'), '').trim();
+  return v.isEmpty ? 'Report' : v;
+}
+
+Future<String> _buildExportFileName(WidgetRef ref, Report report, String format) async {
+  final repo = ref.read(repoProvider);
+  final client = ref.read(supabaseProvider);
+  final tenantId =
+      (client.auth.currentUser?.appMetadata['active_tenant_id'] as String?) ??
+          ref.read(activeTenantProvider);
+
+  var tenantName = 'Tenant';
+  if (tenantId != null && tenantId.isNotEmpty) {
+    try {
+      tenantName = _safeExportPart((await repo.getTenant(tenantId)).name);
+    } catch (_) {}
+  }
+
+  final now = DateTime.now();
+  final dateTag = '${now.month}-${now.day}-${now.year.toString().substring(2)}';
+  final reportName = _safeExportPart(report.name);
+  return '${reportName}_${tenantName}_$dateTag.$format';
+}
+
 class ReportsListScreen extends ConsumerStatefulWidget {
   const ReportsListScreen({super.key});
   @override
@@ -643,6 +668,7 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
         reportId = handle;
       }
       final repo = ref.read(repoProvider);
+      final fileName = await _buildExportFileName(ref, r, format);
       final path = await repo.exportReport(
         reportId: reportId,
         format: format,
@@ -652,13 +678,16 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
         if (ctx.mounted) _toast(ctx, '$fmtLabel export failed.');
         return;
       }
-      final url =
-          await repo.signedExportUrl(path, expiresInSeconds: 3600);
+      final url = await repo.signedExportUrl(
+        path,
+        expiresInSeconds: 3600,
+        downloadFileName: fileName,
+      );
       if (url == null || url.isEmpty) {
         if (ctx.mounted) _toast(ctx, 'Could not sign download URL.');
         return;
       }
-      await _downloadToDisk(ctx, url: url, report: r, format: format);
+      await _downloadToDisk(ctx, url: url, fileName: fileName, format: format);
     } catch (e) {
       if (ctx.mounted) _toast(ctx, '$fmtLabel export failed: $e');
     }
@@ -670,14 +699,11 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
   Future<void> _downloadToDisk(
     BuildContext ctx, {
     required String url,
-    required Report report,
+    required String fileName,
     required String format,
   }) async {
     final fmtLabel = format.toUpperCase();
-    final safeName =
-        report.name.replaceAll(RegExp(r'[^A-Za-z0-9 _\-\.]'), '').trim();
-    final defaultFileName =
-        '${safeName.isEmpty ? 'optics-report' : safeName}.$format';
+    final defaultFileName = fileName;
 
     // On web, use url_launcher to open the signed URL in a new tab.
     // The browser will handle the download based on Content-Disposition.
@@ -3387,10 +3413,9 @@ Future<String?> cloneReportHelper(BuildContext ctx, WidgetRef ref, Report r, {re
   return (data['report_id'] ?? data['id']) as String?;
 }
 
-Future<void> downloadToDiskHelper(BuildContext ctx, {required String url, required Report report, required String format}) async {
+Future<void> downloadToDiskHelper(BuildContext ctx, {required String url, required String fileName, required String format}) async {
   final fmtLabel = format.toUpperCase();
-  final safeName = report.name.replaceAll(RegExp(r'[^A-Za-z0-9 _\-\.]'), '').trim();
-  final defaultFileName = '${safeName.isEmpty ? 'optics-report' : safeName}.$format';
+  final defaultFileName = fileName;
 
   // On web, use url_launcher to open the signed URL.
   if (kIsWeb) {
@@ -3450,6 +3475,7 @@ Future<void> exportReportHelper(BuildContext ctx, WidgetRef ref, Report r, Strin
       reportId = handle;
     }
     final repo = ref.read(repoProvider);
+    final fileName = await _buildExportFileName(ref, r, format);
     final path = await repo.exportReport(
       reportId: reportId,
       format: format,
@@ -3459,12 +3485,16 @@ Future<void> exportReportHelper(BuildContext ctx, WidgetRef ref, Report r, Strin
       if (ctx.mounted) showToastHelper(ctx, '$fmtLabel export failed.');
       return;
     }
-    final url = await repo.signedExportUrl(path, expiresInSeconds: 3600);
+    final url = await repo.signedExportUrl(
+      path,
+      expiresInSeconds: 3600,
+      downloadFileName: fileName,
+    );
     if (url == null || url.isEmpty) {
       if (ctx.mounted) showToastHelper(ctx, 'Could not sign download URL.');
       return;
     }
-    await downloadToDiskHelper(ctx, url: url, report: r, format: format);
+    await downloadToDiskHelper(ctx, url: url, fileName: fileName, format: format);
   } catch (e) {
     if (ctx.mounted) showToastHelper(ctx, '$fmtLabel export failed: $e');
   }

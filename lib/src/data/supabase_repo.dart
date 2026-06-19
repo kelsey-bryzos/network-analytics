@@ -796,12 +796,21 @@ class SupabaseRepo {
 
   /// Create a short-lived signed URL for an artifact in the `exports`
   /// bucket so the user can download / open it from the browser.
-  Future<String?> signedExportUrl(String storagePath,
-      {int expiresInSeconds = 3600}) async {
-    final res = await client.storage
+  Future<String?> signedExportUrl(
+    String storagePath, {
+    int expiresInSeconds = 3600,
+    String? downloadFileName,
+  }) async {
+    final signed = await client.storage
         .from('exports')
         .createSignedUrl(storagePath, expiresInSeconds);
-    return res;
+    if (downloadFileName == null || downloadFileName.trim().isEmpty) {
+      return signed;
+    }
+    final uri = Uri.parse(signed);
+    final qp = Map<String, String>.from(uri.queryParameters);
+    qp['download'] = downloadFileName.trim();
+    return uri.replace(queryParameters: qp).toString();
   }
 
   /// List schedules for a report (current tenant — enforced by RLS).

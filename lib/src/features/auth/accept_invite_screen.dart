@@ -509,7 +509,7 @@ class _AcceptInviteScreenState extends ConsumerState<AcceptInviteScreen> {
         borderRadius: BorderRadius.circular(OpticsRadii.md),
         border: Border.all(
           color: _termsAccepted
-              ? const Color(0xFF3DB8FF).withOpacity(0.5)
+              ? const Color(0xFF3DB8FF).withValues(alpha: 0.5)
               : OpticsColors.border,
         ),
         ),
@@ -527,7 +527,11 @@ class _AcceptInviteScreenState extends ConsumerState<AcceptInviteScreen> {
                   _termsAccepted = v ?? false;
                   _submitError = null;
                 }),
-                activeColor: const Color(0xFF3DB8FF),
+                fillColor: WidgetStateProperty.resolveWith<Color?>(
+                  (states) => states.contains(WidgetState.selected)
+                      ? const Color(0xFF3DB8FF)
+                      : null,
+                ),
                 side: BorderSide(
                   color: _termsAccepted
                       ? const Color(0xFF3DB8FF)
@@ -654,7 +658,7 @@ class _AcceptInviteScreenState extends ConsumerState<AcceptInviteScreen> {
         const SizedBox(height: 16),
         Text(
           'Last reviewed: May 29, 2026',
-          style: body.copyWith(fontSize: 11, color: OpticsColors.textMuted.withOpacity(0.6)),
+          style: body.copyWith(fontSize: 11, color: OpticsColors.textMuted.withValues(alpha: 0.6)),
         ),
       ],
     );
@@ -673,7 +677,7 @@ class _AcceptInviteScreenState extends ConsumerState<AcceptInviteScreen> {
           decoration: BoxDecoration(
             color: OpticsColors.surface,
             borderRadius: BorderRadius.circular(OpticsRadii.md),
-            border: Border.all(color: const Color(0xFF3DB8FF).withOpacity(0.3)),
+            border: Border.all(color: const Color(0xFF3DB8FF).withValues(alpha: 0.3)),
           ),
           child: Column(
             children: [

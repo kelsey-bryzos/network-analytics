@@ -34,16 +34,11 @@ Future<void> main() async {
   });
 }
 
-/// Single error sink. In dev we just print. In prod we'll forward to
-/// Sentry/Logflare once §10.7 lands; for now the print still makes it into
-/// the browser console (web) and the platform log (desktop), which is
-/// already a huge improvement over Flutter's silent web default.
+/// Single error sink. In dev we log locally. In prod this intentionally avoids
+/// writing raw error details to the browser console until server-side telemetry
+/// is wired in.
 void _reportError(Object error, StackTrace stack) {
-  if (kDebugMode) {
-    debugPrint('🚨 Uncaught error: $error');
-    debugPrint(stack.toString());
-  } else {
-    // ignore: avoid_print
-    print('Uncaught error: $error\n$stack');
-  }
+  if (!kDebugMode) return;
+  debugPrint('🚨 Uncaught error: $error');
+  debugPrint(stack.toString());
 }

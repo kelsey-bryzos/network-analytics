@@ -384,7 +384,6 @@ class _WidgetRendererCore extends StatelessWidget {
 
   List<Color> get _palette {
     final cs = model.settings['colorScheme'] as String?;
-    print('[WidgetRendererCore] ${model.title} colorScheme=$cs');
     return _paletteFor(cs);
   }
 

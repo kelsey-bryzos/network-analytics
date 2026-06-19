@@ -396,10 +396,12 @@ final _reportByIdProvider =
     } else {
       layout = (payload['layout'] as Map?)?.cast<String, dynamic>() ?? {'pages': []};
     }
-    
+
+    final activeTenantId = ref.read(activeTenantProvider) ?? '';
+
     return Report(
       id: 'lib:${m['id']}',
-      tenantId: '',
+      tenantId: activeTenantId,
       name: m['name'] as String? ?? '',
       isCanned: true,
       category: m['category'] as String? ?? 'custom',

@@ -48,7 +48,7 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
       }
     }
 
-    return widgetBindingDsId ?? widget.dataSourceId ?? tenantRestId;
+    return widget.dataSourceId ?? tenantRestId ?? widgetBindingDsId;
   }
 
   @override

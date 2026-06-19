@@ -28,18 +28,6 @@ bool _isBryzosUser(WidgetRef ref) {
   return email.toLowerCase().endsWith('@bryzos.com');
 }
 
-/// Sanitises an error message for external users. Strips anything that looks
-/// like an internal URL, stack trace, or implementation detail.
-String _sanitiseError(Object error) {
-  final raw = error.toString();
-  // Remove Supabase URLs, stack traces, and "ClientException:" prefixes
-  return raw
-      .replaceAll(RegExp(r'https?://[^\s,]+'), '[redacted]')
-      .replaceAll(RegExp(r'ClientException:\s*'), '')
-      .replaceAll(RegExp(r'Exception:\s*'), '')
-      .trim();
-}
-
 /// A widget that displays an error message.
 /// - Bryzos users see the full verbose error.
 /// - External users see a clean generic message + a "Report Error" button
@@ -946,19 +934,6 @@ class _TeamList extends ConsumerWidget {
         }
         return Column(
           children: members.map((m) {
-            final role           = (m['role'] as String).toUpperCase();
-            final displayName    = (m['display_name'] as String?) ?? '';
-            final fullName       = (m['full_name']    as String?) ?? displayName;
-            final email          = (m['email']        as String?) ?? '';
-            final isBryzosStaff  = m['is_bryzos_staff'] == true;
-
-            // Avatar initial: prefer first char of fullName, else email
-            final avatarChar = fullName.isNotEmpty
-                ? fullName[0].toUpperCase()
-                : (email.isNotEmpty ? email[0].toUpperCase() : '?');
-
-            final domainTag = _getDomainTag(email, isBryzosStaff);
-
             return _TeamRow(
               member: m,
               tenantId: tenantId,

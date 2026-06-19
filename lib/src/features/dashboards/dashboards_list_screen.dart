@@ -2303,13 +2303,6 @@ class _DashboardSettingsDialogState
     return snap;
   }
 
-  bool get _isModified {
-    for (final key in ['colorScheme', 'theme', 'timeRange', 'refreshInterval', 'crossFilter', 'showGridLines']) {
-      if (_s[key] != _original[key]) return true;
-    }
-    return false;
-  }
-
   Future<void> _saveAndClose() async {
     setState(() => _saving = true);
     final client = ref.read(supabaseProvider);

@@ -37,10 +37,12 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -725,13 +727,43 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     for (final r in rows) {
       buf.writeln(headers.map((h) => _csvCell(r[h])).join(','));
     }
-    await Clipboard.setData(ClipboardData(text: buf.toString()));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-          content: Text(
-              'CSV copied to clipboard — ${rows.length} rows × ${headers.length} cols.')),
-    );
+
+    final fileName = '${_safeFileName(_title)}_${_dateStamp()}.csv';
+    final bytes = Uint8List.fromList(utf8.encode(buf.toString()));
+    try {
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: 'Save CSV',
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: const ['csv'],
+        bytes: bytes,
+      );
+      if (!mounted) return;
+      final started = kIsWeb || path != null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(started
+              ? 'CSV download started — ${rows.length} rows × ${headers.length} cols.'
+              : 'CSV export cancelled.'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showSecureErrorSnackBar(context, ref, 'CSV export failed.', e);
+    }
+  }
+
+  String _safeFileName(String raw) {
+    final safe = raw.replaceAll(RegExp(r'[^A-Za-z0-9 _\-\.]'), '').trim();
+    return safe.isEmpty ? 'Report' : safe;
+  }
+
+  String _dateStamp() {
+    final now = DateTime.now();
+    final year = now.year.toString().padLeft(4, '0');
+    final month = now.month.toString().padLeft(2, '0');
+    final day = now.day.toString().padLeft(2, '0');
+    return '$year-$month-$day';
   }
 
   String _csvCell(dynamic v) {

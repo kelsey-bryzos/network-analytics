@@ -655,6 +655,31 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
     final defaultFileName =
         '${safeName.isEmpty ? 'optics-report' : safeName}.$format';
 
+    // On web, open the signed URL outside the current SPA tab.
+    // The browser will handle the download based on Content-Disposition.
+    if (kIsWeb) {
+      final uri = Uri.parse(url);
+      try {
+        final launched = await launchUrl(
+          uri,
+          mode: LaunchMode.platformDefault,
+          webOnlyWindowName: '_blank',
+        );
+        if (ctx.mounted) {
+          _toast(
+            ctx,
+            launched
+                ? '$fmtLabel download started.'
+                : '$fmtLabel download could not be opened.',
+          );
+        }
+      } catch (e) {
+        if (ctx.mounted) _toast(ctx, '$fmtLabel download failed: $e');
+      }
+      return;
+    }
+
+    // Desktop/Mobile: Fetch bytes and save via FilePicker or direct file write.
     // Fetch the artifact bytes from the signed URL.
     final resp = await HttpClient().getUrl(Uri.parse(url));
     final httpResp = await resp.close();
@@ -2882,13 +2907,23 @@ Future<void> downloadToDiskHelper(BuildContext ctx, {required String url, requir
   final safeName = report.name.replaceAll(RegExp(r'[^A-Za-z0-9 _\-\.]'), '').trim();
   final defaultFileName = '${safeName.isEmpty ? 'optics-report' : safeName}.$format';
 
-  // On web, use url_launcher to open the signed URL.
+  // On web, open the signed URL outside the current SPA tab.
   if (kIsWeb) {
     final uri = Uri.parse(url);
     try {
-      // By using platformDefault, it avoids strict popup blocking on some browsers.
-      await launchUrl(uri);
-      if (ctx.mounted) showToastHelper(ctx, '$fmtLabel download started.');
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.platformDefault,
+        webOnlyWindowName: '_blank',
+      );
+      if (ctx.mounted) {
+        showToastHelper(
+          ctx,
+          launched
+              ? '$fmtLabel download started.'
+              : '$fmtLabel download could not be opened.',
+        );
+      }
     } catch (e) {
       if (ctx.mounted) showToastHelper(ctx, '$fmtLabel download failed: $e');
     }

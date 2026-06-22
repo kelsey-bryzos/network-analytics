@@ -218,12 +218,12 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
     final settings = Map<String, dynamic>.from((w['settings'] as Map?) ?? const {});
     if (widget.report.isCanned) {
       settings['timeRange'] = kTimeRangeMaximum;
-      settings['maxItems'] = 100;
+      settings['maxItems'] = 200;
     }
     if (metric == 'avg_order_price_trend') {
       settings['sortBy'] = 'None';
       settings['barOrientation'] = 'Vertical';
-      settings['maxItems'] = widget.report.isCanned ? 100 : 12;
+      settings['maxItems'] = widget.report.isCanned ? 200 : 12;
     }
 
     if (binding['brz'] is Map) {
@@ -233,7 +233,7 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
       }
       if (widget.report.isCanned) {
         brz['time_range'] = kTimeRangeMaximum;
-        brz['max_items'] = 100;
+        brz['max_items'] = 200;
       }
       binding['brz'] = brz;
     }

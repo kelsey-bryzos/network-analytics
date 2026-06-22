@@ -7,7 +7,7 @@
 // row-level actions (Preview, Edit, Share, Archive, Delete).
 //
 // • Preview      → right-side drawer (NOT a modal dialog).
-// • Edit         → /explore?reportId=<id>; canned reports clone first.
+// • Edit         → /reports/<id>/edit for custom reports; canned reports clone first and open read-only.
 // • Multi-select → bulk Archive / Delete from a top action bar.
 // • Drag & drop  → drop report A onto report B to create a new
 //                  "combined" custom report (combined_from = [A,B]).
@@ -573,28 +573,22 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
     );
   }
 
-  /// "Clone & Edit" for *both* canned and custom reports.
-  /// - Canned   → clone via the `clone-canned-report` Edge Function
-  ///              (the new row is named "Copy of <X>" by the function).
-  /// - Custom   → clone into a new tenant row named "Copy of <X>" (or
-  ///              "<X> 2"/"<X> 3"… if a "Copy of …" already exists).
-  /// Then redirect to the Report Builder with the new id so the user can
-  /// immediately tweak the name and contents.
+  /// Clone/open action for reports.
+  /// - Canned reports clone via the `clone-canned-report` Edge Function,
+  ///   then open the cloned report viewer. They must not route into the old
+  ///   Report Builder / Explore builder flow.
+  /// - Custom reports keep the normal editor behavior.
   Future<void> _edit(BuildContext ctx, WidgetRef ref, Report r) async {
-    // Every non-canned report opens in the new explicit-join wizard
-    // (ADR-0013). Canned reports clone first (to protect the system
-    // template), and the clone — which is itself a tenant-scoped custom
-    // report — also opens in the wizard.
     if (r.isCanned) {
       final cloned = await _cloneReport(ctx, ref, r, purpose: 'edit');
       if (cloned == null) {
-        if (ctx.mounted) _toast(ctx, 'Could not open editor for this canned report.');
+        if (ctx.mounted) _toast(ctx, 'Could not clone this canned report.');
         return;
       }
       if (!ctx.mounted) return;
       // ignore: unused_result
       ref.refresh(reportsProvider);
-      ctx.go('/explore?reportId=${Uri.encodeComponent(cloned)}');
+      ctx.go('/reports/${Uri.encodeComponent(cloned)}');
       return;
     }
     if (OpticsFlags.customBuilderV2) {
@@ -1446,7 +1440,7 @@ class _RowContent extends StatelessWidget {
         _iconBtn(Icons.visibility_outlined, 'Preview', onPreview),
         _iconBtn(
           Icons.edit_outlined,
-          r.isCanned ? 'Clone & edit' : 'Edit',
+          r.isCanned ? 'Clone & open' : 'Edit',
           canEdit && !isArchived ? onEdit : null,
         ),
         _exportMenuBtn(r, isArchived),
@@ -2550,6 +2544,18 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
 
   String get _localTimeZoneLabel {
     final name = DateTime.now().timeZoneName.trim();
+    final lower = name.toLowerCase();
+    if (lower.contains('eastern')) return 'EST';
+    if (lower.contains('central')) return 'CST';
+    if (lower.contains('mountain')) return 'MST';
+    if (lower.contains('pacific')) return 'PST';
+    if (RegExp(r'^[A-Z]{2,5}$').hasMatch(name)) {
+      if (name == 'EDT') return 'EST';
+      if (name == 'CDT') return 'CST';
+      if (name == 'MDT') return 'MST';
+      if (name == 'PDT') return 'PST';
+      return name;
+    }
     return name.isEmpty ? 'LOCAL' : name;
   }
 
@@ -2642,7 +2648,23 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
     for (final entry in _cadencePresets.entries) {
       if (entry.value.cron == cron) return entry.value.label;
     }
-    return cron;
+    final parts = cron.trim().split(RegExp(r'\s+'));
+    final tz = _localTimeZoneLabel;
+    if (parts.length == 5 && parts[0] == '0') {
+      if (parts[2] == '*' && parts[3] == '*' && parts[4] == '*') {
+        return 'Daily at 8:00 AM $tz';
+      }
+      if (parts[2] == '*' && parts[3] == '*' && parts[4] != '*') {
+        return 'Weekly — Monday 8:00 AM $tz';
+      }
+      if (parts[2] == '1' && parts[3] == '*' && parts[4] == '*') {
+        return 'Monthly — 1st at 8:00 AM $tz';
+      }
+      if (parts[1] == '*' && parts[2] == '*' && parts[3] == '*' && parts[4] == '*') {
+        return 'Every hour';
+      }
+    }
+    return 'Scheduled cadence';
   }
 
   @override

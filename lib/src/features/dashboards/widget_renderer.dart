@@ -1735,12 +1735,14 @@ class _WidgetRendererCore extends StatelessWidget {
       return _noData();
     }
 
-    final col1Header = (model.binding['_col1'] as String?) ?? 'Name';
+    final metric = ((model.binding['brz'] as Map?)?['metric'] as String?) ?? '';
+    final col1Header = metric == 'avg_order_price_trend'
+        ? 'Transaction Month'
+        : ((model.binding['_col1'] as String?) ?? 'Name');
     final col2Header = (model.binding['_col2'] as String?) ?? 'Value';
     final total = _series.fold<double>(0, (a, b) => a + b);
 
     var indices = _sortedIndices(_labels, _series);
-    final metric = ((model.binding['brz'] as Map?)?['metric'] as String?) ?? '';
     if (_sortBy == 'None' && metric == 'avg_order_price_trend') {
       indices = indices.reversed.toList();
     }

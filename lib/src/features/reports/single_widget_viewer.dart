@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models.dart';
 import '../../data/supabase_repo.dart';
-import '../../design/optics_card.dart';
 import '../../design/theme.dart';
 import '../../shared/secure_error.dart';
 import '../dashboards/time_range_options.dart';
@@ -135,10 +134,7 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
         
         // Content Area
         Expanded(
-          child: OpticsCard(
-            padding: const EdgeInsets.all(0),
-            child: _buildWidgetRenderer(),
-          ),
+          child: _buildWidgetRenderer(),
         ),
       ],
     );

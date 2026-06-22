@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models.dart';
 import '../../data/supabase_repo.dart';
-import '../../design/optics_card.dart';
 import '../../design/theme.dart';
 import '../../shared/secure_error.dart';
 import '../dashboards/time_range_options.dart';
@@ -31,6 +30,27 @@ class SingleWidgetViewer extends ConsumerStatefulWidget {
 class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
   bool _isTableView = true;
 
+  String? _resolveDataSourceId(Map<String, dynamic> w) {
+    final binding = Map<String, dynamic>.from((w['binding'] as Map?) ?? const {});
+    final brz = binding['brz'] is Map ? Map<String, dynamic>.from(binding['brz'] as Map) : null;
+    final widgetBindingDsId = brz?['data_source_id'] as String?;
+
+    final dsList = ref.watch(dataSourcesProvider).asData?.value ?? const <DataSource>[];
+    final activeTenantId = ref.watch(activeTenantProvider);
+
+    String? tenantRestId;
+    if (activeTenantId != null) {
+      for (final ds in dsList) {
+        if (ds.kind == 'rest' && ds.tenantId == activeTenantId) {
+          tenantRestId = ds.id;
+          break;
+        }
+      }
+    }
+
+    return widget.dataSourceId ?? tenantRestId ?? widgetBindingDsId;
+  }
+
   @override
   Widget build(BuildContext context) {
     final wTop = Map<String, dynamic>.from(widget.widgetData);
@@ -45,6 +65,7 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
       metricTop.endsWith('_log')
     );
     final effectiveIsTableView = _isTableView || isTableOnly;
+    final effectiveDataSourceId = _resolveDataSourceId(wTop);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -86,8 +107,9 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
                 exportReportHelper(context, ref, widget.report, 'xlsx');
               },
             ),
-            // Share — Editors+ only (Guests/Viewers cannot share)
-            if (ref.watch(canEditProvider)) ...[
+            // Share — Editors+ only (Guests/Viewers cannot share).
+            // Hidden for canned reports (system-wide by default).
+            if (!widget.report.isCanned && ref.watch(canEditProvider)) ...[
               const SizedBox(width: OpticsSpacing.sm),
               _toolbarBtn(
                 icon: Icons.share_outlined,
@@ -100,7 +122,11 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
             // Add to Dashboard — Editors+ only (Guests/Viewers cannot add)
             if (!effectiveIsTableView && ref.watch(canEditProvider)) ...[
               const SizedBox(width: OpticsSpacing.sm),
-              _AddToDashboardBtn(widgetData: widget.widgetData, report: widget.report),
+              _AddToDashboardBtn(
+                widgetData: widget.widgetData,
+                report: widget.report,
+                dataSourceId: effectiveDataSourceId,
+              ),
             ],
           ],
         ),
@@ -108,10 +134,7 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
         
         // Content Area
         Expanded(
-          child: OpticsCard(
-            padding: const EdgeInsets.all(0),
-            child: _buildWidgetRenderer(),
-          ),
+          child: _buildWidgetRenderer(),
         ),
       ],
     );
@@ -167,6 +190,7 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
   Widget _buildWidgetRenderer() {
     final w = Map<String, dynamic>.from(widget.widgetData);
     final binding = Map<String, dynamic>.from((w['binding'] as Map?) ?? const {});
+    final effectiveDataSourceId = _resolveDataSourceId(w);
     final brz = binding['brz'] is Map ? Map<String, dynamic>.from(binding['brz'] as Map) : null;
     final metric = brz?['metric'] as String? ?? '';
     final isTableOnly = w['type'] == 'table' && (
@@ -183,26 +207,35 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
     if (effectiveIsTableView) {
       type = 'table';
     } else {
-      if (type == 'table' || type == 'kpi') type = 'barVertical';
+      if (metric == 'avg_order_price_trend') {
+        type = 'line';
+      } else if (type == 'table' || type == 'kpi') {
+        type = 'barVertical';
+      }
     }
-    
+
     final kind = WidgetKind.fromString(type);
     final settings = Map<String, dynamic>.from((w['settings'] as Map?) ?? const {});
     if (widget.report.isCanned) {
       settings['timeRange'] = kTimeRangeMaximum;
+      settings['maxItems'] = 200;
+    }
+    if (metric == 'avg_order_price_trend') {
+      settings['sortBy'] = 'None';
+      settings['barOrientation'] = 'Vertical';
+      settings['maxItems'] = widget.report.isCanned ? 200 : 12;
     }
 
-    if (effectiveIsTableView || widget.report.isCanned || widget.dataSourceId != null) {
-      if (binding['brz'] is Map) {
-        final brz = Map<String, dynamic>.from(binding['brz'] as Map);
-        if (widget.dataSourceId != null) {
-          brz['data_source_id'] = widget.dataSourceId;
-        }
-        if (effectiveIsTableView || widget.report.isCanned) {
-          brz['time_range'] = kTimeRangeMaximum;
-        }
-        binding['brz'] = brz;
+    if (binding['brz'] is Map) {
+      final brz = Map<String, dynamic>.from(binding['brz'] as Map);
+      if (effectiveDataSourceId != null) {
+        brz['data_source_id'] = effectiveDataSourceId;
       }
+      if (widget.report.isCanned) {
+        brz['time_range'] = kTimeRangeMaximum;
+        brz['max_items'] = 200;
+      }
+      binding['brz'] = brz;
     }
 
     final model = WidgetModel(
@@ -226,7 +259,12 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
 class _AddToDashboardBtn extends ConsumerStatefulWidget {
   final Map<String, dynamic> widgetData;
   final Report report;
-  const _AddToDashboardBtn({required this.widgetData, required this.report});
+  final String? dataSourceId;
+  const _AddToDashboardBtn({
+    required this.widgetData,
+    required this.report,
+    required this.dataSourceId,
+  });
   @override
   ConsumerState<_AddToDashboardBtn> createState() => _AddToDashboardBtnState();
 }
@@ -267,11 +305,19 @@ class _AddToDashboardBtnState extends ConsumerState<_AddToDashboardBtn> {
     try {
       final kindStr = widget.widgetData['type'] as String? ?? 'barVertical';
       final kind = WidgetKind.fromString(kindStr);
+      final binding =
+          Map<String, dynamic>.from((widget.widgetData['binding'] as Map?) ?? const {});
+      if (binding['brz'] is Map && widget.dataSourceId != null) {
+        final brz = Map<String, dynamic>.from(binding['brz'] as Map);
+        brz['data_source_id'] = widget.dataSourceId;
+        binding['brz'] = brz;
+      }
+
       await ref.read(repoProvider).createWidget(
         dashboardId: selectedId,
         title: widget.widgetData['title'] as String? ?? widget.report.name,
         kind: kind,
-        binding: widget.widgetData['binding'] as Map<String, dynamic>? ?? {},
+        binding: binding,
         settings: widget.widgetData['settings'] as Map<String, dynamic>? ?? {},
       );
       if (mounted) {

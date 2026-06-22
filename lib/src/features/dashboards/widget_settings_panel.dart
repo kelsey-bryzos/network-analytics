@@ -34,6 +34,16 @@ class WidgetSettingsPanel extends StatefulWidget {
 class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
   late TextEditingController _title;
   late WidgetKind _kind;
+
+  String? get _metric {
+    final brz = widget.widget.binding['brz'];
+    if (brz is Map) {
+      return (brz['metric'] as String?)?.toLowerCase();
+    }
+    return null;
+  }
+
+  bool get _disallowPieDonut => _metric == 'avg_order_price_trend';
   late String _colorScheme;
   late String _groupBy;
   late String _sortBy;
@@ -108,6 +118,9 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
     _title = TextEditingController(text: _origTitle);
     _title.addListener(_emitPreview); // Live preview title changes
     _kind = _origKind;
+    if (_disallowPieDonut && (_kind == WidgetKind.pie || _kind == WidgetKind.donut)) {
+      _kind = WidgetKind.line;
+    }
     _colorScheme = _origColorScheme;
     _groupBy = _origGroupBy;
     _sortBy = _origSortBy;
@@ -257,16 +270,20 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
         TextField(controller: _title),
         _label('Chart type'),
         _ChipGroup<WidgetKind>(
-          options: const [
-            ('KPI', WidgetKind.kpi),
-            ('Line', WidgetKind.line),
-            ('Bar', WidgetKind.barVertical),
-            ('Combo', WidgetKind.combo),
-            ('Pie', WidgetKind.pie),
-            ('Donut', WidgetKind.donut),
-            ('Table', WidgetKind.table),
+          options: [
+            const ('KPI', WidgetKind.kpi),
+            const ('Line', WidgetKind.line),
+            const ('Bar', WidgetKind.barVertical),
+            const ('Combo', WidgetKind.combo),
+            if (!_disallowPieDonut) ...[
+              const ('Pie', WidgetKind.pie),
+              const ('Donut', WidgetKind.donut),
+            ],
+            const ('Table', WidgetKind.table),
           ],
-          value: _kind,
+          value: (_disallowPieDonut && (_kind == WidgetKind.pie || _kind == WidgetKind.donut))
+              ? WidgetKind.line
+              : _kind,
           onChanged: (v) => _updateAndPreview(() => _kind = v),
         ),
         if (_kind == WidgetKind.barVertical ||

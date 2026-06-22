@@ -351,6 +351,7 @@ class Report {
   final String? createdBy;            // user id
   final String? createdByName;        // display name (joined)
   final bool sharedWithTenant;
+  final bool hasEnabledSchedule;
   /// 1 = legacy drag/auto-join builder; 2 = explicit-join wizard (ADR-0013).
   final int queryVersion;
   Report({
@@ -367,6 +368,7 @@ class Report {
     this.createdBy,
     this.createdByName,
     this.sharedWithTenant = false,
+    this.hasEnabledSchedule = false,
     this.queryVersion = 1,
   });
   factory Report.fromMap(Map<String, dynamic> m) {
@@ -393,6 +395,7 @@ class Report {
       createdBy: m['created_by'] as String?,
       createdByName: createdByName,
       sharedWithTenant: m['shared_with_tenant'] as bool? ?? false,
+      hasEnabledSchedule: m['has_enabled_schedule'] as bool? ?? false,
       queryVersion: (m['query_version'] as num?)?.toInt() ?? 1,
     );
   }
@@ -411,6 +414,7 @@ class Report {
     String? createdBy,
     String? createdByName,
     bool? sharedWithTenant,
+    bool? hasEnabledSchedule,
     int? queryVersion,
   }) {
     return Report(
@@ -427,6 +431,7 @@ class Report {
       createdBy: createdBy ?? this.createdBy,
       createdByName: createdByName ?? this.createdByName,
       sharedWithTenant: sharedWithTenant ?? this.sharedWithTenant,
+      hasEnabledSchedule: hasEnabledSchedule ?? this.hasEnabledSchedule,
       queryVersion: queryVersion ?? this.queryVersion,
     );
   }

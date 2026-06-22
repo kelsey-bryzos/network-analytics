@@ -308,11 +308,18 @@ class _PageBlock extends StatelessWidget {
       }
       if (isCanned) {
         brz['time_range'] = kTimeRangeMaximum;
+        brz['max_items'] = 200;
+      }
+      if (brz['metric'] == 'avg_order_price_trend') {
+        settings['sortBy'] = 'None';
+        settings['maxItems'] = isCanned ? 200 : settings['maxItems'];
+        brz['max_items'] = isCanned ? 200 : brz['max_items'];
       }
       binding['brz'] = brz;
     }
     if (isCanned) {
       settings['timeRange'] = kTimeRangeMaximum;
+      settings['maxItems'] = 200;
     }
 
     // Sizing: KPIs are compact tiles; charts and tables get wider blocks.
@@ -406,10 +413,12 @@ final _reportByIdProvider =
     } else {
       layout = (payload['layout'] as Map?)?.cast<String, dynamic>() ?? {'pages': []};
     }
-    
+
+    final activeTenantId = ref.read(activeTenantProvider) ?? '';
+
     return Report(
       id: 'lib:${m['id']}',
-      tenantId: '',
+      tenantId: activeTenantId,
       name: m['name'] as String? ?? '',
       isCanned: true,
       category: m['category'] as String? ?? 'custom',
@@ -426,9 +435,13 @@ final _reportByIdProvider =
 /// Resolves the active tenant's REST data source id (Bryzos / Tables API).
 /// Returns null if none configured.
 final restDataSourceIdProvider = FutureProvider<String?>((ref) async {
+  final activeTenantId = ref.watch(activeTenantProvider);
   final all = await ref.watch(dataSourcesProvider.future);
+
+  if (activeTenantId == null) return null;
+
   for (final ds in all) {
-    if (ds.kind == 'rest') return ds.id;
+    if (ds.kind == 'rest' && ds.tenantId == activeTenantId) return ds.id;
   }
   return null;
 });

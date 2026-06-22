@@ -555,7 +555,49 @@ class SupabaseRepo {
       });
     }).toList();
 
-    return [...canned, ...custom];
+    final scheduledReportIds = <String>{};
+    final scheduledLibraryIds = <String>{};
+    try {
+      final scheduleRows = await client
+          .from('schedules')
+          .select('report_id')
+          .eq('enabled', true);
+      for (final row in (scheduleRows as List)) {
+        final reportId = (row as Map)['report_id'] as String?;
+        if (reportId != null) scheduledReportIds.add(reportId);
+      }
+      if (scheduledReportIds.isNotEmpty) {
+        final opRows = await client
+            .from('reports')
+            .select('id, cloned_from_library_item')
+            .eq('is_operational', true)
+            .not('cloned_from_library_item', 'is', null);
+        for (final row in (opRows as List)) {
+          final m = row as Map<String, dynamic>;
+          final reportId = m['id'] as String?;
+          final libId = m['cloned_from_library_item'] as String?;
+          if (reportId != null &&
+              libId != null &&
+              scheduledReportIds.contains(reportId)) {
+            scheduledLibraryIds.add(libId);
+          }
+        }
+      }
+    } catch (_) {
+      // Schedule indicators are UI-only; fail closed if RLS/schema blocks lookup.
+    }
+
+    final scheduledCanned = canned.map((r) {
+      final libId = r.id.startsWith('lib:') ? r.id.substring(4) : r.id;
+      return r.copyWith(hasEnabledSchedule: scheduledLibraryIds.contains(libId));
+    }).toList();
+    final scheduledCustom = custom
+        .map((r) => r.copyWith(
+              hasEnabledSchedule: scheduledReportIds.contains(r.id),
+            ))
+        .toList();
+
+    return [...scheduledCanned, ...scheduledCustom];
   }
 
   // ------------------ Report Builder ------------------
@@ -766,11 +808,16 @@ class SupabaseRepo {
   Future<String?> exportReport({
     required String reportId,
     required String format, // 'pdf' | 'xlsx'
+    String? exportName,
   }) async {
     final slug = format == 'xlsx' ? 'export-excel' : 'export-pdf';
     final res = await client.functions.invoke(
       slug,
-      body: {'report_id': reportId},
+      body: {
+        'report_id': reportId,
+        if (exportName != null && exportName.trim().isNotEmpty)
+          'export_name': exportName.trim(),
+      },
       headers: _fnHeaders(),
     );
     final data = (res.data as Map?)?.cast<String, dynamic>() ?? {};
@@ -791,12 +838,21 @@ class SupabaseRepo {
 
   /// Create a short-lived signed URL for an artifact in the `exports`
   /// bucket so the user can download / open it from the browser.
-  Future<String?> signedExportUrl(String storagePath,
-      {int expiresInSeconds = 3600}) async {
-    final res = await client.storage
+  Future<String?> signedExportUrl(
+    String storagePath, {
+    int expiresInSeconds = 3600,
+    String? downloadFileName,
+  }) async {
+    final signed = await client.storage
         .from('exports')
         .createSignedUrl(storagePath, expiresInSeconds);
-    return res;
+    if (downloadFileName == null || downloadFileName.trim().isEmpty) {
+      return signed;
+    }
+    final uri = Uri.parse(signed);
+    final qp = Map<String, String>.from(uri.queryParameters);
+    qp['download'] = downloadFileName.trim();
+    return uri.replace(queryParameters: qp).toString();
   }
 
   /// List schedules for a report (current tenant — enforced by RLS).

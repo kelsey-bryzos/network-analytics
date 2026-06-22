@@ -309,6 +309,11 @@ class _PageBlock extends StatelessWidget {
       if (isCanned) {
         brz['time_range'] = kTimeRangeMaximum;
       }
+      if (brz['metric'] == 'avg_order_price_trend') {
+        settings['sortBy'] = 'None';
+        settings['maxItems'] = isCanned ? 200 : settings['maxItems'];
+        brz['max_items'] = isCanned ? 200 : brz['max_items'];
+      }
       binding['brz'] = brz;
     }
     if (isCanned) {

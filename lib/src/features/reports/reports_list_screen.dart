@@ -15,20 +15,17 @@
 //                  append more sources. Originals are never deleted.
 // • Share        → flips reports.shared_with_tenant.
 // =====================================================================
-import 'dart:io';
-
-import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import '../../config/feature_flags.dart';
 import '../../data/models.dart';
 import '../../data/supabase_repo.dart';
 import '../../design/theme.dart';
 import '../../shared/secure_error.dart';
+import '../../platform/save_bytes.dart';
+import '../dashboards/time_range_options.dart';
 import '../dashboards/widget_renderer.dart';
 import 'custom_builder/custom_report_query_v2.dart';
 import 'custom_builder/v2_report_view.dart';
@@ -597,11 +594,7 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
       if (!ctx.mounted) return;
       // ignore: unused_result
       ref.refresh(reportsProvider);
-      if (OpticsFlags.customBuilderV2) {
-        ctx.go('/reports/${Uri.encodeComponent(cloned)}/edit');
-      } else {
-        ctx.go('/explore?reportId=${Uri.encodeComponent(cloned)}');
-      }
+      ctx.go('/explore?reportId=${Uri.encodeComponent(cloned)}');
       return;
     }
     if (OpticsFlags.customBuilderV2) {
@@ -693,9 +686,8 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
     }
   }
 
-  /// Download the bytes from `url` and prompt the user (desktop) or save
-  /// to the platform's downloads folder (mobile). On web, opens the signed
-  /// URL directly and lets the browser handle the download.
+  /// Download the bytes from `url` and prompt the user to save them without
+  /// opening a popup/new browser tab.
   Future<void> _downloadToDisk(
     BuildContext ctx, {
     required String url,
@@ -703,61 +695,22 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
     required String format,
   }) async {
     final fmtLabel = format.toUpperCase();
-    final defaultFileName = fileName;
-
-    // On web, open the signed URL outside the current SPA tab.
-    // The browser will handle the download based on Content-Disposition.
-    if (kIsWeb) {
-      final uri = Uri.parse(url);
-      try {
-        final launched = await launchUrl(uri, mode: LaunchMode.platformDefault, webOnlyWindowName: '_blank');
-        if (ctx.mounted) {
-          _toast(ctx, launched ? '$fmtLabel download started.' : '$fmtLabel download could not be opened.');
-        }
-      } catch (e) {
-        if (ctx.mounted) _toast(ctx, '$fmtLabel download failed: $e');
-      }
-      return;
-    }
-
-    // Desktop/Mobile: Fetch bytes and save via FilePicker or direct file write.
-    // Fetch the artifact bytes from the signed URL.
-    final resp = await HttpClient().getUrl(Uri.parse(url));
-    final httpResp = await resp.close();
-    if (httpResp.statusCode != 200) {
+    final resp = await http.get(Uri.parse(url));
+    if (resp.statusCode != 200) {
       if (ctx.mounted) {
-        _toast(ctx, '$fmtLabel download failed (${httpResp.statusCode})');
+        _toast(ctx, '$fmtLabel download failed (${resp.statusCode})');
       }
       return;
     }
-    final bytes = <int>[];
-    await for (final chunk in httpResp) {
-      bytes.addAll(chunk);
-    }
 
-    // Ask the user where to save (desktop: native dialog; mobile: file_picker
-    // returns null/unsupported → fall back to documents dir).
-    String? savePath;
-    try {
-      savePath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Save $fmtLabel',
-        fileName: defaultFileName,
-        type: format == 'pdf' ? FileType.custom : FileType.custom,
-        allowedExtensions: [format],
-      );
-    } catch (_) {
-      savePath = null;
-    }
-    if (savePath == null) {
-      // User cancelled or platform doesn't support saveFile.
-      if (ctx.mounted) _toast(ctx, '$fmtLabel save cancelled.');
-      return;
-    }
-    if (!savePath.toLowerCase().endsWith('.$format')) {
-      savePath = '$savePath.$format';
-    }
-    await File(savePath).writeAsBytes(bytes, flush: true);
-    if (ctx.mounted) _toast(ctx, '$fmtLabel saved: $savePath');
+    final saved = await saveBytesToUserFile(
+      bytes: resp.bodyBytes,
+      fileName: fileName,
+      extension: format,
+      dialogTitle: 'Save $fmtLabel',
+    );
+    if (!ctx.mounted) return;
+    _toast(ctx, saved ? '$fmtLabel saved.' : '$fmtLabel save cancelled.');
   }
 
   /// Open the Schedule dialog for a report. For canned reports the
@@ -1499,8 +1452,9 @@ class _RowContent extends StatelessWidget {
         _exportMenuBtn(r, isArchived),
         _iconBtn(
           Icons.schedule_outlined,
-          'Schedule',
+          r.hasEnabledSchedule ? 'Scheduled' : 'Schedule',
           canEdit && !isArchived ? onSchedule : null,
+          color: r.hasEnabledSchedule ? OpticsColors.accentCyan : null,
         ),
         _iconBtn(
           Icons.share_outlined,
@@ -2341,6 +2295,7 @@ class _PagePreviewSurface extends ConsumerWidget {
             page: pages.first as Map<String, dynamic>,
             tenantId: report.tenantId,
             dataSourceId: dataSourceId,
+            isCanned: report.isCanned,
             isFirstPage: true,
           ),
           if (pages.length > 1) ...[
@@ -2351,6 +2306,7 @@ class _PagePreviewSurface extends ConsumerWidget {
                 page: pages[i] as Map<String, dynamic>,
                 tenantId: report.tenantId,
                 dataSourceId: dataSourceId,
+                isCanned: report.isCanned,
                 isFirstPage: false,
               ),
             ],
@@ -2441,12 +2397,14 @@ class _LivePagePreview extends StatelessWidget {
   final Map<String, dynamic> page;
   final String tenantId;
   final String? dataSourceId;
+  final bool isCanned;
   final bool isFirstPage;
 
   const _LivePagePreview({
     required this.page,
     required this.tenantId,
     required this.dataSourceId,
+    required this.isCanned,
     required this.isFirstPage,
   });
 
@@ -2510,10 +2468,24 @@ class _LivePagePreview extends StatelessWidget {
     final settings =
         Map<String, dynamic>.from((w['settings'] as Map?) ?? const {});
 
-    if (binding['brz'] is Map && dataSourceId != null) {
+    if (binding['brz'] is Map) {
       final brz = Map<String, dynamic>.from(binding['brz'] as Map);
-      brz['data_source_id'] = dataSourceId;
+      if (dataSourceId != null) {
+        brz['data_source_id'] = dataSourceId;
+      }
+      if (isCanned) {
+        brz['time_range'] = kTimeRangeMaximum;
+      }
+      final metric = brz['metric'] as String? ?? '';
+      if (metric == 'avg_order_price_trend') {
+        settings['sortBy'] = 'None';
+        settings['maxItems'] = 200;
+        brz['max_items'] = 200;
+      }
       binding['brz'] = brz;
+    }
+    if (isCanned) {
+      settings['timeRange'] = kTimeRangeMaximum;
     }
 
     final isKpi = kind == WidgetKind.kpi;
@@ -2542,7 +2514,7 @@ class _LivePagePreview extends StatelessWidget {
     return SizedBox(
       width: width,
       height: height,
-      child: WidgetRenderer(model: model, chromeless: true),
+      child: WidgetRenderer(model: model),
     );
   }
 }
@@ -2576,15 +2548,36 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
     super.dispose();
   }
 
-  // Cadence presets → cron expressions (UTC).
-  static const Map<String, ({String label, String cron})> _cadencePresets = {
-    'hourly': (label: 'Every hour', cron: '0 * * * *'),
-    'daily_8am': (label: 'Daily at 8:00 AM UTC', cron: '0 8 * * *'),
-    'weekly_mon_8am':
-        (label: 'Weekly — Monday 8:00 AM UTC', cron: '0 8 * * 1'),
-    'monthly_1st_8am':
-        (label: 'Monthly — 1st at 8:00 AM UTC', cron: '0 8 1 * *'),
-  };
+  String get _localTimeZoneLabel {
+    final name = DateTime.now().timeZoneName.trim();
+    return name.isEmpty ? 'LOCAL' : name;
+  }
+
+  int get _localEightAmUtcHour {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day, 8).toUtc().hour;
+  }
+
+  int get _localMondayEightAmUtcWeekday {
+    final now = DateTime.now();
+    final monday = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - DateTime.monday));
+    return monday.add(const Duration(hours: 8)).toUtc().weekday % 7;
+  }
+
+  Map<String, ({String label, String cron})> get _cadencePresets {
+    final tz = _localTimeZoneLabel;
+    final hour = _localEightAmUtcHour;
+    final weekday = _localMondayEightAmUtcWeekday;
+    return {
+      'hourly': (label: 'Every hour', cron: '0 * * * *'),
+      'daily_8am': (label: 'Daily at 8:00 AM $tz', cron: '0 $hour * * *'),
+      'weekly_mon_8am':
+          (label: 'Weekly — Monday 8:00 AM $tz', cron: '0 $hour * * $weekday'),
+      'monthly_1st_8am':
+          (label: 'Monthly — 1st at 8:00 AM $tz', cron: '0 $hour 1 * *'),
+    };
+  }
 
   Future<void> _save() async {
     final raw = _recipientsCtl.text.trim();
@@ -2685,7 +2678,7 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
               const SizedBox(height: 4),
               const Text(
                 'Delivered by email as a PDF and/or Excel attachment. '
-                'Cron times are UTC.',
+                'Cadence is based on your device timezone.',
                 style: TextStyle(
                     fontSize: 11, color: OpticsColors.textMuted),
               ),
@@ -2924,49 +2917,20 @@ Future<String?> cloneReportHelper(BuildContext ctx, WidgetRef ref, Report r, {re
 
 Future<void> downloadToDiskHelper(BuildContext ctx, {required String url, required String fileName, required String format}) async {
   final fmtLabel = format.toUpperCase();
-  final defaultFileName = fileName;
-
-  // On web, open the signed URL outside the current SPA tab.
-  if (kIsWeb) {
-    final uri = Uri.parse(url);
-    try {
-      final launched = await launchUrl(uri, mode: LaunchMode.platformDefault, webOnlyWindowName: '_blank');
-      if (ctx.mounted) {
-        showToastHelper(ctx, launched ? '$fmtLabel download started.' : '$fmtLabel download could not be opened.');
-      }
-    } catch (e) {
-      if (ctx.mounted) showToastHelper(ctx, '$fmtLabel download failed: $e');
-    }
+  final resp = await http.get(Uri.parse(url));
+  if (resp.statusCode != 200) {
+    if (ctx.mounted) showToastHelper(ctx, '$fmtLabel download failed (${resp.statusCode})');
     return;
   }
-
-  // Desktop/Mobile: Fetch bytes and save via FilePicker.
-  final resp = await HttpClient().getUrl(Uri.parse(url));
-  final httpResp = await resp.close();
-  if (httpResp.statusCode != 200) {
-    if (ctx.mounted) showToastHelper(ctx, '$fmtLabel download failed (${httpResp.statusCode})');
-    return;
+  final saved = await saveBytesToUserFile(
+    bytes: resp.bodyBytes,
+    fileName: fileName,
+    extension: format,
+    dialogTitle: 'Save $fmtLabel',
+  );
+  if (ctx.mounted) {
+    showToastHelper(ctx, saved ? '$fmtLabel saved.' : '$fmtLabel save cancelled.');
   }
-  final bytes = <int>[];
-  await for (final chunk in httpResp) { bytes.addAll(chunk); }
-
-  String? savePath;
-  try {
-    savePath = await FilePicker.platform.saveFile(
-      dialogTitle: 'Save $fmtLabel',
-      fileName: defaultFileName,
-      type: format == 'pdf' ? FileType.custom : FileType.custom,
-      allowedExtensions: [format],
-    );
-  } catch (_) { savePath = null; }
-  
-  if (savePath == null) {
-    if (ctx.mounted) showToastHelper(ctx, '$fmtLabel save cancelled.');
-    return;
-  }
-  if (!savePath.toLowerCase().endsWith('.$format')) savePath = '$savePath.$format';
-  await File(savePath).writeAsBytes(bytes, flush: true);
-  if (ctx.mounted) showToastHelper(ctx, '$fmtLabel saved: $savePath');
 }
 
 Future<void> exportReportHelper(BuildContext ctx, WidgetRef ref, Report r, String format) async {

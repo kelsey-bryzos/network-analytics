@@ -467,36 +467,6 @@ class SupabaseRepo {
       }
     }
 
-    final scheduledReportIds = <String>{};
-    final scheduledCannedLibraryIds = <String>{};
-    try {
-      final scheduleRows = await client
-          .from('schedules')
-          .select('report_id')
-          .eq('enabled', true);
-      for (final row in (scheduleRows as List)) {
-        final reportId = (row as Map)['report_id'] as String?;
-        if (reportId != null && reportId.isNotEmpty) {
-          scheduledReportIds.add(reportId);
-        }
-      }
-      if (scheduledReportIds.isNotEmpty) {
-        final operationalRows = await client
-            .from('reports')
-            .select('id, cloned_from_library_item')
-            .inFilter('id', scheduledReportIds.toList());
-        for (final row in (operationalRows as List)) {
-          final m = row as Map<String, dynamic>;
-          final libId = m['cloned_from_library_item'] as String?;
-          if (libId != null && libId.isNotEmpty) {
-            scheduledCannedLibraryIds.add(libId);
-          }
-        }
-      }
-    } catch (_) {
-      // Schedule highlighting is a visual convenience; never block the report list.
-    }
-
     final canned = (libRows as List).map((r) {
       final m = r as Map<String, dynamic>;
       final kind = m['kind'] as String;
@@ -537,7 +507,6 @@ class SupabaseRepo {
             ? ReportStatus.archived
             : ReportStatus.live,
         archivedAt: archivedAt,
-        hasEnabledSchedule: scheduledCannedLibraryIds.contains(libId),
       );
     }).toList();
 
@@ -583,7 +552,6 @@ class SupabaseRepo {
             {'pages': []},
         if (createdBy != null && namesById[createdBy] != null)
           'user_profiles': {'display_name': namesById[createdBy]},
-        'has_enabled_schedule': scheduledReportIds.contains(m['id'] as String?),
       });
     }).toList();
 

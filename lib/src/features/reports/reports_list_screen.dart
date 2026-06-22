@@ -2254,23 +2254,18 @@ class _PagePreviewSurface extends ConsumerWidget {
       );
     }
     final dsAsync = ref.watch(restDataSourceIdProvider);
-    return Container(
+    return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 240),
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: OpticsColors.canvas,
-        borderRadius: BorderRadius.circular(OpticsRadii.sm),
-        border: Border.all(
-            color: OpticsColors.border.withValues(alpha: 0.3)),
-      ),
-      child: dsAsync.when(
-        loading: () => const SizedBox(
-          height: 240,
-          child: Center(child: CircularProgressIndicator()),
+      child: SizedBox(
+        width: double.infinity,
+        child: dsAsync.when(
+          loading: () => const SizedBox(
+            height: 240,
+            child: Center(child: CircularProgressIndicator()),
+          ),
+          error: (_, __) => _buildBody(null),
+          data: (dsId) => _buildBody(dsId),
         ),
-        error: (_, __) => _buildBody(null),
-        data: (dsId) => _buildBody(dsId),
       ),
     );
   }
@@ -2342,16 +2337,6 @@ class _PagePreviewSurface extends ConsumerWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '${pages.length} page${pages.length == 1 ? '' : 's'}',
-            style: const TextStyle(
-              fontSize: 11,
-              color: OpticsColors.textMuted,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.6,
-            ),
-          ),
-          const SizedBox(height: 10),
           _LivePagePreview(
             page: pages.first as Map<String, dynamic>,
             tenantId: report.tenantId,
@@ -2467,36 +2452,14 @@ class _LivePagePreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = page['title'] as String? ?? '';
     final widgets =
         (page['widgets'] as List?)?.cast<Map>().toList() ?? const [];
 
-    return Container(
+    return SizedBox(
       width: double.infinity,
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: OpticsColors.surface,
-        borderRadius: BorderRadius.circular(OpticsRadii.sm),
-        border: Border.all(
-            color: OpticsColors.border.withValues(alpha: 0.4)),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (title.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text(
-                title.toUpperCase(),
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: OpticsColors.textMuted,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.6,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
           if (widgets.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 18),
@@ -2579,10 +2542,7 @@ class _LivePagePreview extends StatelessWidget {
     return SizedBox(
       width: width,
       height: height,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(6),
-        child: WidgetRenderer(model: model),
-      ),
+      child: WidgetRenderer(model: model, chromeless: true),
     );
   }
 }

@@ -308,16 +308,18 @@ class _PageBlock extends StatelessWidget {
       }
       if (isCanned) {
         brz['time_range'] = kTimeRangeMaximum;
+        brz['max_items'] = 100;
       }
       if (brz['metric'] == 'avg_order_price_trend') {
         settings['sortBy'] = 'None';
-        settings['maxItems'] = isCanned ? 200 : settings['maxItems'];
-        brz['max_items'] = isCanned ? 200 : brz['max_items'];
+        settings['maxItems'] = isCanned ? 100 : settings['maxItems'];
+        brz['max_items'] = isCanned ? 100 : brz['max_items'];
       }
       binding['brz'] = brz;
     }
     if (isCanned) {
       settings['timeRange'] = kTimeRangeMaximum;
+      settings['maxItems'] = 100;
     }
 
     // Sizing: KPIs are compact tiles; charts and tables get wider blocks.

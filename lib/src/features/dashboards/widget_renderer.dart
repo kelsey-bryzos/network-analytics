@@ -153,9 +153,6 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
     return kDefaultTimeRange;
   }
 
-  String get _backendTimeRange =>
-      _timeRange == kTimeRangeMaximum ? 'All' : _timeRange;
-
   int get _maxItems {
     final s = (widget.model.settings['maxItems'] as num?)?.toInt();
     if (s != null && s > 0) return s;
@@ -168,7 +165,7 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
     final brz = _brz;
     if (brz == null) return '';
     final tid = ref.read(activeTenantProvider) ?? '';
-    return '${brz['data_source_id']}|${brz['metric']}|$_backendTimeRange|$_maxItems|$tid';
+    return '${brz['data_source_id']}|${brz['metric']}|$_timeRange|$_maxItems|$tid';
   }
 
   @override
@@ -203,7 +200,7 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
       final res = await ref.read(repoProvider).widgetDataBryzos(
             dataSourceId: dataSourceId,
             metric: metric,
-            timeRange: _backendTimeRange,
+            timeRange: _timeRange,
             maxItems: _maxItems > 0 ? _maxItems : 10,
           );
       if (!mounted) return;
@@ -383,8 +380,6 @@ class _WidgetRendererCore extends StatelessWidget {
     if (metric == 'avg_order_price_trend') return 'None';
     return model.settings['sortBy'] as String? ?? 'Value ↓';
   }
-
-  String get _groupByKey => model.settings['groupBy'] as String? ?? 'Category';
   int get _maxItems => (model.settings['maxItems'] as num?)?.toInt() ?? 0;
 
   List<Color> get _palette {
@@ -449,6 +444,8 @@ class _WidgetRendererCore extends StatelessWidget {
   List<int> _sortedIndices(List<String> labels, List<double> values) {
     final indices = List.generate(labels.length, (i) => i);
     switch (_sortBy) {
+      case 'None':
+        return indices;
       case 'Value ↓':
         indices.sort((a, b) => values[b].compareTo(values[a]));
         break;
@@ -555,9 +552,25 @@ class _WidgetRendererCore extends StatelessWidget {
     double v, prev;
     final meta = model.binding['_meta'];
     if (meta is Map && meta['total'] != null) {
-      v = (meta['total'] as num).toDouble();
-      final p = meta['prior'];
-      prev = p is num ? p.toDouble() : v;
+      final totalRaw = meta['totalRaw'];
+      final priorRaw = meta['priorRaw'];
+      final totalVal = totalRaw is num ? totalRaw.toDouble() : (meta['total'] as num).toDouble();
+      final priorVal = priorRaw is num
+          ? priorRaw.toDouble()
+          : (meta['prior'] is num ? (meta['prior'] as num).toDouble() : totalVal);
+
+      // Back-compat guard: some older payloads store raw dollars in `_meta.total`
+      // while `_unit` is `$K`/`$M`. Normalize to scaled units so formatter does not
+      // double-scale.
+      final metric = ((model.binding['brz'] as Map?)?['metric'] as String?) ?? '';
+      if (totalRaw is! num && metric == 'avg_order_price_trend') {
+        final scale = _unit == r'$M' ? 1e6 : _unit == r'$K' ? 1e3 : 1.0;
+        v = scale > 1 ? totalVal / scale : totalVal;
+        prev = scale > 1 ? priorVal / scale : priorVal;
+      } else {
+        v = totalVal;
+        prev = priorVal;
+      }
     } else if (_hasMulti) {
       final ms = _multiSeries!;
       v = ms.fold(0.0, (a, s) => a + s.last);
@@ -1722,11 +1735,17 @@ class _WidgetRendererCore extends StatelessWidget {
       return _noData();
     }
 
-    final col1Header = (model.binding['_col1'] as String?) ?? 'Name';
+    final metric = ((model.binding['brz'] as Map?)?['metric'] as String?) ?? '';
+    final col1Header = metric == 'avg_order_price_trend'
+        ? 'Transaction Month'
+        : ((model.binding['_col1'] as String?) ?? 'Name');
     final col2Header = (model.binding['_col2'] as String?) ?? 'Value';
     final total = _series.fold<double>(0, (a, b) => a + b);
 
     var indices = _sortedIndices(_labels, _series);
+    if (_sortBy == 'None' && metric == 'avg_order_price_trend') {
+      indices = indices.reversed.toList();
+    }
     indices = _limitIndices(indices);
 
     // Sticky header: frozen header row + scrollable body rows
@@ -1771,8 +1790,11 @@ class _WidgetRendererCore extends StatelessWidget {
   Widget _singleTableRow(int rank, int dataIdx, double total) {
     final pct = total > 0 ? _series[dataIdx] / total * 100 : 0.0;
     final isOdd = rank % 2 == 1;
-    // Smart dollar formatting: never show $0.0M for sub-million values
-    final valueStr = _fmtSmartValue(_series[dataIdx], _unit);
+    final unitMult = _unit == r'$M' ? 1e6 : _unit == r'$K' ? 1e3 : 1.0;
+    final isMoney = _unit.isNotEmpty && _unit.codeUnitAt(0) == 36;
+    final valueStr = isMoney
+        ? _fmtExactMoney(_series[dataIdx] * unitMult)
+        : _fmtSmartValue(_series[dataIdx], _unit);
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 7, 24, 7),
       color: isOdd ? _wt.headerBg.withValues(alpha: 0.3) : Colors.transparent,

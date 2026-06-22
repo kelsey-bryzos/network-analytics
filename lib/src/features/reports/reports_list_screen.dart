@@ -7,7 +7,7 @@
 // row-level actions (Preview, Edit, Share, Archive, Delete).
 //
 // • Preview      → right-side drawer (NOT a modal dialog).
-// • Edit         → /explore?reportId=<id>; canned reports clone first.
+// • Edit         → /reports/<id>/edit for custom reports; canned reports clone first and open read-only.
 // • Multi-select → bulk Archive / Delete from a top action bar.
 // • Drag & drop  → drop report A onto report B to create a new
 //                  "combined" custom report (combined_from = [A,B]).
@@ -15,26 +15,48 @@
 //                  append more sources. Originals are never deleted.
 // • Share        → flips reports.shared_with_tenant.
 // =====================================================================
-import 'dart:io';
-
-import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import '../../config/feature_flags.dart';
 import '../../data/models.dart';
 import '../../data/supabase_repo.dart';
 import '../../design/theme.dart';
 import '../../shared/secure_error.dart';
+import '../../platform/save_bytes.dart';
+import '../dashboards/time_range_options.dart';
 import '../dashboards/widget_renderer.dart';
 import 'custom_builder/custom_report_query_v2.dart';
 import 'custom_builder/v2_report_view.dart';
 import 'report_viewer_screen.dart' show restDataSourceIdProvider;
 
 enum _Filter { all, mine, shared, canned, archived }
+
+String _safeExportPart(String raw) {
+  final v = raw.replaceAll(RegExp(r'[^A-Za-z0-9 _\-\.]'), '').trim();
+  return v.isEmpty ? 'Report' : v;
+}
+
+Future<String> _buildExportFileName(WidgetRef ref, Report report, String format) async {
+  final repo = ref.read(repoProvider);
+  final client = ref.read(supabaseProvider);
+  final tenantId =
+      (client.auth.currentUser?.appMetadata['active_tenant_id'] as String?) ??
+          ref.read(activeTenantProvider);
+
+  var tenantName = 'Tenant';
+  if (tenantId != null && tenantId.isNotEmpty) {
+    try {
+      tenantName = _safeExportPart((await repo.getTenant(tenantId)).name);
+    } catch (_) {}
+  }
+
+  final now = DateTime.now();
+  final dateTag = '${now.month}-${now.day}-${now.year.toString().substring(2)}';
+  final reportName = _safeExportPart(report.name);
+  return '${reportName}_${tenantName}_$dateTag.$format';
+}
 
 class ReportsListScreen extends ConsumerStatefulWidget {
   const ReportsListScreen({super.key});
@@ -498,35 +520,51 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
               canEdit: canEdit,
               onEdit: () {
                 Navigator.pop(ctx);
-                _edit(context, ref, r);
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _edit(context, ref, r);
+                });
               },
               onShare: () {
                 Navigator.pop(ctx);
-                _share(context, ref, r);
+                Future<void>.delayed(const Duration(milliseconds: 120), () {
+                  _share(context, ref, r);
+                });
               },
               onExportPdf: () {
                 Navigator.pop(ctx);
-                _export(context, ref, r, 'pdf');
+                Future<void>.delayed(const Duration(milliseconds: 120), () {
+                  _export(context, ref, r, 'pdf');
+                });
               },
               onExportExcel: () {
                 Navigator.pop(ctx);
-                _export(context, ref, r, 'xlsx');
+                Future<void>.delayed(const Duration(milliseconds: 120), () {
+                  _export(context, ref, r, 'xlsx');
+                });
               },
               onSchedule: () {
                 Navigator.pop(ctx);
-                _schedule(context, ref, r);
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _schedule(context, ref, r);
+                });
               },
               onArchive: () {
                 Navigator.pop(ctx);
-                _archive(context, ref, r);
+                Future<void>.delayed(const Duration(milliseconds: 120), () {
+                  _archive(context, ref, r);
+                });
               },
               onRestore: () {
                 Navigator.pop(ctx);
-                _restore(context, ref, r);
+                Future<void>.delayed(const Duration(milliseconds: 120), () {
+                  _restore(context, ref, r);
+                });
               },
               onDelete: () {
                 Navigator.pop(ctx);
-                _delete(context, ref, r);
+                Future<void>.delayed(const Duration(milliseconds: 120), () {
+                  _delete(context, ref, r);
+                });
               },
             ),
           ),
@@ -535,28 +573,22 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
     );
   }
 
-  /// "Clone & Edit" for *both* canned and custom reports.
-  /// - Canned   → clone via the `clone-canned-report` Edge Function
-  ///              (the new row is named "Copy of <X>" by the function).
-  /// - Custom   → clone into a new tenant row named "Copy of <X>" (or
-  ///              "<X> 2"/"<X> 3"… if a "Copy of …" already exists).
-  /// Then redirect to the Report Builder with the new id so the user can
-  /// immediately tweak the name and contents.
+  /// Clone/open action for reports.
+  /// - Canned reports clone via the `clone-canned-report` Edge Function,
+  ///   then open the cloned report viewer. They must not route into the old
+  ///   Report Builder / Explore builder flow.
+  /// - Custom reports keep the normal editor behavior.
   Future<void> _edit(BuildContext ctx, WidgetRef ref, Report r) async {
-    // Every non-canned report opens in the new explicit-join wizard
-    // (ADR-0013). Canned reports clone first (to protect the system
-    // template), and the clone — which is itself a tenant-scoped custom
-    // report — also opens in the wizard.
     if (r.isCanned) {
       final cloned = await _cloneReport(ctx, ref, r, purpose: 'edit');
-      if (cloned == null || !ctx.mounted) return;
+      if (cloned == null) {
+        if (ctx.mounted) _toast(ctx, 'Could not clone this canned report.');
+        return;
+      }
+      if (!ctx.mounted) return;
       // ignore: unused_result
       ref.refresh(reportsProvider);
-      if (OpticsFlags.customBuilderV2) {
-        ctx.go('/reports/${Uri.encodeComponent(cloned)}/edit');
-      } else {
-        ctx.go('/explore?reportId=${Uri.encodeComponent(cloned)}');
-      }
+      ctx.go('/reports/${Uri.encodeComponent(cloned)}');
       return;
     }
     if (OpticsFlags.customBuilderV2) {
@@ -576,7 +608,8 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
       {required String purpose}) async {
     final client = ref.read(supabaseProvider);
     final tid =
-        client.auth.currentUser?.appMetadata['active_tenant_id'] as String?;
+        (client.auth.currentUser?.appMetadata['active_tenant_id'] as String?) ??
+            ref.read(activeTenantProvider);
     final body = <String, dynamic>{'purpose': purpose};
     if (r.id.startsWith('lib:')) {
       body['library_item_id'] = r.id.substring(4);
@@ -622,101 +655,56 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
         reportId = handle;
       }
       final repo = ref.read(repoProvider);
-      final path =
-          await repo.exportReport(reportId: reportId, format: format);
+      final fileName = await _buildExportFileName(ref, r, format);
+      final path = await repo.exportReport(
+        reportId: reportId,
+        format: format,
+        exportName: r.name,
+      );
       if (path == null) {
         if (ctx.mounted) _toast(ctx, '$fmtLabel export failed.');
         return;
       }
-      final url =
-          await repo.signedExportUrl(path, expiresInSeconds: 3600);
+      final url = await repo.signedExportUrl(
+        path,
+        expiresInSeconds: 3600,
+        downloadFileName: fileName,
+      );
       if (url == null || url.isEmpty) {
         if (ctx.mounted) _toast(ctx, 'Could not sign download URL.');
         return;
       }
-      await _downloadToDisk(ctx, url: url, report: r, format: format);
+      await _downloadToDisk(ctx, url: url, fileName: fileName, format: format);
     } catch (e) {
       if (ctx.mounted) _toast(ctx, '$fmtLabel export failed: $e');
     }
   }
 
-  /// Download the bytes from `url` and prompt the user (desktop) or save
-  /// to the platform's downloads folder (mobile) — never opens a browser
-  /// window for the artifact.
+  /// Download the bytes from `url` and prompt the user to save them without
+  /// opening a popup/new browser tab.
   Future<void> _downloadToDisk(
     BuildContext ctx, {
     required String url,
-    required Report report,
+    required String fileName,
     required String format,
   }) async {
     final fmtLabel = format.toUpperCase();
-    final safeName =
-        report.name.replaceAll(RegExp(r'[^A-Za-z0-9 _\-\.]'), '').trim();
-    final defaultFileName =
-        '${safeName.isEmpty ? 'optics-report' : safeName}.$format';
-
-    // On web, open the signed URL outside the current SPA tab.
-    // The browser will handle the download based on Content-Disposition.
-    if (kIsWeb) {
-      final uri = Uri.parse(url);
-      try {
-        final launched = await launchUrl(
-          uri,
-          mode: LaunchMode.platformDefault,
-          webOnlyWindowName: '_blank',
-        );
-        if (ctx.mounted) {
-          _toast(
-            ctx,
-            launched
-                ? '$fmtLabel download started.'
-                : '$fmtLabel download could not be opened.',
-          );
-        }
-      } catch (e) {
-        if (ctx.mounted) _toast(ctx, '$fmtLabel download failed: $e');
-      }
-      return;
-    }
-
-    // Desktop/Mobile: Fetch bytes and save via FilePicker or direct file write.
-    // Fetch the artifact bytes from the signed URL.
-    final resp = await HttpClient().getUrl(Uri.parse(url));
-    final httpResp = await resp.close();
-    if (httpResp.statusCode != 200) {
+    final resp = await http.get(Uri.parse(url));
+    if (resp.statusCode != 200) {
       if (ctx.mounted) {
-        _toast(ctx, '$fmtLabel download failed (${httpResp.statusCode})');
+        _toast(ctx, '$fmtLabel download failed (${resp.statusCode})');
       }
       return;
     }
-    final bytes = <int>[];
-    await for (final chunk in httpResp) {
-      bytes.addAll(chunk);
-    }
 
-    // Ask the user where to save (desktop: native dialog; mobile: file_picker
-    // returns null/unsupported → fall back to documents dir).
-    String? savePath;
-    try {
-      savePath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Save $fmtLabel',
-        fileName: defaultFileName,
-        type: format == 'pdf' ? FileType.custom : FileType.custom,
-        allowedExtensions: [format],
-      );
-    } catch (_) {
-      savePath = null;
-    }
-    if (savePath == null) {
-      // User cancelled or platform doesn't support saveFile.
-      if (ctx.mounted) _toast(ctx, '$fmtLabel save cancelled.');
-      return;
-    }
-    if (!savePath.toLowerCase().endsWith('.$format')) {
-      savePath = '$savePath.$format';
-    }
-    await File(savePath).writeAsBytes(bytes, flush: true);
-    if (ctx.mounted) _toast(ctx, '$fmtLabel saved: $savePath');
+    final saved = await saveBytesToUserFile(
+      bytes: resp.bodyBytes,
+      fileName: fileName,
+      extension: format,
+      dialogTitle: 'Save $fmtLabel',
+    );
+    if (!ctx.mounted) return;
+    _toast(ctx, saved ? '$fmtLabel saved.' : '$fmtLabel save cancelled.');
   }
 
   /// Open the Schedule dialog for a report. For canned reports the
@@ -1452,14 +1440,15 @@ class _RowContent extends StatelessWidget {
         _iconBtn(Icons.visibility_outlined, 'Preview', onPreview),
         _iconBtn(
           Icons.edit_outlined,
-          r.isCanned ? 'Clone & edit' : 'Edit',
+          r.isCanned ? 'Clone & open' : 'Edit',
           canEdit && !isArchived ? onEdit : null,
         ),
         _exportMenuBtn(r, isArchived),
         _iconBtn(
           Icons.schedule_outlined,
-          'Schedule',
+          r.hasEnabledSchedule ? 'Scheduled' : 'Schedule',
           canEdit && !isArchived ? onSchedule : null,
+          color: r.hasEnabledSchedule ? OpticsColors.accentCyan : null,
         ),
         _iconBtn(
           Icons.share_outlined,
@@ -1666,10 +1655,14 @@ class _PreviewDrawer extends StatelessWidget {
         ?.map((id) => MapEntry(id, _lookup(id)))
         .toList();
 
+    final drawerWidth = (MediaQuery.of(context).size.width * 0.62)
+        .clamp(420.0, 980.0)
+        .toDouble();
+
     return Material(
       color: Colors.transparent,
       child: Container(
-        width: 520,
+        width: drawerWidth,
         height: double.infinity,
         decoration: const BoxDecoration(
           color: OpticsColors.surface,
@@ -1989,12 +1982,16 @@ class _PreviewDrawer extends StatelessWidget {
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, size: 14, color: color),
         const SizedBox(width: 6),
-        Text(label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: color,
-            )),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: color,
+          ),
+        ),
         if (hasChevron) ...[
           const SizedBox(width: 4),
           Icon(Icons.expand_more, size: 14, color: color),
@@ -2004,21 +2001,28 @@ class _PreviewDrawer extends StatelessWidget {
   }
 
   Widget _meta(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label.toUpperCase(),
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 220),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label.toUpperCase(),
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.8,
+                color: OpticsColors.textMuted,
+              )),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.8,
-              color: OpticsColors.textMuted,
-            )),
-        const SizedBox(height: 2),
-        Text(value,
-            style: const TextStyle(
-                fontSize: 12, color: OpticsColors.textPrimary)),
-      ],
+                fontSize: 12, color: OpticsColors.textPrimary),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2198,23 +2202,18 @@ class _PagePreviewSurface extends ConsumerWidget {
       );
     }
     final dsAsync = ref.watch(restDataSourceIdProvider);
-    return Container(
+    return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 240),
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: OpticsColors.canvas,
-        borderRadius: BorderRadius.circular(OpticsRadii.sm),
-        border: Border.all(
-            color: OpticsColors.border.withValues(alpha: 0.3)),
-      ),
-      child: dsAsync.when(
-        loading: () => const SizedBox(
-          height: 240,
-          child: Center(child: CircularProgressIndicator()),
+      child: SizedBox(
+        width: double.infinity,
+        child: dsAsync.when(
+          loading: () => const SizedBox(
+            height: 240,
+            child: Center(child: CircularProgressIndicator()),
+          ),
+          error: (_, __) => _buildBody(null),
+          data: (dsId) => _buildBody(dsId),
         ),
-        error: (_, __) => _buildBody(null),
-        data: (dsId) => _buildBody(dsId),
       ),
     );
   }
@@ -2286,20 +2285,11 @@ class _PagePreviewSurface extends ConsumerWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '${pages.length} page${pages.length == 1 ? '' : 's'}',
-            style: const TextStyle(
-              fontSize: 11,
-              color: OpticsColors.textMuted,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.6,
-            ),
-          ),
-          const SizedBox(height: 10),
           _LivePagePreview(
             page: pages.first as Map<String, dynamic>,
             tenantId: report.tenantId,
             dataSourceId: dataSourceId,
+            isCanned: report.isCanned,
             isFirstPage: true,
           ),
           if (pages.length > 1) ...[
@@ -2310,6 +2300,7 @@ class _PagePreviewSurface extends ConsumerWidget {
                 page: pages[i] as Map<String, dynamic>,
                 tenantId: report.tenantId,
                 dataSourceId: dataSourceId,
+                isCanned: report.isCanned,
                 isFirstPage: false,
               ),
             ],
@@ -2400,47 +2391,27 @@ class _LivePagePreview extends StatelessWidget {
   final Map<String, dynamic> page;
   final String tenantId;
   final String? dataSourceId;
+  final bool isCanned;
   final bool isFirstPage;
 
   const _LivePagePreview({
     required this.page,
     required this.tenantId,
     required this.dataSourceId,
+    required this.isCanned,
     required this.isFirstPage,
   });
 
   @override
   Widget build(BuildContext context) {
-    final title = page['title'] as String? ?? '';
     final widgets =
         (page['widgets'] as List?)?.cast<Map>().toList() ?? const [];
 
-    return Container(
+    return SizedBox(
       width: double.infinity,
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: OpticsColors.surface,
-        borderRadius: BorderRadius.circular(OpticsRadii.sm),
-        border: Border.all(
-            color: OpticsColors.border.withValues(alpha: 0.4)),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (title.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text(
-                title.toUpperCase(),
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: OpticsColors.textMuted,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.6,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
           if (widgets.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 18),
@@ -2491,10 +2462,24 @@ class _LivePagePreview extends StatelessWidget {
     final settings =
         Map<String, dynamic>.from((w['settings'] as Map?) ?? const {});
 
-    if (binding['brz'] is Map && dataSourceId != null) {
+    if (binding['brz'] is Map) {
       final brz = Map<String, dynamic>.from(binding['brz'] as Map);
-      brz['data_source_id'] = dataSourceId;
+      if (dataSourceId != null) {
+        brz['data_source_id'] = dataSourceId;
+      }
+      if (isCanned) {
+        brz['time_range'] = kTimeRangeMaximum;
+      }
+      final metric = brz['metric'] as String? ?? '';
+      if (metric == 'avg_order_price_trend') {
+        settings['sortBy'] = 'None';
+        settings['maxItems'] = 200;
+        brz['max_items'] = 200;
+      }
       binding['brz'] = brz;
+    }
+    if (isCanned) {
+      settings['timeRange'] = kTimeRangeMaximum;
     }
 
     final isKpi = kind == WidgetKind.kpi;
@@ -2557,15 +2542,48 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
     super.dispose();
   }
 
-  // Cadence presets → cron expressions (UTC).
-  static const Map<String, ({String label, String cron})> _cadencePresets = {
-    'hourly': (label: 'Every hour', cron: '0 * * * *'),
-    'daily_8am': (label: 'Daily at 8:00 AM UTC', cron: '0 8 * * *'),
-    'weekly_mon_8am':
-        (label: 'Weekly — Monday 8:00 AM UTC', cron: '0 8 * * 1'),
-    'monthly_1st_8am':
-        (label: 'Monthly — 1st at 8:00 AM UTC', cron: '0 8 1 * *'),
-  };
+  String get _localTimeZoneLabel {
+    final name = DateTime.now().timeZoneName.trim();
+    final lower = name.toLowerCase();
+    if (lower.contains('eastern')) return 'EST';
+    if (lower.contains('central')) return 'CST';
+    if (lower.contains('mountain')) return 'MST';
+    if (lower.contains('pacific')) return 'PST';
+    if (RegExp(r'^[A-Z]{2,5}$').hasMatch(name)) {
+      if (name == 'EDT') return 'EST';
+      if (name == 'CDT') return 'CST';
+      if (name == 'MDT') return 'MST';
+      if (name == 'PDT') return 'PST';
+      return name;
+    }
+    return name.isEmpty ? 'LOCAL' : name;
+  }
+
+  int get _localEightAmUtcHour {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day, 8).toUtc().hour;
+  }
+
+  int get _localMondayEightAmUtcWeekday {
+    final now = DateTime.now();
+    final monday = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - DateTime.monday));
+    return monday.add(const Duration(hours: 8)).toUtc().weekday % 7;
+  }
+
+  Map<String, ({String label, String cron})> get _cadencePresets {
+    final tz = _localTimeZoneLabel;
+    final hour = _localEightAmUtcHour;
+    final weekday = _localMondayEightAmUtcWeekday;
+    return {
+      'hourly': (label: 'Every hour', cron: '0 * * * *'),
+      'daily_8am': (label: 'Daily at 8:00 AM $tz', cron: '0 $hour * * *'),
+      'weekly_mon_8am':
+          (label: 'Weekly — Monday 8:00 AM $tz', cron: '0 $hour * * $weekday'),
+      'monthly_1st_8am':
+          (label: 'Monthly — 1st at 8:00 AM $tz', cron: '0 $hour 1 * *'),
+    };
+  }
 
   Future<void> _save() async {
     final raw = _recipientsCtl.text.trim();
@@ -2630,7 +2648,23 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
     for (final entry in _cadencePresets.entries) {
       if (entry.value.cron == cron) return entry.value.label;
     }
-    return cron;
+    final parts = cron.trim().split(RegExp(r'\s+'));
+    final tz = _localTimeZoneLabel;
+    if (parts.length == 5 && parts[0] == '0') {
+      if (parts[1] == '*' && parts[2] == '*' && parts[3] == '*' && parts[4] == '*') {
+        return 'Every hour';
+      }
+      if (parts[2] == '*' && parts[3] == '*' && parts[4] == '*') {
+        return 'Daily at 8:00 AM $tz';
+      }
+      if (parts[2] == '*' && parts[3] == '*' && parts[4] != '*') {
+        return 'Weekly — Monday 8:00 AM $tz';
+      }
+      if (parts[2] == '1' && parts[3] == '*' && parts[4] == '*') {
+        return 'Monthly — 1st at 8:00 AM $tz';
+      }
+    }
+    return 'Scheduled cadence';
   }
 
   @override
@@ -2666,7 +2700,7 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
               const SizedBox(height: 4),
               const Text(
                 'Delivered by email as a PDF and/or Excel attachment. '
-                'Cron times are UTC.',
+                'Cadence is based on your device timezone.',
                 style: TextStyle(
                     fontSize: 11, color: OpticsColors.textMuted),
               ),
@@ -2779,8 +2813,11 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
                         final enabled = (s['enabled'] as bool?) ?? true;
                         final recipients =
                             (s['recipients'] as List?)?.join(', ') ?? '';
-                        final fmts =
-                            (s['format'] as List?)?.join(' · ') ?? '';
+                        final fmts = ((s['format'] as List?) ?? const [])
+                            .map((v) => v.toString().toLowerCase() == 'xlsx'
+                                ? 'Excel'
+                                : v.toString().toUpperCase())
+                            .join(' · ');
                         return Padding(
                           padding: const EdgeInsets.symmetric(vertical: 6),
                           child: Row(
@@ -2886,7 +2923,8 @@ void showToastHelper(BuildContext ctx, String msg) {
 
 Future<String?> cloneReportHelper(BuildContext ctx, WidgetRef ref, Report r, {required String purpose}) async {
   final client = ref.read(supabaseProvider);
-  final tid = client.auth.currentUser?.appMetadata['active_tenant_id'] as String?;
+  final tid = (client.auth.currentUser?.appMetadata['active_tenant_id'] as String?) ??
+      ref.read(activeTenantProvider);
   final body = <String, dynamic>{'purpose': purpose};
   if (r.id.startsWith('lib:')) {
     body['library_item_id'] = r.id.substring(4);
@@ -2902,61 +2940,22 @@ Future<String?> cloneReportHelper(BuildContext ctx, WidgetRef ref, Report r, {re
   return (data['report_id'] ?? data['id']) as String?;
 }
 
-Future<void> downloadToDiskHelper(BuildContext ctx, {required String url, required Report report, required String format}) async {
+Future<void> downloadToDiskHelper(BuildContext ctx, {required String url, required String fileName, required String format}) async {
   final fmtLabel = format.toUpperCase();
-  final safeName = report.name.replaceAll(RegExp(r'[^A-Za-z0-9 _\-\.]'), '').trim();
-  final defaultFileName = '${safeName.isEmpty ? 'optics-report' : safeName}.$format';
-
-  // On web, open the signed URL outside the current SPA tab.
-  if (kIsWeb) {
-    final uri = Uri.parse(url);
-    try {
-      final launched = await launchUrl(
-        uri,
-        mode: LaunchMode.platformDefault,
-        webOnlyWindowName: '_blank',
-      );
-      if (ctx.mounted) {
-        showToastHelper(
-          ctx,
-          launched
-              ? '$fmtLabel download started.'
-              : '$fmtLabel download could not be opened.',
-        );
-      }
-    } catch (e) {
-      if (ctx.mounted) showToastHelper(ctx, '$fmtLabel download failed: $e');
-    }
+  final resp = await http.get(Uri.parse(url));
+  if (resp.statusCode != 200) {
+    if (ctx.mounted) showToastHelper(ctx, '$fmtLabel download failed (${resp.statusCode})');
     return;
   }
-
-  // Desktop/Mobile: Fetch bytes and save via FilePicker.
-  final resp = await HttpClient().getUrl(Uri.parse(url));
-  final httpResp = await resp.close();
-  if (httpResp.statusCode != 200) {
-    if (ctx.mounted) showToastHelper(ctx, '$fmtLabel download failed (${httpResp.statusCode})');
-    return;
+  final saved = await saveBytesToUserFile(
+    bytes: resp.bodyBytes,
+    fileName: fileName,
+    extension: format,
+    dialogTitle: 'Save $fmtLabel',
+  );
+  if (ctx.mounted) {
+    showToastHelper(ctx, saved ? '$fmtLabel saved.' : '$fmtLabel save cancelled.');
   }
-  final bytes = <int>[];
-  await for (final chunk in httpResp) { bytes.addAll(chunk); }
-
-  String? savePath;
-  try {
-    savePath = await FilePicker.platform.saveFile(
-      dialogTitle: 'Save $fmtLabel',
-      fileName: defaultFileName,
-      type: format == 'pdf' ? FileType.custom : FileType.custom,
-      allowedExtensions: [format],
-    );
-  } catch (_) { savePath = null; }
-  
-  if (savePath == null) {
-    if (ctx.mounted) showToastHelper(ctx, '$fmtLabel save cancelled.');
-    return;
-  }
-  if (!savePath.toLowerCase().endsWith('.$format')) savePath = '$savePath.$format';
-  await File(savePath).writeAsBytes(bytes, flush: true);
-  if (ctx.mounted) showToastHelper(ctx, '$fmtLabel saved: $savePath');
 }
 
 Future<void> exportReportHelper(BuildContext ctx, WidgetRef ref, Report r, String format) async {
@@ -2974,17 +2973,26 @@ Future<void> exportReportHelper(BuildContext ctx, WidgetRef ref, Report r, Strin
       reportId = handle;
     }
     final repo = ref.read(repoProvider);
-    final path = await repo.exportReport(reportId: reportId, format: format);
+    final fileName = await _buildExportFileName(ref, r, format);
+    final path = await repo.exportReport(
+      reportId: reportId,
+      format: format,
+      exportName: r.name,
+    );
     if (path == null) {
       if (ctx.mounted) showToastHelper(ctx, '$fmtLabel export failed.');
       return;
     }
-    final url = await repo.signedExportUrl(path, expiresInSeconds: 3600);
+    final url = await repo.signedExportUrl(
+      path,
+      expiresInSeconds: 3600,
+      downloadFileName: fileName,
+    );
     if (url == null || url.isEmpty) {
       if (ctx.mounted) showToastHelper(ctx, 'Could not sign download URL.');
       return;
     }
-    await downloadToDiskHelper(ctx, url: url, report: r, format: format);
+    await downloadToDiskHelper(ctx, url: url, fileName: fileName, format: format);
   } catch (e) {
     if (ctx.mounted) showToastHelper(ctx, '$fmtLabel export failed: $e');
   }

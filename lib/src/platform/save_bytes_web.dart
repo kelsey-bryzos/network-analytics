@@ -1,5 +1,7 @@
-import 'dart:html' as html;
+import 'dart:js_interop';
 import 'dart:typed_data';
+
+import 'package:web/web.dart' as web;
 
 Future<bool> saveBytesToUserFile({
   required Uint8List bytes,
@@ -7,14 +9,15 @@ Future<bool> saveBytesToUserFile({
   required String extension,
   required String dialogTitle,
 }) async {
-  final blob = html.Blob([bytes]);
-  final url = html.Url.createObjectUrlFromBlob(blob);
-  final anchor = html.AnchorElement(href: url)
-    ..download = fileName
-    ..style.display = 'none';
-  html.document.body?.append(anchor);
+  final blob = web.Blob(<JSAny>[bytes.toJS].toJS);
+  final url = web.URL.createObjectURL(blob);
+  final anchor = web.document.createElement('a') as web.HTMLAnchorElement
+    ..href = url
+    ..download = fileName;
+  anchor.style.display = 'none';
+  web.document.body?.append(anchor);
   anchor.click();
   anchor.remove();
-  html.Url.revokeObjectUrl(url);
+  web.URL.revokeObjectURL(url);
   return true;
 }

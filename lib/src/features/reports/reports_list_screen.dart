@@ -2651,6 +2651,9 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
     final parts = cron.trim().split(RegExp(r'\s+'));
     final tz = _localTimeZoneLabel;
     if (parts.length == 5 && parts[0] == '0') {
+      if (parts[1] == '*' && parts[2] == '*' && parts[3] == '*' && parts[4] == '*') {
+        return 'Every hour';
+      }
       if (parts[2] == '*' && parts[3] == '*' && parts[4] == '*') {
         return 'Daily at 8:00 AM $tz';
       }
@@ -2659,9 +2662,6 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
       }
       if (parts[2] == '1' && parts[3] == '*' && parts[4] == '*') {
         return 'Monthly — 1st at 8:00 AM $tz';
-      }
-      if (parts[1] == '*' && parts[2] == '*' && parts[3] == '*' && parts[4] == '*') {
-        return 'Every hour';
       }
     }
     return 'Scheduled cadence';
@@ -2813,8 +2813,11 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
                         final enabled = (s['enabled'] as bool?) ?? true;
                         final recipients =
                             (s['recipients'] as List?)?.join(', ') ?? '';
-                        final fmts =
-                            (s['format'] as List?)?.join(' · ') ?? '';
+                        final fmts = ((s['format'] as List?) ?? const [])
+                            .map((v) => v.toString().toLowerCase() == 'xlsx'
+                                ? 'Excel'
+                                : v.toString().toUpperCase())
+                            .join(' · ');
                         return Padding(
                           padding: const EdgeInsets.symmetric(vertical: 6),
                           child: Row(

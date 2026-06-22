@@ -313,6 +313,11 @@ class _PageBlock extends StatelessWidget {
     }
     if (isCanned) {
       settings['timeRange'] = kTimeRangeMaximum;
+      final metric = ((binding['brz'] as Map?)?['metric'] as String?) ?? '';
+      if (metric == 'avg_order_price_trend') {
+        settings['sortBy'] = 'None';
+        settings['maxItems'] = 200;
+      }
     }
 
     // Sizing: KPIs are compact tiles; charts and tables get wider blocks.

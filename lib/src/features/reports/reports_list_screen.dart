@@ -16,13 +16,14 @@
 // • Share        → flips reports.shared_with_tenant.
 // =====================================================================
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:http/http.dart' as http;
 
 import '../../config/feature_flags.dart';
 import '../../data/models.dart';
@@ -597,11 +598,7 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
       if (!ctx.mounted) return;
       // ignore: unused_result
       ref.refresh(reportsProvider);
-      if (OpticsFlags.customBuilderV2) {
-        ctx.go('/reports/${Uri.encodeComponent(cloned)}/edit');
-      } else {
-        ctx.go('/explore?reportId=${Uri.encodeComponent(cloned)}');
-      }
+      ctx.go('/explore?reportId=${Uri.encodeComponent(cloned)}');
       return;
     }
     if (OpticsFlags.customBuilderV2) {
@@ -705,14 +702,26 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
     final fmtLabel = format.toUpperCase();
     final defaultFileName = fileName;
 
-    // On web, open the signed URL outside the current SPA tab.
-    // The browser will handle the download based on Content-Disposition.
     if (kIsWeb) {
-      final uri = Uri.parse(url);
       try {
-        final launched = await launchUrl(uri, mode: LaunchMode.platformDefault, webOnlyWindowName: '_blank');
+        final response = await http.get(Uri.parse(url));
+        if (response.statusCode != 200) {
+          if (ctx.mounted) {
+            _toast(ctx, '$fmtLabel download failed (${response.statusCode})');
+          }
+          return;
+        }
+        final path = await FilePicker.platform.saveFile(
+          dialogTitle: 'Save $fmtLabel',
+          fileName: defaultFileName,
+          type: FileType.custom,
+          allowedExtensions: [format],
+          bytes: Uint8List.fromList(response.bodyBytes),
+        );
         if (ctx.mounted) {
-          _toast(ctx, launched ? '$fmtLabel download started.' : '$fmtLabel download could not be opened.');
+          _toast(ctx, kIsWeb || path != null
+              ? '$fmtLabel download started.'
+              : '$fmtLabel save cancelled.');
         }
       } catch (e) {
         if (ctx.mounted) _toast(ctx, '$fmtLabel download failed: $e');
@@ -1499,8 +1508,9 @@ class _RowContent extends StatelessWidget {
         _exportMenuBtn(r, isArchived),
         _iconBtn(
           Icons.schedule_outlined,
-          'Schedule',
+          r.hasEnabledSchedule ? 'Scheduled' : 'Schedule',
           canEdit && !isArchived ? onSchedule : null,
+          color: r.hasEnabledSchedule ? OpticsColors.accentCyan : null,
         ),
         _iconBtn(
           Icons.share_outlined,
@@ -2576,15 +2586,55 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
     super.dispose();
   }
 
-  // Cadence presets → cron expressions (UTC).
-  static const Map<String, ({String label, String cron})> _cadencePresets = {
-    'hourly': (label: 'Every hour', cron: '0 * * * *'),
-    'daily_8am': (label: 'Daily at 8:00 AM UTC', cron: '0 8 * * *'),
-    'weekly_mon_8am':
-        (label: 'Weekly — Monday 8:00 AM UTC', cron: '0 8 * * 1'),
-    'monthly_1st_8am':
-        (label: 'Monthly — 1st at 8:00 AM UTC', cron: '0 8 1 * *'),
-  };
+  String get _deviceTimeZoneLabel {
+    final label = DateTime.now().timeZoneName.trim();
+    return label.isEmpty ? 'local time' : label;
+  }
+
+  String _cronForLocal({
+    required int hour,
+    int minute = 0,
+    int? weekday,
+    bool monthly = false,
+  }) {
+    final now = DateTime.now();
+    late final DateTime local;
+    if (monthly) {
+      local = DateTime(now.year, now.month, 1, hour, minute);
+    } else if (weekday != null) {
+      final todayAtTime = DateTime(now.year, now.month, now.day, hour, minute);
+      final daysUntil = (weekday - todayAtTime.weekday) % 7;
+      local = todayAtTime.add(Duration(days: daysUntil));
+    } else {
+      local = DateTime(now.year, now.month, now.day, hour, minute);
+    }
+    final utc = local.toUtc();
+    if (monthly) return '${utc.minute} ${utc.hour} ${utc.day} * *';
+    if (weekday != null) {
+      final cronWeekday = utc.weekday == DateTime.sunday ? 0 : utc.weekday;
+      return '${utc.minute} ${utc.hour} * * $cronWeekday';
+    }
+    return '${utc.minute} ${utc.hour} * * *';
+  }
+
+  Map<String, ({String label, String cron})> get _cadencePresets {
+    final tz = _deviceTimeZoneLabel;
+    return {
+      'hourly': (label: 'Every hour', cron: '0 * * * *'),
+      'daily_8am': (
+        label: 'Daily at 8:00 AM $tz',
+        cron: _cronForLocal(hour: 8),
+      ),
+      'weekly_mon_8am': (
+        label: 'Weekly — Monday 8:00 AM $tz',
+        cron: _cronForLocal(hour: 8, weekday: DateTime.monday),
+      ),
+      'monthly_1st_8am': (
+        label: 'Monthly — 1st at 8:00 AM $tz',
+        cron: _cronForLocal(hour: 8, monthly: true),
+      ),
+    };
+  }
 
   Future<void> _save() async {
     final raw = _recipientsCtl.text.trim();
@@ -2683,10 +2733,10 @@ class _ScheduleDialogState extends ConsumerState<_ScheduleDialog> {
               const SizedBox(height: 4),
               Text(widget.report.name.toUpperCase(), style: OpticsTextStyles.headingMd),
               const SizedBox(height: 4),
-              const Text(
+              Text(
                 'Delivered by email as a PDF and/or Excel attachment. '
-                'Cron times are UTC.',
-                style: TextStyle(
+                'Times use your device time zone (${_deviceTimeZoneLabel}).',
+                style: const TextStyle(
                     fontSize: 11, color: OpticsColors.textMuted),
               ),
               const SizedBox(height: 16),
@@ -2926,13 +2976,24 @@ Future<void> downloadToDiskHelper(BuildContext ctx, {required String url, requir
   final fmtLabel = format.toUpperCase();
   final defaultFileName = fileName;
 
-  // On web, open the signed URL outside the current SPA tab.
   if (kIsWeb) {
-    final uri = Uri.parse(url);
     try {
-      final launched = await launchUrl(uri, mode: LaunchMode.platformDefault, webOnlyWindowName: '_blank');
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode != 200) {
+        if (ctx.mounted) showToastHelper(ctx, '$fmtLabel download failed (${response.statusCode})');
+        return;
+      }
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: 'Save $fmtLabel',
+        fileName: defaultFileName,
+        type: FileType.custom,
+        allowedExtensions: [format],
+        bytes: Uint8List.fromList(response.bodyBytes),
+      );
       if (ctx.mounted) {
-        showToastHelper(ctx, launched ? '$fmtLabel download started.' : '$fmtLabel download could not be opened.');
+        showToastHelper(ctx, kIsWeb || path != null
+            ? '$fmtLabel download started.'
+            : '$fmtLabel save cancelled.');
       }
     } catch (e) {
       if (ctx.mounted) showToastHelper(ctx, '$fmtLabel download failed: $e');

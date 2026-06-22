@@ -226,7 +226,7 @@ class _SingleWidgetViewerState extends ConsumerState<SingleWidgetViewer> {
     if (metric == 'avg_order_price_trend') {
       settings['sortBy'] = 'None';
       settings['barOrientation'] = 'Vertical';
-      settings['maxItems'] = 12;
+      settings['maxItems'] = widget.report.isCanned ? 200 : 12;
     }
 
     if (binding['brz'] is Map) {

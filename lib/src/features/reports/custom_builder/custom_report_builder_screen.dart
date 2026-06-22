@@ -245,7 +245,7 @@ class _CustomReportBuilderScreenState
     try {
       final row = await client
           .from('reports')
-          .select('id, name, description, layout, query_version')
+          .select('id, name, description, layout')
           .eq('id', id)
           .maybeSingle();
       if (row == null) return;
@@ -291,7 +291,6 @@ class _CustomReportBuilderScreenState
         'description': st.description,
         'layout': layout,
         'status': 'draft',
-        'query_version': 2,
       };
       String? newId = st.reportId;
       if (newId == null) {

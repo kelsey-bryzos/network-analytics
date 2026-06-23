@@ -49,7 +49,6 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
   late String _sortBy;
   late String _timeRange;
   late int _maxItems;
-  late String _autoRefresh;
   late String _barOrientation;
   late Map<String, bool> _toggles;
   late Map<String, bool> _filters;
@@ -63,7 +62,6 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
   late final String _origSortBy;
   late final String _origTimeRange;
   late final int _origMaxItems;
-  late final String _origAutoRefresh;
   late final String _origBarOrientation;
   late final Map<String, bool> _origToggles;
   late final Map<String, bool> _origFilters;
@@ -97,7 +95,6 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
     _origMaxItems = (s['maxItems'] as num?)?.toInt()
         ?? (brz['max_items'] as num?)?.toInt()
         ?? 10;
-    _origAutoRefresh = s['autoRefresh'] as String? ?? 'Off';
     _origBarOrientation = s['barOrientation'] as String? ?? 'Auto';
     _origToggles = {
       'Data Labels': (s['dataLabels'] as bool?) ?? false,
@@ -126,7 +123,6 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
     _sortBy = _origSortBy;
     _timeRange = _origTimeRange;
     _maxItems = _origMaxItems;
-    _autoRefresh = _origAutoRefresh;
     _barOrientation = _origBarOrientation;
     _toggles = Map<String, bool>.from(_origToggles);
     _filters = Map<String, bool>.from(_origFilters);
@@ -151,7 +147,6 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
         'sortBy': _sortBy,
         'timeRange': _timeRange,
         'maxItems': _maxItems,
-        'autoRefresh': _autoRefresh,
         'barOrientation': _barOrientation,
         'dataLabels': _toggles['Data Labels'],
         'legend': _toggles['Legend'],
@@ -193,7 +188,6 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
       _sortBy = _origSortBy;
       _timeRange = _origTimeRange;
       _maxItems = _origMaxItems;
-      _autoRefresh = _origAutoRefresh;
       _barOrientation = _origBarOrientation;
       _toggles = Map<String, bool>.from(_origToggles);
       _filters = Map<String, bool>.from(_origFilters);
@@ -389,18 +383,6 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
             value: entry.value,
             onChanged: (v) => _updateAndPreview(() => _toggles[entry.key] = v),
           ),
-        _label('Auto-refresh'),
-        _ChipGroup<String>(
-          options: const [
-            ('Off', 'Off'),
-            ('1 m', '1 m'),
-            ('5 m', '5 m'),
-            ('15 m', '15 m'),
-            ('30 m', '30 m'),
-          ],
-          value: _autoRefresh,
-          onChanged: (v) => _updateAndPreview(() => _autoRefresh = v),
-        ),
       ],
     );
   }

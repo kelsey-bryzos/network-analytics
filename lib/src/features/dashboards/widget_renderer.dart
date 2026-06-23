@@ -1141,7 +1141,7 @@ class _WidgetRendererCore extends StatelessWidget {
                       child: Row(
                         children: [
                           SizedBox(
-                            width: 100,
+                            width: 150,
                             child: Text(labels[i],
                                 style: TextStyle(fontSize: 9, color: _wt.secondaryText),
                                 overflow: TextOverflow.ellipsis),
@@ -1353,6 +1353,13 @@ class _WidgetRendererCore extends StatelessWidget {
     String fmtPct(double v) =>
         '${(v / total * 100).toStringAsFixed(total >= 100 ? 0 : 1)}%';
 
+    // For non-monetary donuts (e.g. users_by_type), show both count and percentage
+    String fmtCountPct(double v) {
+      final pct = (v / total * 100).toStringAsFixed(total >= 100 ? 0 : 1);
+      final count = v.round().toString();
+      return '$count ($pct%)';
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1394,7 +1401,7 @@ class _WidgetRendererCore extends StatelessWidget {
                         Tooltip(
                           message: isMonetary
                               ? '${labels[i]}\n${fmtMoney(data[i])}  ·  ${fmtPct(data[i])}'
-                              : '${labels[i]}\n${fmtValue(data[i])}  ·  ${fmtPct(data[i])}',
+                              : '${labels[i]}\n${fmtCountPct(data[i])}',
                           waitDuration: const Duration(milliseconds: 150),
                           textStyle: TextStyle(
                               fontSize: 11,
@@ -1426,7 +1433,7 @@ class _WidgetRendererCore extends StatelessWidget {
                                       overflow: TextOverflow.ellipsis),
                                 ),
                                 Text(
-                                  isMonetary ? fmtMoney(data[i]) : fmtPct(data[i]),
+                                  isMonetary ? fmtMoney(data[i]) : fmtCountPct(data[i]),
                                   style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,

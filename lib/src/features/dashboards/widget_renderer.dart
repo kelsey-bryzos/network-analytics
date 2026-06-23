@@ -1123,6 +1123,16 @@ class _WidgetRendererCore extends StatelessWidget {
     if (data.isEmpty) return _noData();
     final maxV = data.reduce(math.max);
 
+    // Optional secondary column (e.g. Revenue alongside Orders).
+    final meta = model.binding['_meta'];
+    final List<double>? secondaryValues = (meta is Map && meta['secondaryValues'] is List)
+        ? [for (final v in meta['secondaryValues'] as List) (v as num).toDouble()]
+        : null;
+    final String secondaryUnit = (meta is Map && meta['secondaryUnit'] is String)
+        ? meta['secondaryUnit'] as String
+        : '';
+    final bool hasSecondary = secondaryValues != null && secondaryValues.length == data.length;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1192,6 +1202,17 @@ class _WidgetRendererCore extends StatelessWidget {
                               textAlign: TextAlign.right,
                             ),
                           ),
+                          if (hasSecondary) ...[
+                            const SizedBox(width: 8),
+                            SizedBox(
+                              width: 72,
+                              child: Text(
+                                _fmtSmartValue(secondaryValues[i], secondaryUnit),
+                                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: _wt.bodyText),
+                                textAlign: TextAlign.right,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),

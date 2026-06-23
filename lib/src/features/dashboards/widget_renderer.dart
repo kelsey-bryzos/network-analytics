@@ -554,23 +554,17 @@ class _WidgetRendererCore extends StatelessWidget {
     if (meta is Map && meta['total'] != null) {
       final totalRaw = meta['totalRaw'];
       final priorRaw = meta['priorRaw'];
-      final totalVal = totalRaw is num ? totalRaw.toDouble() : (meta['total'] as num).toDouble();
-      final priorVal = priorRaw is num
-          ? priorRaw.toDouble()
-          : (meta['prior'] is num ? (meta['prior'] as num).toDouble() : totalVal);
+      // meta['total'] contains the already-scaled value from the Edge Function.
+      // meta['totalRaw'] contains the raw dollar amount, but we want the pre-scaled value.
+      final totalVal = (meta['total'] is num)
+          ? (meta['total'] as num).toDouble()
+          : (totalRaw is num ? totalRaw.toDouble() : 0.0);
+      final priorVal = (meta['prior'] is num)
+          ? (meta['prior'] as num).toDouble()
+          : (priorRaw is num ? priorRaw.toDouble() : totalVal);
 
-      // Back-compat guard: some older payloads store raw dollars in `_meta.total`
-      // while `_unit` is `$K`/`$M`. Normalize to scaled units so formatter does not
-      // double-scale.
-      final metric = ((model.binding['brz'] as Map?)?['metric'] as String?) ?? '';
-      if (totalRaw is! num && metric == 'avg_order_price_trend') {
-        final scale = _unit == r'$M' ? 1e6 : _unit == r'$K' ? 1e3 : 1.0;
-        v = scale > 1 ? totalVal / scale : totalVal;
-        prev = scale > 1 ? priorVal / scale : priorVal;
-      } else {
-        v = totalVal;
-        prev = priorVal;
-      }
+      v = totalVal;
+      prev = priorVal;
     } else if (_hasMulti) {
       final ms = _multiSeries!;
       v = ms.fold(0.0, (a, s) => a + s.last);
@@ -591,8 +585,15 @@ class _WidgetRendererCore extends StatelessWidget {
 
     String display;
     if (_unit.contains(r'$')) {
-      final unitMult = _unit == r'$M' ? 1e6 : _unit == r'$K' ? 1e3 : 1.0;
-      display = _fmtSmartMoney(v * unitMult);
+      // Edge Function already scales values (divides by 1000 or 1e6) and sets _unit to indicate scale.
+      // The value v is the already-scaled number; we format it with the appropriate unit suffix.
+      if (_unit == r'$M') {
+        display = '\$${v.toStringAsFixed(2)}M';
+      } else if (_unit == r'$K') {
+        display = '\$${v.toStringAsFixed(2)}K';
+      } else {
+        display = '\$${v.toStringAsFixed(2)}';
+      }
     } else if (_unit == '%') {
       display = '${v.toStringAsFixed(1)}%';
     } else if (_unit.isNotEmpty) {

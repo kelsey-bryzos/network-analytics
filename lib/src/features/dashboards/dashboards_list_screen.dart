@@ -54,6 +54,14 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
   /// Auto-refresh timer driven by the dashboard-level `refreshInterval` setting.
   Timer? _autoRefreshTimer;
 
+  /// Wall-clock timestamp of the last successful widget load — drives the
+  /// "Last refreshed HH:MM" indicator next to the dashboard refresh button.
+  DateTime? _lastRefreshedAt;
+
+  /// Ticker that forces the "Last refreshed" label to recompute every minute
+  /// so its relative wording stays accurate without a data fetch.
+  Timer? _lastRefreshedTicker;
+
   @override
   void dispose() {
     for (final t in _persistTimers.values) {
@@ -62,6 +70,7 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
     _persistTimers.clear();
     _progressTimer?.cancel();
     _autoRefreshTimer?.cancel();
+    _lastRefreshedTicker?.cancel();
     super.dispose();
   }
 
@@ -221,7 +230,9 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
         _widgets = List<WidgetModel>.from(list);
         _loadedDashId = dashId;
         _selected = null;
+        _lastRefreshedAt = DateTime.now();
       });
+      _ensureLastRefreshedTicker();
     }).catchError((e, st) {
       debugPrint('[Optics] _loadWidgets ERR dashId=$dashId: $e\n$st');
       if (mounted) {
@@ -1076,7 +1087,7 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
     _autoRefreshTimer = null;
     try {
       final d = await ref.read(repoProvider).getDashboard(dashId);
-      final interval = d.settings['refreshInterval'] as String? ?? 'off';
+      final interval = d.settings['refreshInterval'] as String? ?? '15m';
       final dur = _parseRefreshInterval(interval);
       if (dur != null) {
         _autoRefreshTimer = Timer.periodic(dur, (_) {
@@ -1085,6 +1096,30 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
         });
       }
     } catch (_) {}
+  }
+
+  /// Start (or keep alive) a one-minute ticker that forces the "Last refreshed"
+  /// label to recompute so its wording stays accurate without re-fetching data.
+  void _ensureLastRefreshedTicker() {
+    if (_lastRefreshedTicker != null && _lastRefreshedTicker!.isActive) return;
+    _lastRefreshedTicker = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (!mounted) return;
+      setState(() {}); // Triggers _formatLastRefreshed re-eval.
+    });
+  }
+
+  /// Format a wall-clock timestamp into "Last refreshed: just now",
+  /// "Last refreshed: 3m ago", or "Last refreshed: 2:14 PM" (>= 60 minutes).
+  String _formatLastRefreshed(DateTime ts) {
+    final now = DateTime.now();
+    final diff = now.difference(ts);
+    if (diff.inSeconds < 30) return 'Last refreshed: just now';
+    if (diff.inMinutes < 1) return 'Last refreshed: <1m ago';
+    if (diff.inMinutes < 60) return 'Last refreshed: ${diff.inMinutes}m ago';
+    final h = ts.hour == 0 ? 12 : (ts.hour > 12 ? ts.hour - 12 : ts.hour);
+    final m = ts.minute.toString().padLeft(2, '0');
+    final ampm = ts.hour >= 12 ? 'PM' : 'AM';
+    return 'Last refreshed: $h:$m $ampm';
   }
 
   /// Convert a refresh interval string to a Duration, or null for 'off'.
@@ -1330,6 +1365,15 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
                             _SyncProgressLabel(
                               progress: _syncProgress,
                               fmt: _fmtDuration,
+                            ),
+                          ] else if (_lastRefreshedAt != null) ...[
+                            const SizedBox(width: 8),
+                            Text(
+                              _formatLastRefreshed(_lastRefreshedAt!),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: chromeMuted,
+                              ),
                             ),
                           ],
                         ],
@@ -2525,7 +2569,7 @@ class _DashboardSettingsDialogState
                     _chips(
                       const ['off', '1m', '5m', '15m', '30m'],
                       'refreshInterval',
-                      defaultV: 'off',
+                      defaultV: '15m',
                     )),
                 _toggle('crossFilter', 'Cross-Widget Filtering',
                     defaultV: true),

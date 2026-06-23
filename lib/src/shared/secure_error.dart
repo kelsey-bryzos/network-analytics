@@ -54,12 +54,14 @@ void showSecureErrorSnackBar(
           onPressed: () {
             // Fire-and-forget error report
             try {
-              ref.read(supabaseProvider).functions.invoke(
+              final client = ref.read(supabaseProvider);
+              final userEmail = client.auth.currentUser?.email ?? 'unknown';
+              client.functions.invoke(
                 'send-error-report',
                 body: {
-                  'message': generic,
-                  'details': error.toString(),
-                  'context': 'SnackBar Error Report',
+                  'user_email': userEmail,
+                  'error_detail': error.toString(),
+                  'context': generic,
                 },
               );
             } catch (_) {}

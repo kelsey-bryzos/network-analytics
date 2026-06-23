@@ -148,12 +148,14 @@ void _showSecureErrorSnackBar(BuildContext context, WidgetRef ref, String generi
           label: 'Report Error',
           textColor: Colors.white,
           onPressed: () {
-            ref.read(supabaseProvider).functions.invoke(
+            final client = ref.read(supabaseProvider);
+            final userEmail = client.auth.currentUser?.email ?? 'unknown';
+            client.functions.invoke(
               'send-error-report',
               body: {
-                'message': generic,
-                'details': error.toString(),
-                'context': 'Settings Screen Snackbar',
+                'user_email': userEmail,
+                'error_detail': error.toString(),
+                'context': generic,
               },
             );
           },

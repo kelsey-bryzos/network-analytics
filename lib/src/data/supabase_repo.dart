@@ -824,7 +824,28 @@ class SupabaseRepo {
     return data['storage_path'] as String?;
   }
 
-  /// Share a dashboard with another user by email
+  /// Share a dashboard with a batch of targets (existing users by user_id
+  /// and/or invitees by email). Returns the raw per-target results so the
+  /// caller can surface success/error counts.
+  ///
+  /// Backwards-compatible single-email convenience: `shareDashboard(id, email)`.
+  Future<Map<String, dynamic>> shareDashboardBatch({
+    required String dashboardId,
+    required List<Map<String, String>> targets,
+  }) async {
+    final res = await client.functions.invoke(
+      'share-dashboard',
+      body: {'dashboard_id': dashboardId, 'targets': targets},
+      headers: _fnHeaders(),
+    );
+    if (res.status != 200 && res.status != 201) {
+      throw Exception(res.data?['error'] ?? 'Unknown error sharing dashboard');
+    }
+    return (res.data as Map?)?.cast<String, dynamic>() ?? {};
+  }
+
+  /// Legacy single-email share — kept for any callers that haven't moved to
+  /// the batch form. Internally calls the same Edge Function.
   Future<void> shareDashboard(String dashboardId, String email) async {
     final res = await client.functions.invoke(
       'share-dashboard',
@@ -834,6 +855,37 @@ class SupabaseRepo {
     if (res.status != 200 && res.status != 201) {
       throw Exception(res.data?['error'] ?? 'Unknown error sharing dashboard');
     }
+  }
+
+  /// Picker data — returns shareable users visible to the caller.
+  Future<List<Map<String, dynamic>>> listShareableUsers(String dashboardId) async {
+    final rows = await client.rpc(
+      'list_shareable_users',
+      params: {'p_dashboard_id': dashboardId},
+    );
+    return (rows as List).cast<Map<String, dynamic>>();
+  }
+
+  /// Manage Access data — current share rows (resolved + pending).
+  Future<List<Map<String, dynamic>>> listDashboardShares(String dashboardId) async {
+    final rows = await client.rpc(
+      'list_dashboard_shares',
+      params: {'p_dashboard_id': dashboardId},
+    );
+    return (rows as List).cast<Map<String, dynamic>>();
+  }
+
+  /// Revoke a single dashboard share by its share row id.
+  Future<bool> revokeDashboardShare(String shareId) async {
+    final res = await client.functions.invoke(
+      'revoke-dashboard-share',
+      body: {'share_id': shareId},
+      headers: _fnHeaders(),
+    );
+    if (res.status != 200 && res.status != 201) {
+      throw Exception(res.data?['error'] ?? 'Unknown error revoking share');
+    }
+    return (res.data as Map?)?['removed_membership'] == true;
   }
 
   /// Create a short-lived signed URL for an artifact in the `exports`

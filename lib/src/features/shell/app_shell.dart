@@ -99,12 +99,20 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 }
 
-class _Sidebar extends StatelessWidget {
+class _Sidebar extends ConsumerWidget {
   final String activePath;
   const _Sidebar({required this.activePath});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Guests on their active tenant see ONLY the Dashboards icon (no Reports
+    // Library, no Report Builder, no Settings). A guest who also has a
+    // non-guest role in another tenant gets full nav restored automatically
+    // when they switch tenants because activeTenantRoleProvider re-reads.
+    final role = ref.watch(activeTenantRoleProvider).asData?.value;
+    final isGuest = role == 'guest';
+    final visibleItems =
+        isGuest ? const <_NavItem>[] : _navItems;
     return Container(
       width: 64,
       decoration: const BoxDecoration(
@@ -126,7 +134,7 @@ class _Sidebar extends StatelessWidget {
       child: Column(
         children: [
           const SizedBox(height: 12),
-          for (final item in _navItems) _NavButton(item, activePath),
+          for (final item in visibleItems) _NavButton(item, activePath),
           const Spacer(),
           IconButton(
             tooltip: 'Help',

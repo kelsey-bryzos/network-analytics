@@ -415,45 +415,62 @@ class _PickerList extends StatelessWidget {
             tenantChips.add(_RoleChip(tenant: tenant, role: role));
           }
 
+          // De-dupe: if name is empty or identical to email, only show one identifier.
+          final primary = name.trim().isEmpty ? email : name;
+          final showEmailSecondary =
+              name.trim().isNotEmpty && name.trim().toLowerCase() != email.toLowerCase();
+
           final row = Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Checkbox(
-                  value: selected,
-                  onChanged: alreadyShared
-                      ? null
-                      : (v) => onToggle(uid, v ?? false),
+                SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: Checkbox(
+                    value: selected,
+                    onChanged: alreadyShared
+                        ? null
+                        : (v) => onToggle(uid, v ?? false),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  ),
                 ),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        name,
-                        style: TextStyle(
-                          color: alreadyShared
-                              ? OpticsColors.textSecondary
-                              : OpticsColors.textPrimary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                        ),
+                      // Row 1: primary identifier + tenant chips inline
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            primary,
+                            style: TextStyle(
+                              color: alreadyShared
+                                  ? OpticsColors.textSecondary
+                                  : OpticsColors.textPrimary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          ...tenantChips,
+                        ],
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        email,
-                        style: const TextStyle(
-                          color: OpticsColors.textSecondary,
-                          fontSize: 11,
-                        ),
-                      ),
-                      if (tenantChips.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Wrap(
-                          spacing: 4,
-                          runSpacing: 4,
-                          children: tenantChips,
+                      // Row 2 (optional): real email if name differs
+                      if (showEmailSecondary) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          email,
+                          style: const TextStyle(
+                            color: OpticsColors.textSecondary,
+                            fontSize: 11,
+                          ),
                         ),
                       ],
                     ],

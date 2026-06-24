@@ -99,12 +99,20 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 }
 
-class _Sidebar extends StatelessWidget {
+class _Sidebar extends ConsumerWidget {
   final String activePath;
   const _Sidebar({required this.activePath});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Guests on their active tenant see ONLY the Dashboards icon (no Reports
+    // Library, no Report Builder, no Settings). A guest who also has a
+    // non-guest role in another tenant gets full nav restored automatically
+    // when they switch tenants because activeTenantRoleProvider re-reads.
+    final role = ref.watch(activeTenantRoleProvider).asData?.value;
+    final isGuest = role == 'guest';
+    final visibleItems =
+        isGuest ? const <_NavItem>[] : _navItems;
     return Container(
       width: 64,
       decoration: const BoxDecoration(
@@ -126,7 +134,7 @@ class _Sidebar extends StatelessWidget {
       child: Column(
         children: [
           const SizedBox(height: 12),
-          for (final item in _navItems) _NavButton(item, activePath),
+          for (final item in visibleItems) _NavButton(item, activePath),
           const Spacer(),
           IconButton(
             tooltip: 'Help',
@@ -232,66 +240,111 @@ class _TopBar extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          // Logo area (far left) — image at 58px tall, centered in 66px header
-          SizedBox(
-            width: OpticsEnv.envBadgeLabel != null ? 260 : 200,
-            child: Row(
-              children: [
-                Flexible(
-                  child: tenantAsync.when(
-              data: (tenant) {
-                // Consistent text fallback style — Inter 13px bold, no Syncopate
-                const fallbackStyle = TextStyle(
-                  fontFamily: 'Inter',
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                  color: OpticsColors.textPrimary,
-                  letterSpacing: 0.3,
-                  overflow: TextOverflow.ellipsis,
-                );
-                if (tenant?.logoUrl != null && tenant!.logoUrl!.isNotEmpty) {
-                  return Align(
-                    alignment: Alignment.centerLeft,
-                    child: tenant.logoUrl!.startsWith('http')
-                      ? Image.network(
-                          tenant.logoUrl!,
-                          height: 58,
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) =>
-                              Text(tenant.name, style: fallbackStyle, maxLines: 1),
-                        )
-                      : Image.asset(
-                          tenant.logoUrl!,
-                          height: 58,
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) =>
-                              Text(tenant.name, style: fallbackStyle, maxLines: 1),
-                        ),
-                  );
-                }
-                return Text(
-                  tenant?.name ?? '',
-                  style: fallbackStyle,
-                  maxLines: 1,
-                );
-              },
-              loading: () => const SizedBox.shrink(),
-              error: (_, __) => const SizedBox.shrink(),
-            ),
+          // Logo + App Name block — sizes to its content so the full app name
+          // is always visible. Spacers below handle all leftover space.
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Logo area — image at 58px tall, centered in 66px header
+              SizedBox(
+                width: 200,
+                child: tenantAsync.when(
+                  data: (tenant) {
+                    // Consistent text fallback style — Inter 13px bold
+                    const fallbackStyle = TextStyle(
+                      fontFamily: 'Inter',
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      color: OpticsColors.textPrimary,
+                      letterSpacing: 0.3,
+                      overflow: TextOverflow.ellipsis,
+                    );
+                    if (tenant?.logoUrl != null && tenant!.logoUrl!.isNotEmpty) {
+                      return Align(
+                        alignment: Alignment.centerLeft,
+                        child: tenant.logoUrl!.startsWith('http')
+                          ? Image.network(
+                              tenant.logoUrl!,
+                              height: 58,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) =>
+                                  Text(tenant.name, style: fallbackStyle, maxLines: 1),
+                            )
+                          : Image.asset(
+                              tenant.logoUrl!,
+                              height: 58,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) =>
+                                  Text(tenant.name, style: fallbackStyle, maxLines: 1),
+                            ),
+                      );
+                    }
+                    return Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        tenant?.name ?? '',
+                        style: fallbackStyle,
+                        maxLines: 1,
+                      ),
+                    );
+                  },
+                  loading: () => const SizedBox.shrink(),
+                  error: (_, __) => const SizedBox.shrink(),
                 ),
-                if (OpticsEnv.envBadgeLabel != null) ...[ 
-                  const SizedBox(width: 8),
-                  _EnvBadge(OpticsEnv.envBadgeLabel!),
-                ],
-              ],
-            ),
+              ),
+
+              // App Name (tenant-branded) — sized to content (no truncation).
+              // Renders as: │ APPLICATION NAME (Syncopate bold caps).
+              tenantAsync.maybeWhen(
+                data: (tenant) {
+                  final appName = tenant?.appName;
+                  if (appName == null || appName.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.only(left: 16, right: 8),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Subtle vertical divider — separates logo from app name
+                        Container(
+                          width: 1,
+                          height: 28,
+                          color: const Color(0x33FFFFFF),
+                        ),
+                        const SizedBox(width: 16),
+                        Text(
+                          appName.toUpperCase(),
+                          maxLines: 1,
+                          style: const TextStyle(
+                            fontFamily: 'Syncopate',
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.4,
+                            color: OpticsColors.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+                orElse: () => const SizedBox.shrink(),
+              ),
+            ],
           ),
-          
+
           const Spacer(),
           
           // Centered Search Bar
           const SizedBox(width: 380, child: _GlobalSearch()),
-          
+
+          // Environment badge (Staging/Demo) — sits just right of search so
+          // the logo + app-name area matches the Prod layout exactly.
+          if (OpticsEnv.envBadgeLabel != null) ...[
+            const SizedBox(width: 12),
+            _EnvBadge(OpticsEnv.envBadgeLabel!),
+          ],
+
           const Spacer(),
           
           // Right actions

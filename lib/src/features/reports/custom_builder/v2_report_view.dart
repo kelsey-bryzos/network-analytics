@@ -98,8 +98,9 @@ class V2ReportView extends ConsumerWidget {
         return _kpi(rows);
       case 'bar':
       case 'hbar':
-      case 'combo':
         return _bar(rows, horizontal: query.viz.chartType == 'hbar');
+      case 'combo':
+        return _combo(rows);
       case 'line':
       case 'area':
         return _line(rows, area: query.viz.chartType == 'area');
@@ -431,6 +432,137 @@ class V2ReportView extends ConsumerWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _combo(List<Map<String, dynamic>> rows) {
+    final x = query.viz.x;
+    final y = query.viz.y;
+    if (x == null || y == null) return _table(rows);
+    final bars = rows
+        .map((r) {
+          final yv = _toDouble(r[y]);
+          if (yv == null) return null;
+          return MapEntry(r[x]?.toString() ?? '', yv);
+        })
+        .whereType<MapEntry<String, double>>()
+        .toList();
+    if (bars.isEmpty) return _table(rows);
+    final maxV = bars
+        .map((e) => e.value)
+        .fold<double>(0, (a, b) => b > a ? b : a);
+    final maxY = maxV <= 0 ? 1.0 : maxV * 1.08;
+    final linePts = <FlSpot>[
+      for (int i = 0; i < bars.length; i++)
+        FlSpot(i.toDouble(), bars[i].value),
+    ];
+    return _shell(
+      child: Stack(
+        children: [
+          BarChart(
+            BarChartData(
+              alignment: BarChartAlignment.spaceAround,
+              maxY: maxY,
+              minY: 0,
+              barGroups: [
+                for (int i = 0; i < bars.length; i++)
+                  BarChartGroupData(x: i, barRods: [
+                    BarChartRodData(
+                      toY: bars[i].value,
+                      color: OpticsColors.accentCyan,
+                      width: 14,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ]),
+              ],
+              gridData: const FlGridData(show: false),
+              borderData: FlBorderData(show: false),
+              titlesData: FlTitlesData(
+                topTitles: const AxisTitles(),
+                rightTitles: const AxisTitles(),
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 44,
+                    getTitlesWidget: (v, _) => Text(
+                      v.toStringAsFixed(0),
+                      style:
+                          OpticsTextStyles.bodySm.copyWith(fontSize: 10),
+                    ),
+                  ),
+                ),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 32,
+                    getTitlesWidget: (v, _) {
+                      final i = v.toInt();
+                      if (i < 0 || i >= bars.length) {
+                        return const SizedBox.shrink();
+                      }
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          bars[i].key.length > 12
+                              ? '${bars[i].key.substring(0, 12)}…'
+                              : bars[i].key,
+                          style: OpticsTextStyles.bodySm
+                              .copyWith(fontSize: 10),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+          LineChart(
+            LineChartData(
+              minX: -0.5,
+              maxX: bars.length - 0.5,
+              minY: 0,
+              maxY: maxY,
+              lineBarsData: [
+                LineChartBarData(
+                  spots: linePts,
+                  isCurved: true,
+                  barWidth: 2,
+                  color: OpticsColors.accentViolet,
+                  dotData: FlDotData(
+                    show: true,
+                    getDotPainter: (_, __, ___, ____) =>
+                        FlDotCirclePainter(
+                            radius: 3,
+                            color: OpticsColors.accentViolet,
+                            strokeWidth: 0),
+                  ),
+                  belowBarData: BarAreaData(show: false),
+                ),
+              ],
+              gridData: const FlGridData(show: false),
+              borderData: FlBorderData(show: false),
+              titlesData: FlTitlesData(
+                topTitles: const AxisTitles(),
+                rightTitles: const AxisTitles(),
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 44,
+                    getTitlesWidget: (v, _) => const SizedBox.shrink(),
+                  ),
+                ),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 32,
+                    getTitlesWidget: (v, _) => const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

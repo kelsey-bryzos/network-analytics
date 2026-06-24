@@ -381,7 +381,12 @@ class _PickerList extends StatelessWidget {
             final mm = (m as Map).cast<String, dynamic>();
             final tenant = (mm['tenant_name'] ?? '').toString();
             final role = (mm['role'] ?? '').toString();
-            tenantChips.add(_RoleChip(tenant: tenant, role: role));
+            final colorHex = (mm['tenant_color'] ?? '').toString();
+            tenantChips.add(_RoleChip(
+              tenant: tenant,
+              role: role,
+              tenantColorHex: colorHex,
+            ));
           }
 
           // De-dupe: if name is empty or identical to email, only show one identifier.
@@ -462,48 +467,64 @@ class _PickerList extends StatelessWidget {
   }
 }
 
+/// Per-membership chip: colored by **tenant** (one color per tenant),
+/// with the role rendered as a muted suffix. This replaces the previous
+/// role-colored chip that made multi-tenant users look like a rainbow.
 class _RoleChip extends StatelessWidget {
   final String tenant;
   final String role;
-  const _RoleChip({required this.tenant, required this.role});
+  final String tenantColorHex;
+  const _RoleChip({
+    required this.tenant,
+    required this.role,
+    required this.tenantColorHex,
+  });
+
+  static const Color _fallback = Color(0xFF9CA3B5); // neutral grey
+
+  Color _parseColor(String hex) {
+    final s = hex.trim().replaceFirst('#', '');
+    if (s.length != 6) return _fallback;
+    final v = int.tryParse(s, radix: 16);
+    if (v == null) return _fallback;
+    return Color(0xFF000000 | v);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final roleColor = _colorForRole(role);
+    final tenantColor = _parseColor(tenantColorHex);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        border: Border.all(color: roleColor.withValues(alpha: 0.6)),
+        border: Border.all(color: tenantColor.withValues(alpha: 0.55)),
         borderRadius: BorderRadius.circular(4),
-        color: roleColor.withValues(alpha: 0.08),
+        color: tenantColor.withValues(alpha: 0.08),
       ),
-      child: Text(
-        '${tenant.toUpperCase()} · ${role.toUpperCase()}',
-        style: TextStyle(
-          color: roleColor,
-          fontSize: 9,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.4,
+      child: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: tenant.toUpperCase(),
+              style: TextStyle(
+                color: tenantColor,
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.4,
+              ),
+            ),
+            TextSpan(
+              text: '  ${role.toUpperCase()}',
+              style: TextStyle(
+                color: tenantColor.withValues(alpha: 0.65),
+                fontSize: 9,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0.4,
+              ),
+            ),
+          ],
         ),
       ),
     );
-  }
-
-  Color _colorForRole(String r) {
-    switch (r) {
-      case 'owner':
-        return const Color(0xFFFFB454);
-      case 'admin':
-        return const Color(0xFFAE8BFF);
-      case 'editor':
-        return const Color(0xFF3DB8FF);
-      case 'viewer':
-        return const Color(0xFF5DD0A8);
-      case 'guest':
-        return const Color(0xFF9CA3B5);
-      default:
-        return const Color(0xFF9CA3B5);
-    }
   }
 }
 

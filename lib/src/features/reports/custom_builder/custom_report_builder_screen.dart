@@ -2603,7 +2603,34 @@ class _Step6VisualizeState extends State<_Step6Visualize> {
                 }),
               ),
             ),
-            const SizedBox(width: OpticsSpacing.md),
+            const SizedBox(width: OpticsSpacing.sm),
+            Tooltip(
+              message: 'Swap X and Y selections',
+              child: OutlinedButton.icon(
+                onPressed: () => widget.onMutate((q) {
+                  q.viz = VizSpec(
+                      chartType: q.viz.chartType,
+                      x: q.viz.y,
+                      y: q.viz.x);
+                }),
+                icon: const Icon(Icons.swap_horiz, size: 16),
+                label: Text(
+                  'SWITCH AXES',
+                  style: OpticsTextStyles.sectionLabel
+                      .copyWith(fontSize: 11),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: OpticsColors.accentCyan,
+                  side: BorderSide(color: OpticsColors.border),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: OpticsSpacing.md, vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(OpticsRadii.sm),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: OpticsSpacing.sm),
             Expanded(
               child: DropdownButtonFormField<String>(
                 initialValue: allAliases.contains(widget.query.viz.y)
@@ -3038,6 +3065,17 @@ class _PreviewPanel extends ConsumerWidget {
     if (x == null) return _renderTable(rows);
     final bars = _seriesFor(rows, x, y).take(20).toList();
     if (bars.isEmpty) return _renderTable(rows);
+    if (horizontal) {
+      return Container(
+        padding: const EdgeInsets.all(OpticsSpacing.md),
+        decoration: BoxDecoration(
+          color: OpticsColors.surface,
+          border: Border.all(color: OpticsColors.border),
+          borderRadius: BorderRadius.circular(OpticsRadii.md),
+        ),
+        child: _HorizontalBars(bars: bars),
+      );
+    }
     return Container(
       padding: const EdgeInsets.all(OpticsSpacing.md),
       decoration: BoxDecoration(
@@ -3735,5 +3773,91 @@ class _DynamicWidthColumnPicker extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+// ─── Horizontal bar chart ────────────────────────────────────────────────────
+// fl_chart's BarChart is vertical-only, so we render H-Bar with a lightweight
+// custom widget: a vertical list of rows, each with a category label, a
+// proportionally-filled accent bar, and the numeric value.
+class _HorizontalBars extends StatelessWidget {
+  final List<MapEntry<String, double>> bars;
+  const _HorizontalBars({required this.bars});
+
+  @override
+  Widget build(BuildContext context) {
+    if (bars.isEmpty) return const SizedBox.shrink();
+    final maxV = bars
+        .map((e) => e.value.abs())
+        .fold<double>(0, (a, b) => a > b ? a : b);
+    return LayoutBuilder(
+      builder: (context, c) {
+        final labelW = (c.maxWidth * 0.28).clamp(80.0, 180.0);
+        final valueW = (c.maxWidth * 0.14).clamp(60.0, 120.0);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final b in bars)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: labelW,
+                      child: Text(
+                        b.key,
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        style:
+                            OpticsTextStyles.bodySm.copyWith(fontSize: 11),
+                      ),
+                    ),
+                    const SizedBox(width: OpticsSpacing.sm),
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: Container(
+                          height: 14,
+                          color: OpticsColors.border.withValues(alpha: 0.25),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: FractionallySizedBox(
+                              widthFactor:
+                                  maxV == 0 ? 0 : (b.value.abs() / maxV),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: OpticsColors.accentCyan,
+                                  borderRadius: BorderRadius.circular(3),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: OpticsSpacing.sm),
+                    SizedBox(
+                      width: valueW,
+                      child: Text(
+                        _fmtBarValue(b.value),
+                        textAlign: TextAlign.right,
+                        style:
+                            OpticsTextStyles.bodySm.copyWith(fontSize: 11),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  static String _fmtBarValue(double v) {
+    if (v == v.roundToDouble() && v.abs() < 1e9) {
+      return v.toStringAsFixed(0);
+    }
+    return v.toStringAsFixed(2);
   }
 }

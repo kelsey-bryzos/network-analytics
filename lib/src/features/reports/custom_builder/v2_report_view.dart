@@ -375,6 +375,9 @@ class V2ReportView extends ConsumerWidget {
         .whereType<MapEntry<String, double>>()
         .toList();
     if (bars.isEmpty) return _table(rows);
+    if (horizontal) {
+      return _shell(child: _HorizontalBarsV2(bars: bars));
+    }
     return _shell(
       child: BarChart(
         BarChartData(
@@ -615,4 +618,94 @@ double? _toDouble(dynamic v) {
   if (v == null) return null;
   if (v is num) return v.toDouble();
   return double.tryParse(v.toString());
+}
+
+// ─── Horizontal bar chart (saved-report viewer) ─────────────────────────────
+// fl_chart's BarChart is vertical-only, so we render H-Bar with a lightweight
+// custom widget: vertical list of category rows with a proportional fill bar.
+class _HorizontalBarsV2 extends StatelessWidget {
+  final List<MapEntry<String, double>> bars;
+  const _HorizontalBarsV2({required this.bars});
+
+  @override
+  Widget build(BuildContext context) {
+    if (bars.isEmpty) return const SizedBox.shrink();
+    final maxV = bars
+        .map((e) => e.value.abs())
+        .fold<double>(0, (a, b) => a > b ? a : b);
+    return LayoutBuilder(
+      builder: (context, c) {
+        final labelW = (c.maxWidth * 0.28).clamp(80.0, 200.0);
+        final valueW = (c.maxWidth * 0.14).clamp(60.0, 140.0);
+        return SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final b in bars)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: labelW,
+                        child: Text(
+                          b.key,
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                          style: OpticsTextStyles.bodySm
+                              .copyWith(fontSize: 11),
+                        ),
+                      ),
+                      const SizedBox(width: OpticsSpacing.sm),
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(3),
+                          child: Container(
+                            height: 14,
+                            color:
+                                OpticsColors.border.withValues(alpha: 0.25),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: FractionallySizedBox(
+                                widthFactor: maxV == 0
+                                    ? 0
+                                    : (b.value.abs() / maxV),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: OpticsColors.accentCyan,
+                                    borderRadius:
+                                        BorderRadius.circular(3),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: OpticsSpacing.sm),
+                      SizedBox(
+                        width: valueW,
+                        child: Text(
+                          _fmtBarValue(b.value),
+                          textAlign: TextAlign.right,
+                          style: OpticsTextStyles.bodySm
+                              .copyWith(fontSize: 11),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  static String _fmtBarValue(double v) {
+    if (v == v.roundToDouble() && v.abs() < 1e9) {
+      return v.toStringAsFixed(0);
+    }
+    return v.toStringAsFixed(2);
+  }
 }

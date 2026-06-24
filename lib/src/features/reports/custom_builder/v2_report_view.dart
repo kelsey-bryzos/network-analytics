@@ -33,6 +33,18 @@ bool _mapEqual(Map a, Map b) => a.toString() == b.toString();
 
 final _v2RowsProvider = FutureProvider.autoDispose
     .family<List<Map<String, dynamic>>, _V2Args>((ref, args) async {
+  // Raw-SQL escape hatch (Bryzos-only). When the saved report was authored
+  // in raw mode, dispatch to the Bryzos-gated RPC instead.
+  final useRaw = args.queryJson['use_raw_sql'] == true;
+  if (useRaw) {
+    final raw = (args.queryJson['raw_sql'] as String?)?.trim() ?? '';
+    if (raw.isEmpty) return const [];
+    return ref.read(repoProvider).rdsExecuteRawSqlBryzos(
+          dataSourceId: args.dataSourceId,
+          sql: raw,
+          preview: false,
+        );
+  }
   return ref.read(repoProvider).rdsExecuteQuery(
         dataSourceId: args.dataSourceId,
         query: args.queryJson,

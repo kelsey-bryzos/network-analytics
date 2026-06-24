@@ -733,6 +733,31 @@ class SupabaseRepo {
     return const [];
   }
 
+  /// Bryzos-only raw-SQL escape hatch for the Custom Report Builder
+  /// (`rds_execute_raw_sql_bryzos`). Server enforces:
+  ///   - Caller email must end in @bryzos.com
+  ///   - Single statement, read-only, 30s timeout
+  ///   - Keyword blacklist (no INSERT/UPDATE/DELETE/DDL/SET/etc.)
+  /// When `preview` is true the server caps the result at 200 rows; 10000 otherwise.
+  /// Throws the server's `forbidden`/`forbidden keyword`/etc. message on failure.
+  Future<List<Map<String, dynamic>>> rdsExecuteRawSqlBryzos({
+    required String dataSourceId,
+    required String sql,
+    bool preview = false,
+  }) async {
+    final tenantId = client.auth.currentUser?.appMetadata['active_tenant_id']
+        as String?;
+    if (tenantId == null) return const [];
+    final res = await client.rpc('rds_execute_raw_sql_bryzos', params: {
+      'p_tenant_id': tenantId,
+      'p_data_source_id': dataSourceId,
+      'p_sql': sql,
+      'p_preview': preview,
+    });
+    if (res is List) return res.cast<Map<String, dynamic>>();
+    return const [];
+  }
+
   /// Projected read from any `rds_*` mirror via the `rds_select` RPC.
   /// Strips the `rds_` prefix on the table name automatically.
   Future<List<Map<String, dynamic>>> rdsSelect({

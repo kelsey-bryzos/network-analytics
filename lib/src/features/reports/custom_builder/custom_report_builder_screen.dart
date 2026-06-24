@@ -89,6 +89,22 @@ class _BuilderNotifier extends StateNotifier<_BuilderState> {
     state = _clone(dirty: true);
   }
 
+  /// Toggle the Bryzos-only raw-SQL escape hatch. When entering raw mode for
+  /// the first time we pre-seed the editor with the current wizard-generated
+  /// SQL so the user has a starting point instead of an empty box.
+  void setUseRawSql(bool v, {String? seed}) {
+    state.query.useRawSql = v;
+    if (v && (state.query.rawSql == null || state.query.rawSql!.trim().isEmpty)) {
+      state.query.rawSql = seed;
+    }
+    state = _clone(dirty: true);
+  }
+
+  void setRawSql(String sql) {
+    state.query.rawSql = sql;
+    state = _clone(dirty: true);
+  }
+
   _BuilderState _clone({
     int? currentStep,
     String? title,
@@ -115,6 +131,19 @@ final _previewRowsProvider =
   final st = ref.watch(_builderProvider);
   final dsId = await ref.watch(_dataSourceProvider.future);
   if (dsId == null) return const [];
+
+  // Raw-SQL mode (Bryzos-only): bypass the wizard entirely.
+  if (st.query.useRawSql) {
+    final raw = (st.query.rawSql ?? '').trim();
+    if (raw.isEmpty) return const [];
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    return ref.read(repoProvider).rdsExecuteRawSqlBryzos(
+          dataSourceId: dsId,
+          sql: raw,
+          preview: true,
+        );
+  }
+
   if (st.query.primaryTable == null) return const [];
   if (st.query.columns.isEmpty && st.query.aggregates.isEmpty) {
     return const [];
@@ -468,15 +497,22 @@ class _CustomReportBuilderScreenState
     List<Map<String, dynamic>> catalog,
     Map<String, dynamic> relMap,
   ) {
+    final rawLocked = st.query.useRawSql;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SizedBox(
           width: 240,
-          child: _StepRail(
-            currentStep: st.currentStep,
-            onSelect: (i) => ref.read(_builderProvider.notifier).setStep(i),
-            query: st.query,
+          child: IgnorePointer(
+            ignoring: rawLocked,
+            child: Opacity(
+              opacity: rawLocked ? 0.4 : 1.0,
+              child: _StepRail(
+                currentStep: st.currentStep,
+                onSelect: (i) => ref.read(_builderProvider.notifier).setStep(i),
+                query: st.query,
+              ),
+            ),
           ),
         ),
         const VerticalDivider(width: 1, color: OpticsColors.border),
@@ -499,22 +535,32 @@ class _CustomReportBuilderScreenState
                       .setTitle(v.trim().isEmpty ? 'Untitled Report' : v.trim()),
                 ),
               ),
+              if (rawLocked) _RawSqlLockBanner(
+                onExit: () =>
+                    ref.read(_builderProvider.notifier).setUseRawSql(false),
+              ),
               Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(OpticsSpacing.xl),
-                  child: _StepContent(
-                    step: st.currentStep,
-                    query: st.query,
-                    catalog: catalog,
-                    relMap: relMap,
-                    onMutate: (fn) =>
-                        ref.read(_builderProvider.notifier).mutate(fn),
-                    title: st.title,
-                    description: st.description,
-                    onTitleChanged: (v) =>
-                        ref.read(_builderProvider.notifier).setTitle(v),
-                    onDescriptionChanged: (v) =>
-                        ref.read(_builderProvider.notifier).setDescription(v),
+                child: IgnorePointer(
+                  ignoring: rawLocked,
+                  child: Opacity(
+                    opacity: rawLocked ? 0.35 : 1.0,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(OpticsSpacing.xl),
+                      child: _StepContent(
+                        step: st.currentStep,
+                        query: st.query,
+                        catalog: catalog,
+                        relMap: relMap,
+                        onMutate: (fn) =>
+                            ref.read(_builderProvider.notifier).mutate(fn),
+                        title: st.title,
+                        description: st.description,
+                        onTitleChanged: (v) =>
+                            ref.read(_builderProvider.notifier).setTitle(v),
+                        onDescriptionChanged: (v) =>
+                            ref.read(_builderProvider.notifier).setDescription(v),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -527,6 +573,50 @@ class _CustomReportBuilderScreenState
           child: _PreviewPanel(query: st.query),
         ),
       ],
+    );
+  }
+}
+
+/// Banner shown over the wizard area when raw-SQL mode is active. Includes
+/// an inline "Exit raw SQL mode" affordance so the user isn't trapped.
+class _RawSqlLockBanner extends StatelessWidget {
+  final VoidCallback onExit;
+  const _RawSqlLockBanner({required this.onExit});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          horizontal: OpticsSpacing.lg, vertical: OpticsSpacing.sm),
+      decoration: BoxDecoration(
+        color: OpticsColors.accentCyan.withValues(alpha: 0.08),
+        border: const Border(
+          bottom: BorderSide(color: OpticsColors.border),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.lock_outline,
+              size: 14, color: OpticsColors.accentCyan),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Wizard locked — editing raw SQL on the right.',
+              style: OpticsTextStyles.bodySm
+                  .copyWith(color: OpticsColors.textSecondary),
+            ),
+          ),
+          TextButton.icon(
+            onPressed: onExit,
+            icon: const Icon(Icons.undo, size: 14),
+            label: const Text('Exit raw SQL'),
+            style: TextButton.styleFrom(
+              foregroundColor: OpticsColors.accentCyan,
+              visualDensity: VisualDensity.compact,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2597,6 +2687,8 @@ class _PreviewPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final rows = ref.watch(_previewRowsProvider);
     final report = ref.watch(_validationProvider);
+    final bryzos = isBryzosUser(ref);
+    final rawMode = query.useRawSql;
     return Container(
       color: OpticsColors.canvas,
       padding: const EdgeInsets.all(OpticsSpacing.lg),
@@ -2619,7 +2711,7 @@ class _PreviewPanel extends ConsumerWidget {
               ),
             ],
           ),
-          if (report.issues.isNotEmpty) ...[
+          if (!rawMode && report.issues.isNotEmpty) ...[
             const SizedBox(height: OpticsSpacing.sm),
             _ValidationBanner(report: report, onJumpToStep: (s) {
               ref.read(_builderProvider.notifier).setStep(s);
@@ -2656,21 +2748,34 @@ class _PreviewPanel extends ConsumerWidget {
           const SizedBox(height: OpticsSpacing.md),
           const Divider(height: 1, color: OpticsColors.border),
           const SizedBox(height: OpticsSpacing.md),
-          Text('SQL SUMMARY', style: OpticsTextStyles.sectionLabel),
+          Row(
+            children: [
+              Text(rawMode ? 'RAW SQL' : 'SQL SUMMARY',
+                  style: OpticsTextStyles.sectionLabel),
+              const Spacer(),
+              if (bryzos) _RawSqlToggle(query: query),
+            ],
+          ),
           const SizedBox(height: OpticsSpacing.sm),
           Expanded(
             flex: 3,
-            child: SingleChildScrollView(
-              child: SelectableText(
-                _summarySql(query),
-                style: const TextStyle(
-                  color: OpticsColors.textSecondary,
-                  fontSize: 12,
-                  fontFamily: 'monospace',
-                  height: 1.4,
-                ),
-              ),
-            ),
+            child: rawMode
+                ? _RawSqlEditor(
+                    initialSql: query.rawSql ?? _summarySql(query),
+                    onChanged: (v) =>
+                        ref.read(_builderProvider.notifier).setRawSql(v),
+                  )
+                : SingleChildScrollView(
+                    child: SelectableText(
+                      _summarySql(query),
+                      style: const TextStyle(
+                        color: OpticsColors.textSecondary,
+                        fontSize: 12,
+                        fontFamily: 'monospace',
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
           ),
         ],
       ),
@@ -3362,6 +3467,146 @@ Iterable<MapEntry<String, double>> _seriesFor(
     counts[k] = (counts[k] ?? 0) + 1;
   }
   return counts.entries;
+}
+
+/// Toggle that flips the builder between wizard mode and raw-SQL mode.
+/// Bryzos-only — caller is responsible for not rendering it for non-Bryzos.
+class _RawSqlToggle extends ConsumerWidget {
+  final CustomReportQueryV2 query;
+  const _RawSqlToggle({required this.query});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final active = query.useRawSql;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          active ? 'RAW SQL MODE' : 'RAW SQL MODE',
+          style: OpticsTextStyles.bodySm.copyWith(
+            color: active ? OpticsColors.accentCyan : OpticsColors.textMuted,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.4,
+          ),
+        ),
+        const SizedBox(width: 6),
+        SizedBox(
+          height: 18,
+          child: Switch(
+            value: active,
+            onChanged: (v) {
+              if (v) {
+                // Entering raw mode: confirm + seed with current SQL summary.
+                showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    backgroundColor: OpticsColors.surface,
+                    title: const Text('Enable raw SQL mode?'),
+                    content: const Text(
+                      'The wizard will lock and the query will run exactly '
+                      'as written. Only single-statement, read-only SELECT '
+                      'or WITH queries are allowed.\n\n'
+                      'Bryzos staff only.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(false),
+                        child: const Text('Cancel'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.of(ctx).pop(true),
+                        child: const Text('Enable'),
+                      ),
+                    ],
+                  ),
+                ).then((confirmed) {
+                  if (confirmed == true) {
+                    ref.read(_builderProvider.notifier).setUseRawSql(
+                          true,
+                          seed: _summarySql(query),
+                        );
+                  }
+                });
+              } else {
+                // Exiting raw mode — wizard takes over again.
+                ref.read(_builderProvider.notifier).setUseRawSql(false);
+              }
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Stateful raw-SQL editor — keeps its own controller so cursor position
+/// survives the autoDispose preview rebuilds.
+class _RawSqlEditor extends StatefulWidget {
+  final String initialSql;
+  final ValueChanged<String> onChanged;
+  const _RawSqlEditor({required this.initialSql, required this.onChanged});
+
+  @override
+  State<_RawSqlEditor> createState() => _RawSqlEditorState();
+}
+
+class _RawSqlEditorState extends State<_RawSqlEditor> {
+  late final TextEditingController _ctl;
+  Timer? _debounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctl = TextEditingController(text: widget.initialSql);
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _ctl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: OpticsColors.surfaceElevated,
+        border: Border.all(color: OpticsColors.border),
+        borderRadius: BorderRadius.circular(OpticsRadii.sm),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      child: TextField(
+        controller: _ctl,
+        maxLines: null,
+        expands: true,
+        textAlignVertical: TextAlignVertical.top,
+        style: const TextStyle(
+          color: OpticsColors.textPrimary,
+          fontSize: 12,
+          fontFamily: 'monospace',
+          height: 1.4,
+        ),
+        decoration: const InputDecoration(
+          border: InputBorder.none,
+          isDense: true,
+          hintText: 'SELECT ...',
+          hintStyle: TextStyle(
+            color: OpticsColors.textMuted,
+            fontFamily: 'monospace',
+            fontSize: 12,
+          ),
+          contentPadding: EdgeInsets.zero,
+        ),
+        onChanged: (v) {
+          _debounce?.cancel();
+          _debounce = Timer(const Duration(milliseconds: 600), () {
+            widget.onChanged(v);
+          });
+        },
+      ),
+    );
+  }
 }
 
 String _summarySql(CustomReportQueryV2 q) {

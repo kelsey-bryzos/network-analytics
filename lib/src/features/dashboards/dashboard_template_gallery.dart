@@ -96,7 +96,7 @@ class _DashboardTemplateGalleryDialogState
       insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 980, maxHeight: 720),
+        constraints: const BoxConstraints(maxWidth: 880, maxHeight: 640),
         child: Padding(
           padding: const EdgeInsets.all(OpticsSpacing.xl),
           child: Column(
@@ -157,11 +157,11 @@ class _DashboardTemplateGalleryDialogState
       );
     }
 
-    // Compute a responsive grid: 1 column under 520, 2 under 760, 3 above.
+    // Compute a responsive grid: smaller tiles, 2 / 3 / 4 columns by width.
     return LayoutBuilder(
       builder: (ctx, constraints) {
         final w = constraints.maxWidth;
-        final crossAxisCount = w >= 760 ? 3 : (w >= 520 ? 2 : 1);
+        final crossAxisCount = w >= 820 ? 4 : (w >= 600 ? 3 : 2);
         // +1 to include the "Start from scratch" tile
         final tiles = <Widget>[
           _BlankCard(onTap: _pickBlank),
@@ -174,9 +174,9 @@ class _DashboardTemplateGalleryDialogState
         ];
         return GridView.count(
           crossAxisCount: crossAxisCount,
-          mainAxisSpacing: OpticsSpacing.md,
-          crossAxisSpacing: OpticsSpacing.md,
-          childAspectRatio: 1.05,
+          mainAxisSpacing: OpticsSpacing.sm,
+          crossAxisSpacing: OpticsSpacing.sm,
+          childAspectRatio: 0.92,
           children: tiles,
         );
       },
@@ -199,52 +199,49 @@ class _BlankCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 38,
-            height: 38,
+            width: 30,
+            height: 30,
             decoration: BoxDecoration(
               color: OpticsColors.accentCyan.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(6),
             ),
             child: const Icon(Icons.add,
-                color: OpticsColors.accentCyan, size: 22),
+                color: OpticsColors.accentCyan, size: 18),
           ),
-          const Spacer(),
+          const SizedBox(height: 10),
           Text('START FROM SCRATCH',
               style: OpticsTextStyles.headingMd.copyWith(
                 color: OpticsColors.accentCyan,
-                letterSpacing: 1.2,
-                fontSize: 13,
+                letterSpacing: 1.1,
+                fontSize: 11,
               )),
-          const SizedBox(height: 6),
-          const Text(
-            'Create an empty dashboard and add widgets one by one.',
-            style: TextStyle(
-              color: OpticsColors.textSecondary,
-              fontSize: 12,
-              fontWeight: FontWeight.w300,
-              height: 1.35,
+          const SizedBox(height: 4),
+          const Expanded(
+            child: Text(
+              'Create an empty dashboard and add widgets one by one.',
+              style: TextStyle(
+                color: OpticsColors.textSecondary,
+                fontSize: 11,
+                fontWeight: FontWeight.w300,
+                height: 1.3,
+              ),
             ),
           ),
-          const SizedBox(height: OpticsSpacing.md),
-          Row(
-            children: [
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: OpticsColors.accentCyan,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Text('CREATE BLANK',
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.8,
-                    )),
-              ),
-            ],
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            decoration: BoxDecoration(
+              color: OpticsColors.accentCyan,
+              borderRadius: BorderRadius.circular(5),
+            ),
+            child: const Text('CREATE BLANK',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.black,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.7,
+                )),
           ),
         ],
       ),
@@ -273,20 +270,22 @@ class _TemplateCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 38,
-            height: 38,
+            width: 30,
+            height: 30,
             decoration: BoxDecoration(
               color: OpticsColors.accentViolet.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(6),
             ),
             child: const Icon(Icons.dashboard_outlined,
-                color: OpticsColors.accentViolet, size: 20),
+                color: OpticsColors.accentViolet, size: 16),
           ),
-          const SizedBox(height: OpticsSpacing.md),
+          const SizedBox(height: 10),
           Text(name.toUpperCase(),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: OpticsTextStyles.headingMd
-                  .copyWith(letterSpacing: 1.2, fontSize: 13)),
-          const SizedBox(height: 6),
+                  .copyWith(letterSpacing: 1.1, fontSize: 11)),
+          const SizedBox(height: 4),
           Expanded(
             child: Text(
               desc,
@@ -294,47 +293,51 @@ class _TemplateCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: OpticsColors.textSecondary,
-                fontSize: 12,
+                fontSize: 11,
                 fontWeight: FontWeight.w300,
-                height: 1.35,
+                height: 1.3,
               ),
             ),
           ),
-          const SizedBox(height: OpticsSpacing.md),
+          const SizedBox(height: 8),
           Row(
             children: [
-              OutlinedButton(
-                onPressed: onPreview,
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: OpticsColors.border),
-                  foregroundColor: OpticsColors.textPrimary,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6)),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: onPreview,
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: OpticsColors.border),
+                    foregroundColor: OpticsColors.textPrimary,
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    minimumSize: const Size(0, 30),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(5)),
+                  ),
+                  child: const Text('PREVIEW',
+                      style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.7)),
                 ),
-                child: const Text('PREVIEW',
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.8)),
               ),
-              const Spacer(),
-              ElevatedButton(
-                onPressed: onUse,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: OpticsColors.accentCyan,
-                  foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: onUse,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: OpticsColors.accentCyan,
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    minimumSize: const Size(0, 30),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(5)),
+                  ),
+                  child: const Text('USE',
+                      style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.7)),
                 ),
-                child: const Text('USE TEMPLATE',
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.8)),
               ),
             ],
           ),
@@ -367,7 +370,7 @@ class _CardShell extends StatelessWidget {
             border: Border.all(color: borderColor),
             borderRadius: BorderRadius.circular(12),
           ),
-          padding: const EdgeInsets.all(OpticsSpacing.lg),
+          padding: const EdgeInsets.all(OpticsSpacing.md),
           child: child,
         ),
       ),

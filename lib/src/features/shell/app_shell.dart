@@ -242,7 +242,7 @@ class _TopBar extends ConsumerWidget {
         children: [
           // Logo area (far left) — image at 58px tall, centered in 66px header
           SizedBox(
-            width: OpticsEnv.envBadgeLabel != null ? 260 : 200,
+            width: 200,
             child: Row(
               children: [
                 Flexible(
@@ -287,10 +287,6 @@ class _TopBar extends ConsumerWidget {
               error: (_, __) => const SizedBox.shrink(),
             ),
                 ),
-                if (OpticsEnv.envBadgeLabel != null) ...[ 
-                  const SizedBox(width: 8),
-                  _EnvBadge(OpticsEnv.envBadgeLabel!),
-                ],
               ],
             ),
           ),
@@ -344,7 +340,14 @@ class _TopBar extends ConsumerWidget {
           
           // Centered Search Bar
           const SizedBox(width: 380, child: _GlobalSearch()),
-          
+
+          // Environment badge (Staging/Demo) — sits just right of search so
+          // the logo + app-name area matches the Prod layout exactly.
+          if (OpticsEnv.envBadgeLabel != null) ...[
+            const SizedBox(width: 12),
+            _EnvBadge(OpticsEnv.envBadgeLabel!),
+          ],
+
           const Spacer(),
           
           // Right actions

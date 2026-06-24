@@ -240,85 +240,82 @@ class _TopBar extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          // Logo area (far left) — image at 58px tall, centered in 66px header
-          SizedBox(
-            width: 200,
-            child: Row(
-              children: [
-                Flexible(
-                  child: tenantAsync.when(
-              data: (tenant) {
-                // Consistent text fallback style — Inter 13px bold, no Syncopate
-                const fallbackStyle = TextStyle(
-                  fontFamily: 'Inter',
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                  color: OpticsColors.textPrimary,
-                  letterSpacing: 0.3,
-                  overflow: TextOverflow.ellipsis,
-                );
-                if (tenant?.logoUrl != null && tenant!.logoUrl!.isNotEmpty) {
-                  return Align(
-                    alignment: Alignment.centerLeft,
-                    child: tenant.logoUrl!.startsWith('http')
-                      ? Image.network(
-                          tenant.logoUrl!,
-                          height: 58,
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) =>
-                              Text(tenant.name, style: fallbackStyle, maxLines: 1),
-                        )
-                      : Image.asset(
-                          tenant.logoUrl!,
-                          height: 58,
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) =>
-                              Text(tenant.name, style: fallbackStyle, maxLines: 1),
-                        ),
-                  );
-                }
-                return Text(
-                  tenant?.name ?? '',
-                  style: fallbackStyle,
-                  maxLines: 1,
-                );
-              },
-              loading: () => const SizedBox.shrink(),
-              error: (_, __) => const SizedBox.shrink(),
-            ),
-                ),
-              ],
-            ),
-          ),
-
-          // App Name (tenant-branded) — shown immediately after the logo
-          // when the tenant has filled in the "Application Name" field.
-          // Renders as: │ APPLICATION NAME (Syncopate bold caps).
-          // Flexible + ellipsis keeps it from crowding the centered search.
-          tenantAsync.maybeWhen(
-            data: (tenant) {
-              final appName = tenant?.appName;
-              if (appName == null || appName.isEmpty) {
-                return const SizedBox.shrink();
-              }
-              return Flexible(
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 16, right: 8),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Subtle vertical divider — separates logo from app name
-                      Container(
-                        width: 1,
-                        height: 28,
-                        color: const Color(0x33FFFFFF),
+          // Logo + App Name block — sizes to its content so the full app name
+          // is always visible. Spacers below handle all leftover space.
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Logo area — image at 58px tall, centered in 66px header
+              SizedBox(
+                width: 200,
+                child: tenantAsync.when(
+                  data: (tenant) {
+                    // Consistent text fallback style — Inter 13px bold
+                    const fallbackStyle = TextStyle(
+                      fontFamily: 'Inter',
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      color: OpticsColors.textPrimary,
+                      letterSpacing: 0.3,
+                      overflow: TextOverflow.ellipsis,
+                    );
+                    if (tenant?.logoUrl != null && tenant!.logoUrl!.isNotEmpty) {
+                      return Align(
+                        alignment: Alignment.centerLeft,
+                        child: tenant.logoUrl!.startsWith('http')
+                          ? Image.network(
+                              tenant.logoUrl!,
+                              height: 58,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) =>
+                                  Text(tenant.name, style: fallbackStyle, maxLines: 1),
+                            )
+                          : Image.asset(
+                              tenant.logoUrl!,
+                              height: 58,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) =>
+                                  Text(tenant.name, style: fallbackStyle, maxLines: 1),
+                            ),
+                      );
+                    }
+                    return Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        tenant?.name ?? '',
+                        style: fallbackStyle,
+                        maxLines: 1,
                       ),
-                      const SizedBox(width: 16),
-                      Flexible(
-                        child: Text(
+                    );
+                  },
+                  loading: () => const SizedBox.shrink(),
+                  error: (_, __) => const SizedBox.shrink(),
+                ),
+              ),
+
+              // App Name (tenant-branded) — sized to content (no truncation).
+              // Renders as: │ APPLICATION NAME (Syncopate bold caps).
+              tenantAsync.maybeWhen(
+                data: (tenant) {
+                  final appName = tenant?.appName;
+                  if (appName == null || appName.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.only(left: 16, right: 8),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Subtle vertical divider — separates logo from app name
+                        Container(
+                          width: 1,
+                          height: 28,
+                          color: const Color(0x33FFFFFF),
+                        ),
+                        const SizedBox(width: 16),
+                        Text(
                           appName.toUpperCase(),
                           maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontFamily: 'Syncopate',
                             fontSize: 13,
@@ -327,13 +324,13 @@ class _TopBar extends ConsumerWidget {
                             color: OpticsColors.textPrimary,
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-            orElse: () => const SizedBox.shrink(),
+                      ],
+                    ),
+                  );
+                },
+                orElse: () => const SizedBox.shrink(),
+              ),
+            ],
           ),
 
           const Spacer(),

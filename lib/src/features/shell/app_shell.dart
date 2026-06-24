@@ -294,7 +294,52 @@ class _TopBar extends ConsumerWidget {
               ],
             ),
           ),
-          
+
+          // App Name (tenant-branded) — shown immediately after the logo
+          // when the tenant has filled in the "Application Name" field.
+          // Renders as: │ APPLICATION NAME (Syncopate bold caps).
+          // Flexible + ellipsis keeps it from crowding the centered search.
+          tenantAsync.maybeWhen(
+            data: (tenant) {
+              final appName = tenant?.appName;
+              if (appName == null || appName.isEmpty) {
+                return const SizedBox.shrink();
+              }
+              return Flexible(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 16, right: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Subtle vertical divider — separates logo from app name
+                      Container(
+                        width: 1,
+                        height: 28,
+                        color: const Color(0x33FFFFFF),
+                      ),
+                      const SizedBox(width: 16),
+                      Flexible(
+                        child: Text(
+                          appName.toUpperCase(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontFamily: 'Syncopate',
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.4,
+                            color: OpticsColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+            orElse: () => const SizedBox.shrink(),
+          ),
+
           const Spacer(),
           
           // Centered Search Bar

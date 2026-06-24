@@ -9,6 +9,7 @@ import '../../data/models.dart';
 import '../../data/supabase_repo.dart';
 import '../../design/optics_card.dart';
 import '../../design/theme.dart';
+import '../../shared/secure_error.dart';
 import 'time_range_options.dart';
 
 /// Number formatter for compact display (1.2K, 3.4M, etc.)
@@ -256,12 +257,22 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
       );
     }
     if (hasBrz && _error != null && _liveData == null) {
+      final bryzos = isBryzosUser(ref);
+      final tenantName =
+          ref.read(activeTenantObjectProvider).maybeWhen(
+                data: (t) => t?.name,
+                orElse: () => null,
+              ) ??
+              'this tenant';
+      final msg = bryzos
+          ? 'Data unavailable\n$_error'
+          : 'This data is unavailable currently for $tenantName';
       return _shell(
         Center(
           child: Padding(
             padding: const EdgeInsets.all(8),
             child: Text(
-              'Data unavailable\n$_error',
+              msg,
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 12,

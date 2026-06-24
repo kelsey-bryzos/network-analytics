@@ -12,6 +12,7 @@ import '../../shared/secure_error.dart';
 import '../reports/report_viewer_screen.dart' show restDataSourceIdProvider;
 import 'time_range_options.dart';
 import 'time_range_picker.dart';
+import 'dashboard_template_gallery.dart';
 import 'share_dashboard_dialog.dart';
 import 'widget_grid.dart';
 import 'widget_settings_panel.dart';
@@ -1005,21 +1006,42 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
   }
 
   Future<void> _createDashboard() async {
-    final name = await _promptName(context, 'New dashboard');
+    // Step 1: open the template gallery and let the user pick "blank" or a
+    // specific template. Returns null if cancelled.
+    final pick = await showDashboardTemplateGallery(context, ref);
+    if (!mounted || pick == null) return;
+
+    // Step 2: prompt for a name (suggesting the template name as default).
+    final promptTitle =
+        pick.blank ? 'New dashboard' : 'Name your dashboard';
+    final initial = pick.blank ? null : pick.templateName;
+    if (!mounted) return;
+    final name = await _promptName(context, promptTitle, initial: initial);
     if (name == null || name.isEmpty) return;
+
     try {
-      final d = await ref.read(repoProvider).createDashboard(name);
+      late final String newDashId;
+      if (pick.blank) {
+        final d = await ref.read(repoProvider).createDashboard(name);
+        newDashId = d.id;
+      } else {
+        newDashId = await ref.read(repoProvider).cloneDashboardTemplate(
+              templateId: pick.templateId!,
+              newName: name,
+            );
+      }
       // Reset local widget state BEFORE switching so the new dashboard
       // doesn't briefly inherit the previous board's tiles during the
       // refetch round-trip.
       setState(() {
         _widgets = const [];
         _selected = null;
-        _loadedDashId = d.id;
+        _loadedDashId = newDashId;
       });
-      ref.read(activeDashboardIdProvider.notifier).state = d.id;
+      ref.read(activeDashboardIdProvider.notifier).state = newDashId;
       ref.invalidate(dashboardsListProvider);
-      debugPrint('[Optics] Created dashboard "$name" (${d.id})');
+      debugPrint('[Optics] Created dashboard "$name" ($newDashId)'
+          ' from ${pick.blank ? "scratch" : "template ${pick.templateName}"}');
     } catch (e, st) {
       debugPrint('[Optics] Error creating dashboard: $e\n$st');
       if (!mounted) return;
@@ -2185,8 +2207,13 @@ class _EmptyDashboard extends ConsumerWidget {
 
 // ─── Dashboard Settings Dialog ────────────────────────────────────
 
-Future<String?> _promptName(BuildContext ctx, String title) async {
-  final c = TextEditingController();
+Future<String?> _promptName(BuildContext ctx, String title,
+    {String? initial}) async {
+  final c = TextEditingController(text: initial ?? '');
+  // Preselect any default text so the user can overwrite it with one keystroke.
+  if (initial != null && initial.isNotEmpty) {
+    c.selection = TextSelection(baseOffset: 0, extentOffset: initial.length);
+  }
   return showDialog<String>(
     context: ctx,
     builder: (dialogCtx) => AlertDialog(
@@ -2194,6 +2221,7 @@ Future<String?> _promptName(BuildContext ctx, String title) async {
       title: Text(title),
       content: TextField(
           controller: c,
+          autofocus: true,
           decoration: const InputDecoration(hintText: 'Name')),
       actions: [
         TextButton(

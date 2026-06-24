@@ -64,6 +64,43 @@ class SupabaseRepo {
     return Dashboard.fromMap(row);
   }
 
+  // ------------------ Dashboard Template Gallery ------------------
+  /// Lists all active dashboard templates available to every authenticated
+  /// user across all tenants (curated by Bryzos).
+  Future<List<Map<String, dynamic>>> listDashboardTemplates() async {
+    final rows = await client
+        .from('dashboard_templates')
+        .select('id, slug, name, description, global_settings, sort_order')
+        .eq('is_active', true)
+        .order('sort_order');
+    return (rows as List).cast<Map<String, dynamic>>();
+  }
+
+  /// Returns the widgets attached to a template, for preview rendering.
+  Future<List<Map<String, dynamic>>> listDashboardTemplateWidgets(
+      String templateId) async {
+    final rows = await client
+        .from('dashboard_template_widgets')
+        .select('id, title, type, layout, data_binding, settings, sort_order')
+        .eq('template_id', templateId)
+        .order('sort_order');
+    return (rows as List).cast<Map<String, dynamic>>();
+  }
+
+  /// Deep-clones a template into a new dashboard in the caller's tenant.
+  /// Returns the new dashboard id. The server-side RPC rebinds data sources
+  /// to the caller's tenant.
+  Future<String> cloneDashboardTemplate({
+    required String templateId,
+    String? newName,
+  }) async {
+    final id = await client.rpc('clone_dashboard_template', params: {
+      'p_template_id': templateId,
+      'p_new_name': newName,
+    });
+    return id as String;
+  }
+
   Future<void> deleteDashboard(String id) async {
     // Widgets cascade via FK; if not, clean them up explicitly first.
     await client.from('widgets').delete().eq('dashboard_id', id);

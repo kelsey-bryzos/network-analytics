@@ -209,6 +209,12 @@ class CustomReportQueryV2 {
   VizSpec viz;
   bool showShare;
 
+  /// Raw-SQL escape hatch (Bryzos-only v1). When `useRawSql` is true the
+  /// wizard locks and the preview/runtime executes `rawSql` verbatim via
+  /// `rds_execute_raw_sql_bryzos` instead of `rds_execute_query`.
+  bool useRawSql;
+  String? rawSql;
+
   CustomReportQueryV2({
     this.primaryTable,
     List<JoinSpec>? joins,
@@ -220,6 +226,8 @@ class CustomReportQueryV2 {
     this.limit,
     VizSpec? viz,
     this.showShare = true,
+    this.useRawSql = false,
+    this.rawSql,
   })  : joins = joins ?? [],
         columns = columns ?? [],
         filters = filters ?? [],
@@ -240,6 +248,8 @@ class CustomReportQueryV2 {
         if (limit != null) 'limit': limit,
         'viz': viz.toJson(),
         if (!showShare) 'show_share': false,
+        if (useRawSql) 'use_raw_sql': true,
+        if (rawSql != null && rawSql!.isNotEmpty) 'raw_sql': rawSql,
       };
 
   static CustomReportQueryV2 fromJson(Map<String, dynamic> j) =>
@@ -274,6 +284,8 @@ class CustomReportQueryV2 {
             ? VizSpec.fromJson(j['viz'] as Map<String, dynamic>)
             : VizSpec(),
         showShare: j['show_share'] is bool ? j['show_share'] as bool : true,
+        useRawSql: j['use_raw_sql'] is bool ? j['use_raw_sql'] as bool : false,
+        rawSql: j['raw_sql'] as String?,
       );
 
   /// All tables referenced in this query (primary + joins).

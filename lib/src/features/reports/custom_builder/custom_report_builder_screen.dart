@@ -1964,37 +1964,10 @@ class _Step3Filters extends StatelessWidget {
         children: [
           Expanded(
             flex: 4,
-            child: DropdownButtonFormField<String>(
-              initialValue: '${f.table}.${f.column}',
-              isDense: true,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                isDense: true,
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-              ),
-              selectedItemBuilder: (ctx) => [
-                for (final c in allCols)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      '${_bare(c.$1)}.${c.$2}',
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                      style: OpticsTextStyles.body,
-                    ),
-                  ),
-              ],
-              items: [
-                for (final c in allCols)
-                  DropdownMenuItem(
-                    value: '${c.$1}.${c.$2}',
-                    child: Text('${_bare(c.$1)}.${c.$2}',
-                        overflow: TextOverflow.ellipsis),
-                  ),
-              ],
-              onChanged: (v) {
-                if (v == null) return;
+            child: _DynamicWidthColumnPicker(
+              current: '${f.table}.${f.column}',
+              allCols: allCols,
+              onSelected: (v) {
                 final parts = v.split('.');
                 if (parts.length < 2) return;
                 final tbl = parts.sublist(0, parts.length - 1).join('.');
@@ -3676,3 +3649,91 @@ Widget _emptyState(String msg) {
 
 // ignore: unused_element
 double _unused() => math.pi;
+
+// ─── _DynamicWidthColumnPicker ──────────────────────────────────────────────
+//
+// A column dropdown whose popup menu sizes to its widest item rather than the
+// trigger field's width. Used in the Filters step so users can read full
+// `table.column` names like `user_purchase_order.freight_amount` without
+// being truncated to `user_purchase_order.fr…`.
+//
+// The trigger button still respects whatever width its parent gives it
+// (so the row layout stays intact); only the *open menu* grows.
+class _DynamicWidthColumnPicker extends StatelessWidget {
+  final String current;
+  final List<(String, String, String)> allCols;
+  final ValueChanged<String> onSelected;
+
+  const _DynamicWidthColumnPicker({
+    required this.current,
+    required this.allCols,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final currentLabel = () {
+      final parts = current.split('.');
+      if (parts.length < 2) return current;
+      final tbl = parts.sublist(0, parts.length - 1).join('.');
+      final col = parts.last;
+      return '${_bare(tbl)}.$col';
+    }();
+
+    return MenuAnchor(
+      style: MenuStyle(
+        backgroundColor:
+            WidgetStatePropertyAll(OpticsColors.surfaceElevated),
+        padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(vertical: 4)),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+            side: const BorderSide(color: OpticsColors.border),
+          ),
+        ),
+      ),
+      menuChildren: [
+        for (final c in allCols)
+          MenuItemButton(
+            onPressed: () => onSelected('${c.$1}.${c.$2}'),
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Text(
+                '${_bare(c.$1)}.${c.$2}',
+                style: OpticsTextStyles.body,
+              ),
+            ),
+          ),
+      ],
+      builder: (ctx, controller, _) {
+        return InkWell(
+          onTap: () =>
+              controller.isOpen ? controller.close() : controller.open(),
+          borderRadius: BorderRadius.circular(6),
+          child: InputDecorator(
+            isEmpty: false,
+            decoration: const InputDecoration(
+              isDense: true,
+              contentPadding:
+                  EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    currentLabel,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                    style: OpticsTextStyles.body,
+                  ),
+                ),
+                const Icon(Icons.arrow_drop_down, size: 18),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}

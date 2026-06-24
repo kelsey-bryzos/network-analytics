@@ -1036,10 +1036,15 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
       setState(() {
         _widgets = const [];
         _selected = null;
-        _loadedDashId = newDashId;
+        _loadedDashId = null;
       });
       ref.read(activeDashboardIdProvider.notifier).state = newDashId;
       ref.invalidate(dashboardsListProvider);
+      // Fetch the newly-created dashboard's widgets. Critical for templates —
+      // the clone RPC inserts widgets server-side, but the client must fetch
+      // them or the canvas appears empty even though the DB has the rows.
+      _loadWidgets(newDashId);
+      _configureAutoRefresh(newDashId);
       debugPrint('[Optics] Created dashboard "$name" ($newDashId)'
           ' from ${pick.blank ? "scratch" : "template ${pick.templateName}"}');
     } catch (e, st) {

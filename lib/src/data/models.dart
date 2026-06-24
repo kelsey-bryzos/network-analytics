@@ -8,12 +8,16 @@ class Tenant {
   final String name;
   final String slug;
   final String? logoUrl;
+  /// Optional tenant-branded application name, shown in the header next to
+  /// the logo when present. Null/empty means the header shows just the logo.
+  final String? appName;
 
   Tenant({
     required this.id,
     required this.name,
     required this.slug,
     this.logoUrl,
+    this.appName,
   });
 
   factory Tenant.fromMap(Map<String, dynamic> m) => Tenant(
@@ -21,6 +25,9 @@ class Tenant {
         name: m['name'] as String,
         slug: m['slug'] as String,
         logoUrl: m['logo_url'] as String?,
+        appName: (m['app_name'] as String?)?.trim().isNotEmpty == true
+            ? (m['app_name'] as String).trim()
+            : null,
       );
 }
 

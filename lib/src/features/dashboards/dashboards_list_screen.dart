@@ -12,6 +12,7 @@ import '../../shared/secure_error.dart';
 import '../reports/report_viewer_screen.dart' show restDataSourceIdProvider;
 import 'time_range_options.dart';
 import 'time_range_picker.dart';
+import 'share_dashboard_dialog.dart';
 import 'widget_grid.dart';
 import 'widget_settings_panel.dart';
 
@@ -994,60 +995,12 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
   }
 
   Future<void> _shareDashboard(String dashId, String dashName) async {
-    final email = await _promptEmail(context, dashName);
-    if (email == null || email.isEmpty) return;
-
     if (!mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      messenger.showSnackBar(SnackBar(content: Text('Sharing dashboard with $email...', style: const TextStyle(color: Colors.white))));
-      await ref.read(repoProvider).shareDashboard(dashId, email);
-      messenger.showSnackBar(SnackBar(content: Text('Dashboard shared successfully with $email.', style: const TextStyle(color: Colors.white))));
-    } catch (e) {
-      if (mounted) showSecureErrorSnackBar(context, ref, 'Failed to share dashboard.', e);
-    }
-  }
-
-  Future<String?> _promptEmail(BuildContext context, String dashName) {
-    String val = '';
-    return showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: OpticsColors.surface,
-        title: Text('SHARE "${dashName.toUpperCase()}"', style: OpticsTextStyles.headingMd),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Enter the email address of the user you want to share this dashboard with. They must already be an invited member of another tenant on the platform.',
-              style: TextStyle(color: OpticsColors.textSecondary, fontSize: 13),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              autofocus: true,
-              style: const TextStyle(color: OpticsColors.textPrimary),
-              decoration: const InputDecoration(
-                labelText: 'Email Address',
-                hintText: 'user@example.com',
-                border: OutlineInputBorder(),
-              ),
-              onChanged: (s) => val = s,
-              onSubmitted: (_) => Navigator.pop(ctx, val),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, val),
-            child: const Text('Share'),
-          ),
-        ],
-      ),
+    await showShareDashboardDialog(
+      context,
+      ref,
+      dashboardId: dashId,
+      dashboardName: dashName,
     );
   }
 

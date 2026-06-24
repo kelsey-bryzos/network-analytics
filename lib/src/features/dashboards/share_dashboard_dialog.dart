@@ -46,7 +46,6 @@ class _ShareDialog extends ConsumerStatefulWidget {
 
 class _ShareDialogState extends ConsumerState<_ShareDialog> {
   final _emailController = TextEditingController();
-  final _searchController = TextEditingController();
 
   List<Map<String, dynamic>> _candidates = const [];
   List<Map<String, dynamic>> _shares = const [];
@@ -68,7 +67,6 @@ class _ShareDialogState extends ConsumerState<_ShareDialog> {
   @override
   void dispose() {
     _emailController.dispose();
-    _searchController.dispose();
     super.dispose();
   }
 
@@ -102,21 +100,6 @@ class _ShareDialogState extends ConsumerState<_ShareDialog> {
         _loadingShares = false;
       });
     }
-  }
-
-  List<Map<String, dynamic>> get _filteredCandidates {
-    final q = _searchController.text.trim().toLowerCase();
-    if (q.isEmpty) return _candidates;
-    return _candidates.where((u) {
-      final name = (u['display_name'] ?? '').toString().toLowerCase();
-      final email = (u['email'] ?? '').toString().toLowerCase();
-      final memberships = (u['memberships'] as List?) ?? const [];
-      final tenantHit = memberships.any((m) {
-        final mm = (m as Map).cast<String, dynamic>();
-        return (mm['tenant_name'] ?? '').toString().toLowerCase().contains(q);
-      });
-      return name.contains(q) || email.contains(q) || tenantHit;
-    }).toList();
   }
 
   Future<void> _submit() async {
@@ -226,42 +209,28 @@ class _ShareDialogState extends ConsumerState<_ShareDialog> {
               ),
               const SizedBox(height: 14),
 
-              // Email input
+              // Email input — placeholder-only style (no floating label)
               TextField(
                 controller: _emailController,
                 style: const TextStyle(color: OpticsColors.textPrimary),
                 decoration: const InputDecoration(
-                  labelText: 'Email address',
-                  hintText: 'name@example.com',
+                  hintText: 'Email address',
+                  hintStyle: TextStyle(color: OpticsColors.textSecondary),
                   border: OutlineInputBorder(),
                   isDense: true,
                 ),
                 keyboardType: TextInputType.emailAddress,
-              ),
-
-              const SizedBox(height: 14),
-
-              // Search
-              TextField(
-                controller: _searchController,
-                style: const TextStyle(color: OpticsColors.textPrimary),
-                decoration: const InputDecoration(
-                  hintText: 'Search by name, email, or tenant…',
-                  prefixIcon: Icon(Icons.search, size: 18),
-                  border: OutlineInputBorder(),
-                  isDense: true,
-                ),
                 onChanged: (_) => setState(() {}),
               ),
 
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
 
               // Picker list
               Flexible(
                 child: _PickerList(
                   loading: _loadingCandidates,
                   error: _candidatesError,
-                  rows: _filteredCandidates,
+                  rows: _candidates,
                   selectedIds: _selectedUserIds,
                   onToggle: (id, on) {
                     setState(() {
@@ -381,7 +350,7 @@ class _PickerList extends StatelessWidget {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 14),
         child: Text(
-          'No users match your search.',
+          'No users available to share with.',
           style: TextStyle(color: OpticsColors.textSecondary, fontSize: 12),
         ),
       );

@@ -89,24 +89,77 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         }
       }
     } on AuthException catch (e) {
-      setState(() => _error = e.message);
+      setState(() => _error = _cleanErrorMessage(e.message));
     } on FunctionException catch (e) {
-      // auth-login Edge Function returns { error: "..." } on 4xx/5xx.
-      // FunctionException stringifies as the noisy "FunctionException(status:
-      // 401, details: {error: ...}, reasonPhrase: )" — we want just the text.
-      String msg = 'Sign-in failed.';
-      final d = e.details;
-      if (d is Map && d['error'] is String) {
-        msg = d['error'] as String;
-      } else if (d is String && d.isNotEmpty) {
-        msg = d;
-      }
-      setState(() => _error = msg);
+      setState(() => _error = _extractFunctionExceptionMessage(e.details));
     } catch (e) {
-      setState(() => _error = 'Sign-in failed. Please try again.');
+      // Defensive: even if a FunctionException slips past the typed catch
+      // (e.g. in a stale cached bundle or future regression), strip the
+      // noisy "FunctionException(status: …, details: {…}, reasonPhrase: …)"
+      // wrapper so users only see the clean server-supplied error text.
+      setState(() => _error = _cleanErrorMessage(e.toString()));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// Pulls the user-facing error string out of a `FunctionException.details`
+  /// payload (which is `{ error: "...", ... }` from our Edge Functions),
+  /// falling back to a generic message if the shape is unexpected.
+  String _extractFunctionExceptionMessage(dynamic details) {
+    if (details is Map) {
+      final err = details['error'];
+      if (err is String && err.trim().isNotEmpty) return err;
+    }
+    if (details is String && details.trim().isNotEmpty) {
+      return _cleanErrorMessage(details);
+    }
+    return 'Sign-in failed. Please try again.';
+  }
+
+  /// Strips the noisy `FunctionException(status: N, details: {error: "msg", ...},
+  /// reasonPhrase: ...)` wrapper that `FunctionException.toString()` produces,
+  /// surfacing just the inner server-supplied error text. Acts as a defensive
+  /// last line of defense in case the typed `on FunctionException` clause is
+  /// bypassed (e.g. by a stale cached client bundle).
+  String _cleanErrorMessage(String raw) {
+    final s = raw.trim();
+    if (s.isEmpty) return 'Sign-in failed. Please try again.';
+
+    // Match: FunctionException(status: N, details: {error: MESSAGE, ...}, ...)
+    final feErrorKey = RegExp(
+      r'FunctionException\(.*?details:\s*\{[^}]*?error:\s*(.+?)(?:,\s*[a-zA-Z_]+:|\})',
+      dotAll: true,
+    );
+    final m1 = feErrorKey.firstMatch(s);
+    if (m1 != null) {
+      var inner = m1.group(1)!.trim();
+      // Strip wrapping single or double quotes if present.
+      if (inner.length >= 2) {
+        final f = inner[0];
+        final l = inner[inner.length - 1];
+        if ((f == '"' && l == '"') || (f == "'" && l == "'")) {
+          inner = inner.substring(1, inner.length - 1);
+        }
+      }
+      return inner;
+    }
+
+    // Match: FunctionException(status: N, details: PLAIN_STRING, ...)
+    final fePlain = RegExp(
+      r'FunctionException\(.*?details:\s*(.+?),\s*reasonPhrase:',
+      dotAll: true,
+    );
+    final m2 = fePlain.firstMatch(s);
+    if (m2 != null) {
+      final inner = m2.group(1)!.trim();
+      if (inner.isNotEmpty && inner != 'null') return inner;
+    }
+
+    // Match: Exception: MESSAGE  →  MESSAGE
+    if (s.startsWith('Exception: ')) return s.substring(11).trim();
+
+    return s;
   }
 
   @override

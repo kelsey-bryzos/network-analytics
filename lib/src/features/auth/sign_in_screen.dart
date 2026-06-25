@@ -57,13 +57,36 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
           await client.rpc('accept_pending_invites');
         } catch (_) {}
       } else {
-        await client.auth.signInWithPassword(
-          email: _email.text.trim(),
-          password: _password.text,
+        // Sign-in goes through our auth-login Edge Function which gates
+        // GoTrue with per-account lockout (5 attempts / 15-min window /
+        // 15-min lockout). On success it returns a GoTrue session payload;
+        // we hydrate the local session with the refresh_token.
+        final r = await client.functions.invoke(
+          'auth-login',
+          body: {
+            'email': _email.text.trim(),
+            'password': _password.text,
+          },
         );
-        try {
-          await client.rpc('accept_pending_invites');
-        } catch (_) {}
+        if (r.status >= 400) {
+          final data = r.data;
+          String msg = 'Sign-in failed.';
+          if (data is Map && data['error'] is String) {
+            msg = data['error'] as String;
+          }
+          setState(() => _error = msg);
+        } else {
+          final data = (r.data is Map) ? Map<String, dynamic>.from(r.data as Map) : <String, dynamic>{};
+          final refreshToken = data['refresh_token']?.toString() ?? '';
+          if (refreshToken.isEmpty) {
+            setState(() => _error = 'Sign-in succeeded but session was empty. Please try again.');
+          } else {
+            await client.auth.setSession(refreshToken);
+            try {
+              await client.rpc('accept_pending_invites');
+            } catch (_) {}
+          }
+        }
       }
     } on AuthException catch (e) {
       setState(() => _error = e.message);

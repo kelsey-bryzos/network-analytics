@@ -29,6 +29,33 @@ class SupabaseRepo {
     return tid == null ? {} : {'x-optics-tenant': tid};
   }
 
+  /// Runs an idempotent read once, and if it fails with a browser-level
+  /// transport error (e.g. `ClientException: Failed to fetch`, DNS hiccup,
+  /// transient proxy interference on first-load), retries it exactly once
+  /// after a short delay. Real auth/RLS/server errors fall straight through
+  /// unchanged — we only swallow obviously-transient transport failures.
+  ///
+  /// This was added after a Ryerson user (first login from a corporate
+  /// network) hit `Failed to fetch` on `/rest/v1/dashboards` immediately
+  /// after invite acceptance while the server was healthy.
+  Future<T> _retryTransient<T>(Future<T> Function() op) async {
+    try {
+      return await op();
+    } catch (e) {
+      final msg = e.toString().toLowerCase();
+      final isTransient = msg.contains('failed to fetch') ||
+          msg.contains('failed host lookup') ||
+          msg.contains('clientexception') ||
+          msg.contains('socketexception') ||
+          msg.contains('connection closed') ||
+          msg.contains('connection reset') ||
+          msg.contains('network is unreachable');
+      if (!isTransient) rethrow;
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      return await op();
+    }
+  }
+
   // ------------------ Tenants ------------------
   Future<List<Tenant>> listTenants() async {
     final rows = await client.from('tenants').select().order('name');
@@ -42,10 +69,14 @@ class SupabaseRepo {
 
   // ------------------ Dashboards ------------------
   Future<List<Dashboard>> listDashboards() async {
-    final rows = await client
+    // Explicit column list (instead of `.select()` / `select=*`) so the
+    // request URL doesn't contain `%2A`, which some corporate proxies/WAFs
+    // flag. Also slightly shrinks the response payload.
+    final rows = await _retryTransient(() => client
         .from('dashboards')
-        .select()
-        .order('updated_at', ascending: false);
+        .select(
+            'id, tenant_id, name, description, global_settings, created_by, updated_at')
+        .order('updated_at', ascending: false));
     return (rows as List)
         .map((r) => Dashboard.fromMap(r as Map<String, dynamic>))
         .toList();
@@ -456,13 +487,18 @@ class SupabaseRepo {
   ///  2. **Custom reports** — actual rows in the tenant-scoped `reports`
   ///     table (which the current user has visibility to via RLS).
   Future<List<Report>> listReports() async {
-    // 1. Fetch canned (system library) reports AND widgets
-    final libRowsRaw = await client
+    // 1. Fetch canned (system library) reports AND widgets.
+    // Explicit column list (instead of `.select()` / `select=*`) so the
+    // request URL doesn't contain `%2A`, which some corporate proxies/WAFs
+    // flag. Wrapped in a transient-retry so a first-load network blip
+    // doesn't surface as "Could not load reports" to the user.
+    final libRowsRaw = await _retryTransient(() => client
         .from('library_items')
-        .select()
+        .select(
+            'id, tenant_id, scope, kind, category, name, description, payload, created_at')
         .eq('scope', 'system')
         .inFilter('kind', ['report', 'widget'])
-        .order('name');
+        .order('name'));
         
     // Deduplicate: if a name exists as both 'widget' and 'report', prefer the 'widget'.
     final Map<String, dynamic> deduplicatedLib = {};
@@ -551,11 +587,12 @@ class SupabaseRepo {
     //    shared_with_tenant, and creation metadata. Operational clones
     //    (the hidden tenant-scoped handles used silently for Schedule /
     //    Export of canned reports) are excluded from the user-facing list.
-    final repRows = await client
+    final repRows = await _retryTransient(() => client
         .from('reports')
-        .select('*')
+        .select(
+            'id, tenant_id, name, description, layout, created_by, created_at, updated_at, status, archived_at, shared_with_tenant, cloned_from_library_item, is_operational, query_version')
         .or('is_operational.is.null,is_operational.eq.false')
-        .order('created_at', ascending: false);
+        .order('created_at', ascending: false));
 
     // 3. Resolve creator display names in a second round-trip (the FK on
     //    reports.created_by points at auth.users, not user_profiles, so we

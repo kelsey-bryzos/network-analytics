@@ -90,8 +90,20 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       }
     } on AuthException catch (e) {
       setState(() => _error = e.message);
+    } on FunctionException catch (e) {
+      // auth-login Edge Function returns { error: "..." } on 4xx/5xx.
+      // FunctionException stringifies as the noisy "FunctionException(status:
+      // 401, details: {error: ...}, reasonPhrase: )" — we want just the text.
+      String msg = 'Sign-in failed.';
+      final d = e.details;
+      if (d is Map && d['error'] is String) {
+        msg = d['error'] as String;
+      } else if (d is String && d.isNotEmpty) {
+        msg = d;
+      }
+      setState(() => _error = msg);
     } catch (e) {
-      setState(() => _error = e.toString());
+      setState(() => _error = 'Sign-in failed. Please try again.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }

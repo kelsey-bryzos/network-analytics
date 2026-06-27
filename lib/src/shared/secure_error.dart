@@ -60,7 +60,8 @@ void showSecureErrorSnackBar(
                 'send-error-report',
                 body: {
                   'user_email': userEmail,
-                  'error_detail': error.toString(),
+                  'error_detail':
+                      sanitizeErrorDetailForExternal(error.toString()),
                   'context': generic,
                 },
               );
@@ -80,6 +81,36 @@ String sanitiseError(Object error) {
       .replaceAll(RegExp(r'https?://[^\s,]+'), '[redacted]')
       .replaceAll(RegExp(r'ClientException:\s*'), '')
       .replaceAll(RegExp(r'Exception:\s*'), '')
+      .trim();
+}
+
+/// Sanitises an error detail string before it is sent to the
+/// `send-error-report` Edge Function from a non-Bryzos user's browser.
+///
+/// Per Objective v4 §1(d): no Supabase project URLs, function names, query
+/// strings, or other internal identifiers may be visible in the UI or in
+/// browser inspection tools for non-Bryzos users. The error-report request
+/// body is visible in DevTools → Network, so we strip identifiers here.
+///
+/// Bryzos users (the only ones whose browsers would carry `is_bryzos`) keep
+/// the full detail — the server-side function records both for triage.
+String sanitizeErrorDetailForExternal(String raw) {
+  return raw
+      // Supabase project URLs (any subdomain).
+      .replaceAll(
+          RegExp(r'https?://[a-z0-9-]+\.supabase\.(co|net)[^\s,)\]]*'),
+          '[redacted-url]')
+      // Any other absolute URL with query strings or paths.
+      .replaceAll(RegExp(r'https?://[^\s,)\]]+'), '[redacted-url]')
+      // PostgREST endpoint paths (e.g. /rest/v1/dashboards?select=...).
+      .replaceAll(RegExp(r'/rest/v1/[A-Za-z0-9_./?=&%,*-]+'),
+          '[redacted-endpoint]')
+      // Edge function paths.
+      .replaceAll(RegExp(r'/functions/v1/[A-Za-z0-9_./?=&%,*-]+'),
+          '[redacted-endpoint]')
+      // Auth endpoint paths.
+      .replaceAll(RegExp(r'/auth/v1/[A-Za-z0-9_./?=&%,*-]+'),
+          '[redacted-endpoint]')
       .trim();
 }
 
@@ -112,7 +143,8 @@ class _SecureErrorTextState extends ConsumerState<SecureErrorText> {
         'send-error-report',
         body: {
           'user_email': userEmail,
-          'error_detail': widget.error.toString(),
+          'error_detail':
+              sanitizeErrorDetailForExternal(widget.error.toString()),
           'context': widget.genericMessage,
         },
       );

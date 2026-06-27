@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -29,31 +31,51 @@ class SupabaseRepo {
     return tid == null ? {} : {'x-optics-tenant': tid};
   }
 
-  /// Runs an idempotent read once, and if it fails with a browser-level
-  /// transport error (e.g. `ClientException: Failed to fetch`, DNS hiccup,
-  /// transient proxy interference on first-load), retries it exactly once
-  /// after a short delay. Real auth/RLS/server errors fall straight through
+  /// Runs an idempotent read with up to 3 retries on browser-level transport
+  /// failures (e.g. `ClientException: Failed to fetch`, DNS hiccup, transient
+  /// proxy interference). Real auth/RLS/server errors fall straight through
   /// unchanged — we only swallow obviously-transient transport failures.
   ///
-  /// This was added after a Ryerson user (first login from a corporate
-  /// network) hit `Failed to fetch` on `/rest/v1/dashboards` immediately
-  /// after invite acceptance while the server was healthy.
+  /// Backoff schedule (with ±30% jitter):
+  ///   - Attempt 1: immediate
+  ///   - Attempt 2: ~500ms
+  ///   - Attempt 3: ~1500ms
+  ///   - Attempt 4: ~4000ms
+  /// Worst-case total wait before final failure: ~6 seconds.
+  ///
+  /// Originally added after a Ryerson user (first login from a corporate
+  /// network) hit `Failed to fetch` on `/rest/v1/dashboards`. Strengthened
+  /// to 3 retries after a second Ryerson user (Frank) hit the same error
+  /// on dashboard load — the single 600ms retry was insufficient for
+  /// flakier corporate networks / WAF interference.
+  static final _retryRng = math.Random();
   Future<T> _retryTransient<T>(Future<T> Function() op) async {
-    try {
-      return await op();
-    } catch (e) {
-      final msg = e.toString().toLowerCase();
-      final isTransient = msg.contains('failed to fetch') ||
-          msg.contains('failed host lookup') ||
-          msg.contains('clientexception') ||
-          msg.contains('socketexception') ||
-          msg.contains('connection closed') ||
-          msg.contains('connection reset') ||
-          msg.contains('network is unreachable');
-      if (!isTransient) rethrow;
-      await Future<void>.delayed(const Duration(milliseconds: 600));
-      return await op();
+    const baseDelaysMs = [500, 1500, 4000];
+    Object? lastError;
+    StackTrace? lastStack;
+    for (var attempt = 0; attempt < 4; attempt++) {
+      try {
+        return await op();
+      } catch (e, st) {
+        final msg = e.toString().toLowerCase();
+        final isTransient = msg.contains('failed to fetch') ||
+            msg.contains('failed host lookup') ||
+            msg.contains('clientexception') ||
+            msg.contains('socketexception') ||
+            msg.contains('connection closed') ||
+            msg.contains('connection reset') ||
+            msg.contains('network is unreachable');
+        if (!isTransient) rethrow;
+        lastError = e;
+        lastStack = st;
+        if (attempt == 3) break;
+        final base = baseDelaysMs[attempt];
+        // ±30% jitter to avoid thundering-herd on shared networks.
+        final jitter = (base * (0.7 + _retryRng.nextDouble() * 0.6)).round();
+        await Future<void>.delayed(Duration(milliseconds: jitter));
+      }
     }
+    Error.throwWithStackTrace(lastError!, lastStack ?? StackTrace.current);
   }
 
   // ------------------ Tenants ------------------

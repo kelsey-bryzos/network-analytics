@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/models.dart';
 import '../../data/supabase_repo.dart';
+import '../../shared/secure_error.dart' show sanitizeErrorDetailForExternal;
 import '../dashboards/dashboards_list_screen.dart' show activeDashboardIdProvider;
 import '../../design/optics_card.dart';
 import '../../design/theme.dart';
@@ -58,7 +59,8 @@ class _SecureErrorTextState extends ConsumerState<_SecureErrorText> {
         'send-error-report',
         body: {
           'user_email': userEmail,
-          'error_detail': widget.error.toString(),
+          'error_detail':
+              sanitizeErrorDetailForExternal(widget.error.toString()),
           'context': widget.genericMessage,
         },
       );
@@ -154,7 +156,8 @@ void _showSecureErrorSnackBar(BuildContext context, WidgetRef ref, String generi
               'send-error-report',
               body: {
                 'user_email': userEmail,
-                'error_detail': error.toString(),
+                'error_detail':
+                    sanitizeErrorDetailForExternal(error.toString()),
                 'context': generic,
               },
             );

@@ -281,12 +281,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         if (mounted) setState(() { _tenants = []; _loading = false; });
         return;
       }
-      final rows = await client
-          .from('memberships')
-          .select('role, tenants(id, name, slug, logo_url, app_name, display_order)')
-          .eq('user_id', uid);
+      // Route through `db-read` Edge Function (WAF-safe transport). Server
+      // resolves the caller from the JWT and applies the same user-scoped
+      // filter we used directly here.
+      final res = await client.functions.invoke('db-read',
+          body: const {'op': 'listMemberships'});
+      final data = res.data;
+      final List rows = (data is Map && data['memberships'] is List)
+          ? data['memberships'] as List
+          : const [];
       if (mounted) {
-        final raw = (rows as List).map((r) => (r as Map).cast<String, dynamic>()).toList();
+        final raw = rows.map((r) => (r as Map).cast<String, dynamic>()).toList();
         // Deduplicate by tenant ID — a user can theoretically have multiple
         // membership rows for the same tenant (e.g. during migration). Keep
         // the first (highest-privilege) occurrence to avoid duplicate cards.

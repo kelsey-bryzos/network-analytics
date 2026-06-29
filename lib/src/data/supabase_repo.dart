@@ -152,23 +152,33 @@ class SupabaseRepo {
   /// Lists all active dashboard templates available to every authenticated
   /// user across all tenants (curated by Bryzos).
   Future<List<Map<String, dynamic>>> listDashboardTemplates() async {
-    final rows = await client
-        .from('dashboard_templates')
-        .select('id, slug, name, description, global_settings, sort_order')
-        .eq('is_active', true)
-        .order('sort_order');
-    return (rows as List).cast<Map<String, dynamic>>();
+    // Route through `db-read` Edge Function (WAF-safe transport).
+    final res = await _retryTransient(
+      () => client.functions.invoke('db-read',
+          body: const {'op': 'listDashboardTemplates'}),
+    );
+    final data = res.data;
+    final List rows = (data is Map && data['templates'] is List)
+        ? data['templates'] as List
+        : const [];
+    return rows.map((r) => (r as Map).cast<String, dynamic>()).toList();
   }
 
   /// Returns the widgets attached to a template, for preview rendering.
   Future<List<Map<String, dynamic>>> listDashboardTemplateWidgets(
       String templateId) async {
-    final rows = await client
-        .from('dashboard_template_widgets')
-        .select('id, title, type, layout, data_binding, settings, sort_order')
-        .eq('template_id', templateId)
-        .order('sort_order');
-    return (rows as List).cast<Map<String, dynamic>>();
+    // Route through `db-read` Edge Function (WAF-safe transport).
+    final res = await _retryTransient(
+      () => client.functions.invoke('db-read', body: {
+        'op': 'listDashboardTemplateWidgets',
+        'args': {'template_id': templateId},
+      }),
+    );
+    final data = res.data;
+    final List rows = (data is Map && data['widgets'] is List)
+        ? data['widgets'] as List
+        : const [];
+    return rows.map((r) => (r as Map).cast<String, dynamic>()).toList();
   }
 
   /// Deep-clones a template into a new dashboard in the caller's tenant.
@@ -245,10 +255,17 @@ class SupabaseRepo {
 
   // ------------------ Data Sources ------------------
   Future<List<DataSource>> listDataSources() async {
-    final rows =
-        await client.from('data_sources').select().order('created_at');
-    return (rows as List)
-        .map((r) => DataSource.fromMap(r as Map<String, dynamic>))
+    // Route through `db-read` Edge Function (WAF-safe transport).
+    final res = await _retryTransient(
+      () => client.functions.invoke('db-read',
+          body: const {'op': 'listDataSources'}),
+    );
+    final data = res.data;
+    final List rows = (data is Map && data['data_sources'] is List)
+        ? data['data_sources'] as List
+        : const [];
+    return rows
+        .map((r) => DataSource.fromMap((r as Map).cast<String, dynamic>()))
         .toList();
   }
 
@@ -528,10 +545,17 @@ class SupabaseRepo {
 
   // ------------------ Library ------------------
   Future<List<LibraryItem>> listLibrary() async {
-    final rows =
-        await client.from('library_items').select().order('name');
-    return (rows as List)
-        .map((r) => LibraryItem.fromMap(r as Map<String, dynamic>))
+    // Route through `db-read` Edge Function (WAF-safe transport).
+    final res = await _retryTransient(
+      () => client.functions.invoke('db-read',
+          body: const {'op': 'listLibraryItems'}),
+    );
+    final data = res.data;
+    final List rows = (data is Map && data['library_items'] is List)
+        ? data['library_items'] as List
+        : const [];
+    return rows
+        .map((r) => LibraryItem.fromMap((r as Map).cast<String, dynamic>()))
         .toList();
   }
 
@@ -544,29 +568,29 @@ class SupabaseRepo {
   ///  2. **Custom reports** — actual rows in the tenant-scoped `reports`
   ///     table (which the current user has visibility to via RLS).
   Future<List<Report>> listReports() async {
-    // 1. Fetch canned (system library) reports AND widgets.
-    // Explicit column list (instead of `.select()` / `select=*`) so the
-    // request URL doesn't contain `%2A`, which some corporate proxies/WAFs
-    // flag. Wrapped in a transient-retry so a first-load network blip
-    // doesn't surface as "Could not load reports" to the user.
-    final libRowsRaw = await _retryTransient(() => client
-        .from('library_items')
-        .select(
-            'id, tenant_id, scope, kind, category, name, description, payload, created_at')
-        .eq('scope', 'system')
-        .inFilter('kind', ['report', 'widget'])
-        .order('name'));
-        
+    // Route through `db-read` Edge Function (WAF-safe transport). The
+    // server-side composer returns the same multi-step payload we used to
+    // assemble client-side via 4-5 SQL-shaped PostgREST GETs.
+    final res = await _retryTransient(
+      () => client.functions.invoke('db-read',
+          body: const {'op': 'listReports'}),
+    );
+    final data = (res.data is Map)
+        ? (res.data as Map).cast<String, dynamic>()
+        : const <String, dynamic>{};
+
+    // 1. Library items (canned reports + widgets).
+    final libRowsRaw = (data['library_items'] as List?) ?? const [];
+
     // Deduplicate: if a name exists as both 'widget' and 'report', prefer the 'widget'.
     final Map<String, dynamic> deduplicatedLib = {};
-    for (final row in (libRowsRaw as List)) {
-      final m = row as Map<String, dynamic>;
+    for (final row in libRowsRaw) {
+      final m = (row as Map).cast<String, dynamic>();
       final name = m['name'] as String? ?? '';
       final kind = m['kind'] as String? ?? '';
       if (!deduplicatedLib.containsKey(name)) {
         deduplicatedLib[name] = m;
       } else {
-        // If we already have a 'report' and this is a 'widget', overwrite it.
         final existingKind = deduplicatedLib[name]!['kind'] as String? ?? '';
         if (existingKind == 'report' && kind == 'widget') {
           deduplicatedLib[name] = m;
@@ -575,25 +599,16 @@ class SupabaseRepo {
     }
     final libRows = deduplicatedLib.values.toList();
 
-    // 1b. Pull the current user's per-canned-report archive prefs so we can
-    //     surface "View Archives" entries that are user-specific.
-    final userId = client.auth.currentUser?.id;
+    // 1b. Canned archive prefs for the current user.
     final cannedArchivedAt = <String, DateTime>{};
-    if (userId != null) {
-      final prefs = await client
-          .from('user_report_prefs')
-          .select('target_id, archived_at')
-          .eq('user_id', userId)
-          .eq('is_canned', true)
-          .not('archived_at', 'is', null);
-      for (final p in (prefs as List)) {
-        final m = p as Map<String, dynamic>;
-        final tid = m['target_id'] as String?;
-        final at = m['archived_at'] as String?;
-        if (tid != null && at != null) {
-          final parsed = DateTime.tryParse(at);
-          if (parsed != null) cannedArchivedAt[tid] = parsed;
-        }
+    final prefs = (data['user_prefs'] as List?) ?? const [];
+    for (final p in prefs) {
+      final m = (p as Map).cast<String, dynamic>();
+      final tid = m['target_id'] as String?;
+      final at = m['archived_at'] as String?;
+      if (tid != null && at != null) {
+        final parsed = DateTime.tryParse(at);
+        if (parsed != null) cannedArchivedAt[tid] = parsed;
       }
     }
 
@@ -640,40 +655,20 @@ class SupabaseRepo {
       );
     }).toList();
 
-    // 2. Fetch tenant custom reports — include status, archived_at,
-    //    shared_with_tenant, and creation metadata. Operational clones
-    //    (the hidden tenant-scoped handles used silently for Schedule /
-    //    Export of canned reports) are excluded from the user-facing list.
-    final repRows = await _retryTransient(() => client
-        .from('reports')
-        .select(
-            'id, tenant_id, name, description, layout, created_by, created_at, updated_at, status, archived_at, shared_with_tenant, cloned_from_library_item, is_operational, query_version')
-        .or('is_operational.is.null,is_operational.eq.false')
-        .order('created_at', ascending: false));
+    // 2. Tenant custom reports (operational clones excluded server-side).
+    final repRows = (data['reports'] as List?) ?? const [];
 
-    // 3. Resolve creator display names in a second round-trip (the FK on
-    //    reports.created_by points at auth.users, not user_profiles, so we
-    //    can't embed via PostgREST).
-    final creatorIds = {
-      for (final r in (repRows as List))
-        if ((r as Map)['created_by'] != null) r['created_by'] as String,
-    };
+    // 3. Creator display names (server already resolved).
     final namesById = <String, String>{};
-    if (creatorIds.isNotEmpty) {
-      final profiles = await client
-          .from('user_profiles')
-          .select('user_id, display_name')
-          .inFilter('user_id', creatorIds.toList());
-      for (final p in (profiles as List)) {
-        final pm = p as Map<String, dynamic>;
-        final uid = pm['user_id'] as String?;
-        final dn = pm['display_name'] as String?;
-        if (uid != null && dn != null) namesById[uid] = dn;
-      }
+    for (final p in ((data['profiles'] as List?) ?? const [])) {
+      final pm = (p as Map).cast<String, dynamic>();
+      final uid = pm['user_id'] as String?;
+      final dn = pm['display_name'] as String?;
+      if (uid != null && dn != null) namesById[uid] = dn;
     }
 
     final custom = repRows.map((r) {
-      final m = r as Map<String, dynamic>;
+      final m = (r as Map).cast<String, dynamic>();
       final createdBy = m['created_by'] as String?;
       return Report.fromMap({
         ...m,
@@ -686,36 +681,20 @@ class SupabaseRepo {
       });
     }).toList();
 
-    final scheduledReportIds = <String>{};
+    final scheduledReportIds = <String>{
+      for (final id in ((data['schedule_report_ids'] as List?) ?? const []))
+        if (id is String) id,
+    };
     final scheduledLibraryIds = <String>{};
-    try {
-      final scheduleRows = await client
-          .from('schedules')
-          .select('report_id')
-          .eq('enabled', true);
-      for (final row in (scheduleRows as List)) {
-        final reportId = (row as Map)['report_id'] as String?;
-        if (reportId != null) scheduledReportIds.add(reportId);
+    for (final row in ((data['op_reports'] as List?) ?? const [])) {
+      final m = (row as Map).cast<String, dynamic>();
+      final reportId = m['id'] as String?;
+      final libId = m['cloned_from_library_item'] as String?;
+      if (reportId != null &&
+          libId != null &&
+          scheduledReportIds.contains(reportId)) {
+        scheduledLibraryIds.add(libId);
       }
-      if (scheduledReportIds.isNotEmpty) {
-        final opRows = await client
-            .from('reports')
-            .select('id, cloned_from_library_item')
-            .eq('is_operational', true)
-            .not('cloned_from_library_item', 'is', null);
-        for (final row in (opRows as List)) {
-          final m = row as Map<String, dynamic>;
-          final reportId = m['id'] as String?;
-          final libId = m['cloned_from_library_item'] as String?;
-          if (reportId != null &&
-              libId != null &&
-              scheduledReportIds.contains(reportId)) {
-            scheduledLibraryIds.add(libId);
-          }
-        }
-      }
-    } catch (_) {
-      // Schedule indicators are UI-only; fail closed if RLS/schema blocks lookup.
     }
 
     final scheduledCanned = canned.map((r) {
@@ -1065,12 +1044,18 @@ class SupabaseRepo {
 
   /// List schedules for a report (current tenant — enforced by RLS).
   Future<List<Map<String, dynamic>>> listSchedules(String reportId) async {
-    final rows = await client
-        .from('schedules')
-        .select('*')
-        .eq('report_id', reportId)
-        .order('created_at', ascending: false);
-    return (rows as List).cast<Map<String, dynamic>>();
+    // Route through `db-read` Edge Function (WAF-safe transport).
+    final res = await _retryTransient(
+      () => client.functions.invoke('db-read', body: {
+        'op': 'listSchedules',
+        'args': {'report_id': reportId},
+      }),
+    );
+    final data = res.data;
+    final List rows = (data is Map && data['schedules'] is List)
+        ? data['schedules'] as List
+        : const [];
+    return rows.map((r) => (r as Map).cast<String, dynamic>()).toList();
   }
 
   /// Insert a new schedule row. RLS uses `current_tenant_id()` default.

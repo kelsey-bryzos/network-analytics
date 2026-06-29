@@ -98,22 +98,34 @@ class SupabaseRepo {
   }
 
   Future<Tenant> getTenant(String id) async {
-    final row = await client.from('tenants').select().eq('id', id).single();
+    // Route through `db-read` Edge Function (WAF-safe transport).
+    final res = await _retryTransient(
+      () => client.functions.invoke('db-read',
+          body: {'op': 'getTenant', 'args': {'id': id}}),
+    );
+    final data = res.data;
+    final row = (data is Map && data['tenant'] is Map)
+        ? (data['tenant'] as Map).cast<String, dynamic>()
+        : null;
+    if (row == null) {
+      throw StateError('Tenant not found: $id');
+    }
     return Tenant.fromMap(row);
   }
 
   // ------------------ Dashboards ------------------
   Future<List<Dashboard>> listDashboards() async {
-    // Route through the `list-dashboards` Edge Function instead of a direct
-    // PostgREST GET. Background: some corporate WAFs (e.g. Ryerson) flag the
-    // PostgREST query-string pattern `order=updated_at.desc` as a SQL-injection
-    // attempt and block the request before it ever reaches Supabase. The Edge
-    // Function endpoint is a clean POST with a JSON body — no SQL-shaped URL —
-    // and forwards the caller's JWT to PostgREST server-side so RLS is still
-    // evaluated as the caller. _retryTransient still wraps the call as
-    // defence-in-depth against ordinary transient network errors.
+    // Route through the `db-read` Edge Function (WAF-safe transport). RLS is
+    // still enforced server-side using the caller's JWT.
+    //
+    // History: this previously called the standalone `list-dashboards`
+    // Edge Function (Phase 2 hotfix #1). It was folded into `db-read` in
+    // Stage 2 to keep a single dispatcher for all reads. The old
+    // `list-dashboards` function remains deployed for one promotion cycle
+    // as a safety net and will be decommissioned after Prod soak.
     final res = await _retryTransient(
-      () => client.functions.invoke('list-dashboards', body: const {}),
+      () => client.functions.invoke('db-read',
+          body: const {'op': 'listDashboards'}),
     );
     final data = res.data;
     final List rows = (data is Map && data['dashboards'] is List)
@@ -304,8 +316,18 @@ class SupabaseRepo {
         headers: _fnHeaders(),
       );
       // Re-read so we pick up vault_secret_id (powers `hasCredentials`).
-      final fresh =
-          await client.from('data_sources').select().eq('id', ds.id).single();
+      // Route through `db-read` (WAF-safe transport).
+      final freshRes = await _retryTransient(
+        () => client.functions.invoke('db-read',
+            body: {'op': 'getDataSource', 'args': {'id': ds.id}}),
+      );
+      final freshData = freshRes.data;
+      final fresh = (freshData is Map && freshData['data_source'] is Map)
+          ? (freshData['data_source'] as Map).cast<String, dynamic>()
+          : null;
+      if (fresh == null) {
+        throw StateError('Data source not found after secret write: ${ds.id}');
+      }
       return DataSource.fromMap(fresh);
     }
     return ds;
@@ -352,12 +374,18 @@ class SupabaseRepo {
   /// Read sync state (cadence + last result) for a data source.
   /// Returns null if the row doesn't exist yet.
   Future<Map<String, dynamic>?> getDataSourceSync(String dataSourceId) async {
-    final row = await client
-        .from('data_source_sync')
-        .select()
-        .eq('data_source_id', dataSourceId)
-        .maybeSingle();
-    return row == null ? null : (row).cast<String, dynamic>();
+    // Route through `db-read` Edge Function (WAF-safe transport).
+    final res = await _retryTransient(
+      () => client.functions.invoke('db-read', body: {
+        'op': 'getDataSourceSync',
+        'args': {'data_source_id': dataSourceId},
+      }),
+    );
+    final data = res.data;
+    final row = (data is Map && data['sync'] is Map)
+        ? (data['sync'] as Map).cast<String, dynamic>()
+        : null;
+    return row;
   }
 
   /// Update the auto-refresh cadence (in minutes). 0 = off.
@@ -381,20 +409,21 @@ class SupabaseRepo {
   /// sync window's start (from data_source_sync.last_sync_at when status is
   /// 'running', else the most recent run cluster).
   Future<Map<String, dynamic>> getSyncProgress(String dataSourceId) async {
-    // Total tables to sync (tenant-agnostic catalog).
-    final mapRows =
-        await client.from('rds_table_map').select('rds_table');
-    final total = (mapRows as List).length;
-
-    // Window start = data_source_sync.last_sync_at if running, else
-    // the started_at of the most recent etl_runs row for this DS.
-    final syncRow = await client
-        .from('data_source_sync')
-        .select('last_sync_at,last_sync_status')
-        .eq('data_source_id', dataSourceId)
-        .maybeSingle();
-    final status = (syncRow as Map?)?['last_sync_status'] as String?;
-    final windowStartIso = (syncRow)?['last_sync_at'] as String?;
+    // Route through `db-read` Edge Function — server-side composer returns
+    // total / status / window_start_iso / runs in a single round-trip and
+    // avoids any SQL-shaped PostgREST query strings on the wire.
+    final res = await _retryTransient(
+      () => client.functions.invoke('db-read', body: {
+        'op': 'getSyncProgress',
+        'args': {'data_source_id': dataSourceId},
+      }),
+    );
+    final data = (res.data is Map)
+        ? (res.data as Map).cast<String, dynamic>()
+        : <String, dynamic>{};
+    final total = (data['total'] as num?)?.toInt() ?? 0;
+    final status = data['status'] as String?;
+    final windowStartIso = data['window_start_iso'] as String?;
     if (windowStartIso == null) {
       return {
         'total': total,
@@ -408,13 +437,9 @@ class SupabaseRepo {
         'status': status,
       };
     }
-    final runs = await client
-        .from('etl_runs')
-        .select('source_table,status,started_at,finished_at')
-        .eq('data_source_id', dataSourceId)
-        .gte('started_at', windowStartIso)
-        .order('started_at');
-    final list = (runs as List).cast<Map<String, dynamic>>();
+    final list = ((data['runs'] as List?) ?? const [])
+        .map((r) => (r as Map).cast<String, dynamic>())
+        .toList();
     int completed = 0, running = 0, errored = 0;
     String? currentTable;
     for (final r in list) {
@@ -775,16 +800,21 @@ class SupabaseRepo {
   /// Returns `{relationships: [{from_table, from_column, to_table, to_column,
   /// role_label}], displays: [{table_name, display_expr, display_label}]}`.
   Future<Map<String, dynamic>> rdsRelations() async {
-    final rels = await client
-        .from('rds_relationships')
-        .select(
-            'from_table, from_column, to_table, to_column, role_label, is_external');
-    final disps = await client
-        .from('rds_table_display')
-        .select('table_name, display_expr, display_label');
+    // Route through `db-read` Edge Function (WAF-safe transport).
+    final res = await _retryTransient(
+      () => client.functions.invoke('db-read',
+          body: const {'op': 'rdsRelations'}),
+    );
+    final data = (res.data is Map)
+        ? (res.data as Map).cast<String, dynamic>()
+        : const <String, dynamic>{};
+    final rels = (data['relationships'] as List?) ?? const [];
+    final disps = (data['displays'] as List?) ?? const [];
     return {
-      'relationships': (rels as List).cast<Map<String, dynamic>>(),
-      'displays': (disps as List).cast<Map<String, dynamic>>(),
+      'relationships':
+          rels.map((r) => (r as Map).cast<String, dynamic>()).toList(),
+      'displays':
+          disps.map((r) => (r as Map).cast<String, dynamic>()).toList(),
     };
   }
 
@@ -899,11 +929,15 @@ class SupabaseRepo {
 
   /// Fetch a single report (custom) by id. Returns null if not found.
   Future<Report?> getReport(String id) async {
-    final row = await client
-        .from('reports')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
+    // Route through `db-read` Edge Function (WAF-safe transport).
+    final res = await _retryTransient(
+      () => client.functions.invoke('db-read',
+          body: {'op': 'getReport', 'args': {'id': id}}),
+    );
+    final data = res.data;
+    final row = (data is Map && data['report'] is Map)
+        ? (data['report'] as Map).cast<String, dynamic>()
+        : null;
     if (row == null) return null;
     return Report.fromMap({
       ...row,
@@ -1131,13 +1165,17 @@ class SupabaseRepo {
   /// then "Copy of Sales Report 2" if it already exists).
   Future<String?> cloneCustomReport(Report r) async {
     final base = r.name.trim();
-    final existing = await client
-        .from('reports')
-        .select('name')
-        .order('name');
+    // Route through `db-read` Edge Function (WAF-safe transport).
+    final existingRes = await _retryTransient(
+      () => client.functions.invoke('db-read',
+          body: const {'op': 'listReportNames'}),
+    );
+    final existingData = existingRes.data;
+    final List existing = (existingData is Map && existingData['names'] is List)
+        ? existingData['names'] as List
+        : const [];
     final names = <String>{
-      for (final e in (existing as List))
-        ((e as Map)['name'] as String? ?? '').trim()
+      for (final e in existing) (e as String? ?? '').trim()
     };
     String candidate = 'Copy of $base';
     if (names.contains(candidate)) {
@@ -1396,13 +1434,11 @@ final isBryzosOwnerProvider = FutureProvider<bool>((ref) async {
   final uid = client.auth.currentUser?.id;
   if (uid == null) return false;
   try {
-    final rows = await client
-        .from('memberships')
-        .select('role')
-        .eq('user_id', uid)
-        .eq('role', 'owner')
-        .limit(1);
-    return (rows as List).isNotEmpty;
+    // Route through `db-read` Edge Function (WAF-safe transport).
+    final res = await client.functions.invoke('db-read',
+        body: const {'op': 'isOwnerOfAnyTenant'});
+    final data = res.data;
+    return (data is Map && data['is_owner'] == true);
   } catch (_) {
     return false;
   }

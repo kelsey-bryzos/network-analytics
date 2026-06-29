@@ -80,8 +80,21 @@ class SupabaseRepo {
 
   // ------------------ Tenants ------------------
   Future<List<Tenant>> listTenants() async {
-    final rows = await client.from('tenants').select().order('name');
-    return (rows as List).map((r) => Tenant.fromMap(r as Map<String, dynamic>)).toList();
+    // Route through the `db-read` Edge Function (see comment on
+    // listDashboards) so corporate WAFs that block SQL-shaped PostgREST query
+    // strings (e.g. `order=name`) cannot interfere. RLS is still enforced
+    // server-side using the caller's JWT.
+    final res = await _retryTransient(
+      () => client.functions.invoke('db-read',
+          body: const {'op': 'listTenants'}),
+    );
+    final data = res.data;
+    final List rows = (data is Map && data['tenants'] is List)
+        ? data['tenants'] as List
+        : const [];
+    return rows
+        .map((r) => Tenant.fromMap(r as Map<String, dynamic>))
+        .toList();
   }
 
   Future<Tenant> getTenant(String id) async {
@@ -112,8 +125,19 @@ class SupabaseRepo {
   }
 
   Future<Dashboard> getDashboard(String id) async {
-    final row =
-        await client.from('dashboards').select().eq('id', id).single();
+    // Route through `db-read` Edge Function for WAF-safe transport. RLS still
+    // enforced server-side using the caller's JWT.
+    final res = await _retryTransient(
+      () => client.functions.invoke('db-read',
+          body: {'op': 'getDashboard', 'args': {'id': id}}),
+    );
+    final data = res.data;
+    final row = (data is Map && data['dashboard'] is Map)
+        ? (data['dashboard'] as Map).cast<String, dynamic>()
+        : null;
+    if (row == null) {
+      throw StateError('Dashboard not found: $id');
+    }
     return Dashboard.fromMap(row);
   }
 
@@ -169,12 +193,16 @@ class SupabaseRepo {
 
   // ------------------ Widgets ------------------
   Future<List<WidgetModel>> listWidgets(String dashboardId) async {
-    final rows = await client
-        .from('widgets')
-        .select()
-        .eq('dashboard_id', dashboardId)
-        .order('created_at');
-    return (rows as List)
+    // Route through `db-read` Edge Function for WAF-safe transport.
+    final res = await _retryTransient(
+      () => client.functions.invoke('db-read',
+          body: {'op': 'listWidgets', 'args': {'dashboard_id': dashboardId}}),
+    );
+    final data = res.data;
+    final List rows = (data is Map && data['widgets'] is List)
+        ? data['widgets'] as List
+        : const [];
+    return rows
         .map((r) => WidgetModel.fromMap(r as Map<String, dynamic>))
         .toList();
   }
@@ -1252,13 +1280,17 @@ final activeTenantRoleProvider = FutureProvider<String?>((ref) async {
   final uid = client.auth.currentUser?.id;
   if (uid == null) return null;
   try {
-    final row = await client
-        .from('memberships')
-        .select('role')
-        .eq('tenant_id', tid)
-        .eq('user_id', uid)
-        .maybeSingle();
-    return (row as Map?)?['role'] as String?;
+    // Route through `db-read` for WAF-safe transport. The Edge Function
+    // returns the caller's membership row in the given tenant (RLS already
+    // restricts memberships to the caller's user_id, so the result is
+    // implicitly scoped to this user).
+    final res = await client.functions.invoke('db-read',
+        body: {'op': 'getMembership', 'args': {'tenant_id': tid}});
+    final data = res.data;
+    final row = (data is Map && data['membership'] is Map)
+        ? data['membership'] as Map
+        : null;
+    return row?['role'] as String?;
   } catch (_) {
     return null;
   }
@@ -1354,13 +1386,16 @@ final canEditDashboardProvider =
   if (uid == null) return false;
   
   try {
-    final row = await client
-        .from('memberships')
-        .select('role')
-        .eq('tenant_id', dashboard.tenantId)
-        .eq('user_id', uid)
-        .maybeSingle();
-    final role = (row as Map?)?['role'] as String?;
+    // Route through `db-read` for WAF-safe transport. RLS already restricts
+    // memberships rows to the caller, so the result reflects this user's
+    // role in the dashboard's tenant.
+    final res = await client.functions.invoke('db-read',
+        body: {'op': 'getMembership', 'args': {'tenant_id': dashboard.tenantId}});
+    final data = res.data;
+    final row = (data is Map && data['membership'] is Map)
+        ? data['membership'] as Map
+        : null;
+    final role = row?['role'] as String?;
     return roleAtLeast(role, 'editor');
   } catch (_) {
     return false;

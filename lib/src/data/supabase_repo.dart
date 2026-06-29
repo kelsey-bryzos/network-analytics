@@ -91,15 +91,22 @@ class SupabaseRepo {
 
   // ------------------ Dashboards ------------------
   Future<List<Dashboard>> listDashboards() async {
-    // Explicit column list (instead of `.select()` / `select=*`) so the
-    // request URL doesn't contain `%2A`, which some corporate proxies/WAFs
-    // flag. Also slightly shrinks the response payload.
-    final rows = await _retryTransient(() => client
-        .from('dashboards')
-        .select(
-            'id, tenant_id, name, description, global_settings, created_by, updated_at')
-        .order('updated_at', ascending: false));
-    return (rows as List)
+    // Route through the `list-dashboards` Edge Function instead of a direct
+    // PostgREST GET. Background: some corporate WAFs (e.g. Ryerson) flag the
+    // PostgREST query-string pattern `order=updated_at.desc` as a SQL-injection
+    // attempt and block the request before it ever reaches Supabase. The Edge
+    // Function endpoint is a clean POST with a JSON body — no SQL-shaped URL —
+    // and forwards the caller's JWT to PostgREST server-side so RLS is still
+    // evaluated as the caller. _retryTransient still wraps the call as
+    // defence-in-depth against ordinary transient network errors.
+    final res = await _retryTransient(
+      () => client.functions.invoke('list-dashboards', body: const {}),
+    );
+    final data = res.data;
+    final List rows = (data is Map && data['dashboards'] is List)
+        ? data['dashboards'] as List
+        : const [];
+    return rows
         .map((r) => Dashboard.fromMap(r as Map<String, dynamic>))
         .toList();
   }

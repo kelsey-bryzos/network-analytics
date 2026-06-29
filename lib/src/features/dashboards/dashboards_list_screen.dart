@@ -2273,7 +2273,6 @@ class _DashboardSettingsDialogState
   Future<void> _load() async {
     try {
       final d = await ref.read(repoProvider).getDashboard(widget.dashboardId);
-      final client = ref.read(supabaseProvider);
       final hasOverride = d.settings['_hasGlobalOverride'] == true;
 
       Map<String, Map<String, dynamic>> snap;
@@ -2289,12 +2288,12 @@ class _DashboardSettingsDialogState
               Map<String, dynamic>.from((v as Map).cast<String, dynamic>())));
         } else {
           // Fallback: snapshot current state (shouldn't happen if _save works)
-          snap = await _snapshotCurrentWidgets(client);
+          snap = await _snapshotCurrentWidgets(null);
         }
       } else {
         // No override yet — snapshot the current widget settings so we can
         // revert to them after an Apply.
-        snap = await _snapshotCurrentWidgets(client);
+        snap = await _snapshotCurrentWidgets(null);
       }
 
       // The "original" dashboard settings are the ones WITHOUT the override
@@ -2320,22 +2319,14 @@ class _DashboardSettingsDialogState
   }
 
   Future<Map<String, Map<String, dynamic>>> _snapshotCurrentWidgets(
-      dynamic client) async {
-    final rows = await client
-        .from('widgets')
-        .select('id, settings')
-        .eq('dashboard_id', widget.dashboardId);
-    final snap = <String, Map<String, dynamic>>{};
-    for (final row in (rows as List)) {
-      snap[row['id'] as String] = Map<String, dynamic>.from(
-          (row['settings'] as Map?)?.cast<String, dynamic>() ?? {});
-    }
-    return snap;
+      dynamic _) async {
+    // `_` retained for legacy call sites; reads now go through the repo.
+    return ref.read(repoProvider).dashboardWidgetSnapshots(widget.dashboardId);
   }
 
   Future<void> _saveAndClose() async {
     setState(() => _saving = true);
-    final client = ref.read(supabaseProvider);
+    final repo = ref.read(repoProvider);
     try {
       // Mark that a global override is in effect (for "Back to Original" button).
       final toSave = Map<String, dynamic>.from(_s);
@@ -2344,9 +2335,7 @@ class _DashboardSettingsDialogState
       toSave['_widgetSnapshots'] = _widgetOriginalSettings;
 
       // 1. Save global_settings on the dashboard row.
-      await client
-          .from('dashboards')
-          .update({'global_settings': toSave}).eq('id', widget.dashboardId);
+      await repo.updateDashboardGlobalSettings(widget.dashboardId, toSave);
 
       // 2. Propagate relevant global settings to every widget in this dashboard.
       final keysToWrite = <String, dynamic>{};
@@ -2356,22 +2345,10 @@ class _DashboardSettingsDialogState
       if (_s['showGridLines'] != null) keysToWrite['gridLines'] = _s['showGridLines'];
       if (_s['crossFilter'] != null) keysToWrite['crossFilter'] = _s['crossFilter'];
 
-      if (keysToWrite.isNotEmpty) {
-        final rows = await client
-            .from('widgets')
-            .select('id, settings')
-            .eq('dashboard_id', widget.dashboardId);
-
-        for (final row in (rows as List)) {
-          final existing = Map<String, dynamic>.from(
-              (row['settings'] as Map?)?.cast<String, dynamic>() ?? {});
-          final merged = {...existing, ...keysToWrite};
-          await client
-              .from('widgets')
-              .update({'settings': merged})
-              .eq('id', row['id'] as String);
-        }
-      }
+      await repo.mergeWidgetSettingsOnDashboard(
+        dashboardId: widget.dashboardId,
+        keysToWrite: keysToWrite,
+      );
 
       // 3. Invalidate widget provider so the grid rebuilds with the new settings.
       ref.invalidate(dashboardWidgetsProvider(widget.dashboardId));
@@ -2387,22 +2364,16 @@ class _DashboardSettingsDialogState
 
   Future<void> _resetToOriginal() async {
     setState(() => _saving = true);
-    final client = ref.read(supabaseProvider);
+    final repo = ref.read(repoProvider);
     try {
       // Restore each widget's settings to its pre-override snapshot.
       for (final entry in _widgetOriginalSettings.entries) {
-        await client
-            .from('widgets')
-            .update({'settings': entry.value})
-            .eq('id', entry.key);
+        await repo.updateWidgetSettings(entry.key, entry.value);
       }
 
       // Reset the dashboard-level global_settings to original (clean, no override markers).
       final restored = Map<String, dynamic>.from(_original);
-      await client
-          .from('dashboards')
-          .update({'global_settings': restored})
-          .eq('id', widget.dashboardId);
+      await repo.updateDashboardGlobalSettings(widget.dashboardId, restored);
 
       // Invalidate so widgets re-render.
       ref.invalidate(dashboardWidgetsProvider(widget.dashboardId));

@@ -213,6 +213,67 @@ class SupabaseRepo {
     await client.from('dashboards').delete().eq('id', id);
   }
 
+  /// Persist a dashboard's `global_settings` JSONB blob (theme overrides,
+  /// time range, grid lines, etc.).
+  Future<void> updateDashboardGlobalSettings(
+      String dashboardId, Map<String, dynamic> settings) async {
+    await client
+        .from('dashboards')
+        .update({'global_settings': settings}).eq('id', dashboardId);
+  }
+
+  /// Returns `{id → settings}` for every widget on the given dashboard.
+  /// Used by the global-settings editor to snapshot per-widget settings
+  /// before applying a tenant-wide override (so "reset to original" works).
+  /// Routed through `db-read` for WAF-safe transport.
+  Future<Map<String, Map<String, dynamic>>> dashboardWidgetSnapshots(
+      String dashboardId) async {
+    final res = await _retryTransient(
+      () => client.functions.invoke('db-read', body: {
+        'op': 'dashboardWidgetSnapshots',
+        'args': {'dashboard_id': dashboardId},
+      }),
+    );
+    final data = res.data;
+    final List rows = (data is Map && data['snapshots'] is List)
+        ? data['snapshots'] as List
+        : const [];
+    final snap = <String, Map<String, dynamic>>{};
+    for (final row in rows) {
+      final m = (row as Map).cast<String, dynamic>();
+      snap[m['id'] as String] = Map<String, dynamic>.from(
+          (m['settings'] as Map?)?.cast<String, dynamic>() ?? const {});
+    }
+    return snap;
+  }
+
+  /// Merge `keysToWrite` into every widget's `settings` JSONB on the given
+  /// dashboard. The merge happens server-side via the
+  /// `merge_widget_settings_for_dashboard` RPC if available; otherwise the
+  /// caller falls back to per-row updates. For now we do per-row client-side
+  /// updates because that's what the existing UI did.
+  Future<void> mergeWidgetSettingsOnDashboard({
+    required String dashboardId,
+    required Map<String, dynamic> keysToWrite,
+  }) async {
+    if (keysToWrite.isEmpty) return;
+    final snap = await dashboardWidgetSnapshots(dashboardId);
+    for (final entry in snap.entries) {
+      final merged = {...entry.value, ...keysToWrite};
+      await client
+          .from('widgets')
+          .update({'settings': merged}).eq('id', entry.key);
+    }
+  }
+
+  /// Overwrite the `settings` JSONB on a single widget.
+  Future<void> updateWidgetSettings(
+      String widgetId, Map<String, dynamic> settings) async {
+    await client
+        .from('widgets')
+        .update({'settings': settings}).eq('id', widgetId);
+  }
+
   // ------------------ Widgets ------------------
   Future<List<WidgetModel>> listWidgets(String dashboardId) async {
     // Route through `db-read` Edge Function for WAF-safe transport.
@@ -582,6 +643,22 @@ class SupabaseRepo {
     return rows
         .map((r) => LibraryItem.fromMap((r as Map).cast<String, dynamic>()))
         .toList();
+  }
+
+  /// Fetch a single library item by id. Returns the raw row (no model) so
+  /// the caller can interpret `kind`/`payload` directly. Returns null if
+  /// not found or RLS denies access. Routed through `db-read` for
+  /// WAF-safe transport.
+  Future<Map<String, dynamic>?> getLibraryItem(String id) async {
+    final res = await _retryTransient(
+      () => client.functions.invoke('db-read',
+          body: {'op': 'getLibraryItem', 'args': {'id': id}}),
+    );
+    final data = res.data;
+    if (data is Map && data['library_item'] is Map) {
+      return (data['library_item'] as Map).cast<String, dynamic>();
+    }
+    return null;
   }
 
   // ------------------ Reports ------------------
@@ -966,6 +1043,85 @@ class SupabaseRepo {
   Future<void> setReportStatus(String id, ReportStatus status) async {
     await client.from('reports').update({
       'status': status.wire,
+    }).eq('id', id);
+  }
+
+  /// Archive a custom report (status → 'archived', stamps archived_at).
+  /// Canned reports use [archiveCannedForUser] instead (per-user hide).
+  Future<void> archiveReport(String id) async {
+    await client.from('reports').update({
+      'status': 'archived',
+      'archived_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('id', id);
+  }
+
+  /// Restore a custom report (status → 'live', clears archived_at).
+  Future<void> restoreReport(String id) async {
+    await client.from('reports').update({
+      'status': 'live',
+      'archived_at': null,
+    }).eq('id', id);
+  }
+
+  /// Hard-delete a custom report row. Canned reports cannot be deleted.
+  Future<void> deleteReport(String id) async {
+    await client.from('reports').delete().eq('id', id);
+  }
+
+  /// Create a new (custom) report row and return its id.
+  /// `tenantId` is optional — when null, the DB default / RLS applies.
+  Future<String?> createReport({
+    required String name,
+    Map<String, dynamic>? layout,
+    String? description,
+    String status = 'pending',
+    String? tenantId,
+    bool sharedWithTenant = false,
+  }) async {
+    final row = await client
+        .from('reports')
+        .insert({
+          if (tenantId != null) 'tenant_id': tenantId,
+          'name': name,
+          if (description != null) 'description': description,
+          'layout': layout ?? const {'pages': []},
+          'status': status,
+          'shared_with_tenant': sharedWithTenant,
+        })
+        .select('*')
+        .single();
+    return row['id'] as String?;
+  }
+
+  /// Create a custom report and return the full row map (used by the Builder
+  /// which needs the inserted row to materialize a [Report] locally).
+  Future<Map<String, dynamic>> createReportRow({
+    required String name,
+    Map<String, dynamic>? layout,
+    String? description,
+    String status = 'pending',
+    String? tenantId,
+    bool sharedWithTenant = false,
+  }) async {
+    final row = await client
+        .from('reports')
+        .insert({
+          if (tenantId != null) 'tenant_id': tenantId,
+          'name': name,
+          'description': description,
+          'layout': layout ?? const {'pages': []},
+          'status': status,
+          'shared_with_tenant': sharedWithTenant,
+        })
+        .select('*')
+        .single();
+    return (row as Map).cast<String, dynamic>();
+  }
+
+  /// Toggle / set the `shared_with_tenant` flag on a custom report.
+  Future<void> setReportSharedWithTenant(String id, bool value) async {
+    await client.from('reports').update({
+      'shared_with_tenant': value,
     }).eq('id', id);
   }
 

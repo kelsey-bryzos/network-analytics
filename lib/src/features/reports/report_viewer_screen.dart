@@ -382,19 +382,14 @@ class _PageBlock extends StatelessWidget {
 /// items or a real `reports.id` UUID for custom ones).
 final _reportByIdProvider =
     FutureProvider.family<Report?, String>((ref, id) async {
-  final client = ref.watch(supabaseProvider);
+  final repo = ref.watch(repoProvider);
   if (id.startsWith('lib:')) {
     final libId = id.substring(4);
-    final row = await client
-        .from('library_items')
-        .select()
-        .eq('id', libId)
-        .maybeSingle();
-    if (row == null) return null;
-    final m = row;
+    final m = await repo.getLibraryItem(libId);
+    if (m == null) return null;
     final kind = m['kind'] as String? ?? 'report';
     final payload = (m['payload'] as Map?)?.cast<String, dynamic>() ?? {};
-    
+
     Map<String, dynamic> layout;
     if (kind == 'widget') {
       layout = {
@@ -426,10 +421,7 @@ final _reportByIdProvider =
       layout: layout,
     );
   }
-  final row =
-      await client.from('reports').select().eq('id', id).maybeSingle();
-  if (row == null) return null;
-  return Report.fromMap(row);
+  return repo.getReport(id);
 });
 
 /// Resolves the active tenant's REST data source id (Bryzos / Tables API).

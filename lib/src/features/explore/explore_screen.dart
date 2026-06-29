@@ -569,18 +569,13 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         // Auto-create the row on first save.
         final tenantId = ref.read(activeTenantProvider);
         if (tenantId == null) return;
-        final row = await repo.client
-            .from('reports')
-            .insert({
-              'tenant_id': tenantId,
-              'name': _title,
-              'description': null,
-              'layout': layout,
-              'status': ReportStatus.pending.wire,
-              'shared_with_tenant': false,
-            })
-            .select('*')
-            .single();
+        final row = await repo.createReportRow(
+          name: _title,
+          layout: layout,
+          status: ReportStatus.pending.wire,
+          tenantId: tenantId,
+          sharedWithTenant: false,
+        );
         _report = Report.fromMap({
           ...row,
           'is_canned': false,
@@ -682,9 +677,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     }
     final newVal = !_report!.sharedWithTenant;
     try {
-      await ref.read(repoProvider).client
-          .from('reports')
-          .update({'shared_with_tenant': newVal}).eq('id', _report!.id);
+      await ref
+          .read(repoProvider)
+          .setReportSharedWithTenant(_report!.id, newVal);
       if (!mounted) return;
       setState(() {
         _report = _cloneReport(_report!, sharedWithTenant: newVal);

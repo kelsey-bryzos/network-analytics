@@ -820,10 +820,7 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
       await ref.read(repoProvider).archiveCannedForUser(libId);
       return;
     }
-    await ref.read(supabaseProvider).from('reports').update({
-      'status': 'archived',
-      'archived_at': DateTime.now().toUtc().toIso8601String(),
-    }).eq('id', r.id);
+    await ref.read(repoProvider).archiveReport(r.id);
   }
 
   /// Restore a report. Canned restore is per-user; custom restore flips
@@ -834,17 +831,14 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
       await ref.read(repoProvider).restoreCannedForUser(libId);
       return;
     }
-    await ref.read(supabaseProvider).from('reports').update({
-      'status': 'live',
-      'archived_at': null,
-    }).eq('id', r.id);
+    await ref.read(repoProvider).restoreReport(r.id);
   }
 
   /// Delete a (custom) report. Canned reports can never be deleted —
   /// callers are expected to guard against this.
   Future<void> _deleteOne(Report r) async {
     if (r.isCanned) return; // belt-and-suspenders; UI dims the action.
-    await ref.read(supabaseProvider).from('reports').delete().eq('id', r.id);
+    await ref.read(repoProvider).deleteReport(r.id);
   }
 
   Future<bool?> _confirmDelete(BuildContext ctx,
@@ -908,17 +902,11 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
     );
     if (name == null || name.isEmpty) return;
 
-    final inserted = await ref
-        .read(supabaseProvider)
-        .from('reports')
-        .insert({
-          'name': name,
-          'layout': {'pages': []},
-          'status': 'pending',
-        })
-        .select('id')
-        .single();
-    final String? newId = inserted['id'] as String?;
+    final String? newId = await ref.read(repoProvider).createReport(
+          name: name,
+          layout: const {'pages': []},
+          status: 'pending',
+        );
     // ignore: unused_result
     ref.refresh(reportsProvider);
     if (newId != null && ctx.mounted) {
@@ -958,12 +946,12 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
       'combined_from': [dst.id, src.id],
     };
 
-    await ref.read(supabaseProvider).from('reports').insert({
-      'name': combinedName,
-      'description': 'Combined from 2 reports.',
-      'layout': layout,
-      'status': 'pending',
-    });
+    await ref.read(repoProvider).createReport(
+          name: combinedName,
+          description: 'Combined from 2 reports.',
+          layout: layout,
+          status: 'pending',
+        );
     // ignore: unused_result
     ref.refresh(reportsProvider);
     if (ctx.mounted) _toast(ctx, 'Created "$combinedName".');
@@ -971,10 +959,7 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
 
   Future<void> _updateLayout(
       Report r, Map<String, dynamic> nextLayout) async {
-    await ref
-        .read(supabaseProvider)
-        .from('reports')
-        .update({'layout': nextLayout}).eq('id', r.id);
+    await ref.read(repoProvider).updateReportLayout(r.id, layout: nextLayout);
   }
 }
 
@@ -2055,9 +2040,9 @@ class ShareReportDialogState extends ConsumerState<ShareReportDialog> {
       _err = null;
     });
     try {
-      await ref.read(supabaseProvider).from('reports').update({
-        'shared_with_tenant': _tenantWide,
-      }).eq('id', widget.report.id);
+      await ref
+          .read(repoProvider)
+          .setReportSharedWithTenant(widget.report.id, _tenantWide);
       if (mounted) Navigator.pop(context);
     } catch (e) {
       setState(() => _err = e.toString());

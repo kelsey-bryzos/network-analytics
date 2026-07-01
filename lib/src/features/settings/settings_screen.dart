@@ -1145,7 +1145,7 @@ class _TeamRowState extends ConsumerState<_TeamRow> {
               height: 16,
               child: CircularProgressIndicator(strokeWidth: 2),
             )
-          else if (canManage && !isSelf) ...[
+          else if (canManage && !isSelf && role != 'guest') ...[
             // Editable role dropdown
             DropdownButton<String>(
               value: role,
@@ -1174,21 +1174,36 @@ class _TeamRowState extends ConsumerState<_TeamRow> {
               ),
             ),
           ] else ...[
-            // Read-only role badge
+            // Read-only role badge.
+            // OWNER  -> cyan
+            // GUEST  -> violet (dashboard-shared into this tenant; not a full member)
+            // others -> neutral
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
                 color: roleUpper == 'OWNER'
                     ? OpticsColors.accentCyan.withValues(alpha: 0.1)
-                    : OpticsColors.surfaceElevated,
+                    : roleUpper == 'GUEST'
+                        ? OpticsColors.accentViolet.withValues(alpha: 0.12)
+                        : OpticsColors.surfaceElevated,
                 borderRadius: BorderRadius.circular(4),
+                border: roleUpper == 'GUEST'
+                    ? Border.all(
+                        color: OpticsColors.accentViolet.withValues(alpha: 0.35),
+                        width: 1,
+                      )
+                    : null,
               ),
               child: Text(
                 roleUpper,
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
-                  color: roleUpper == 'OWNER' ? OpticsColors.accentCyan : OpticsColors.textSecondary,
+                  color: roleUpper == 'OWNER'
+                      ? OpticsColors.accentCyan
+                      : roleUpper == 'GUEST'
+                          ? OpticsColors.accentViolet
+                          : OpticsColors.textSecondary,
                 ),
               ),
             ),

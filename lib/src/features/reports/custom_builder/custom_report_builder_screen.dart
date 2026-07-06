@@ -3625,7 +3625,7 @@ class _RawSqlToggle extends ConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          active ? 'RAW SQL MODE' : 'RAW SQL MODE',
+          'EDIT SQL',
           style: OpticsTextStyles.bodySm.copyWith(
             color: active ? OpticsColors.accentCyan : OpticsColors.textMuted,
             fontWeight: FontWeight.w600,
@@ -3695,6 +3695,8 @@ class _RawSqlEditor extends StatefulWidget {
 
 class _RawSqlEditorState extends State<_RawSqlEditor> {
   late final TextEditingController _ctl;
+  final FocusNode _focus = FocusNode();
+  final ScrollController _scroll = ScrollController();
   Timer? _debounce;
 
   @override
@@ -3707,46 +3709,58 @@ class _RawSqlEditorState extends State<_RawSqlEditor> {
   void dispose() {
     _debounce?.cancel();
     _ctl.dispose();
+    _focus.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: OpticsColors.surfaceElevated,
-        border: Border.all(color: OpticsColors.border),
-        borderRadius: BorderRadius.circular(OpticsRadii.sm),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      child: TextField(
-        controller: _ctl,
-        maxLines: null,
-        expands: true,
-        textAlignVertical: TextAlignVertical.top,
-        style: const TextStyle(
-          color: OpticsColors.textPrimary,
-          fontSize: 12,
-          fontFamily: 'monospace',
-          height: 1.4,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _focus.requestFocus(),
+      child: Container(
+        decoration: BoxDecoration(
+          color: OpticsColors.surfaceElevated,
+          border: Border.all(color: OpticsColors.border),
+          borderRadius: BorderRadius.circular(OpticsRadii.sm),
         ),
-        decoration: const InputDecoration(
-          border: InputBorder.none,
-          isDense: true,
-          hintText: 'SELECT ...',
-          hintStyle: TextStyle(
-            color: OpticsColors.textMuted,
-            fontFamily: 'monospace',
-            fontSize: 12,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: Scrollbar(
+          controller: _scroll,
+          thumbVisibility: true,
+          child: TextField(
+            controller: _ctl,
+            focusNode: _focus,
+            scrollController: _scroll,
+            maxLines: null,
+            expands: true,
+            textAlignVertical: TextAlignVertical.top,
+            style: const TextStyle(
+              color: OpticsColors.textPrimary,
+              fontSize: 12,
+              fontFamily: 'monospace',
+              height: 1.4,
+            ),
+            decoration: const InputDecoration(
+              border: InputBorder.none,
+              isDense: true,
+              hintText: 'SELECT ...',
+              hintStyle: TextStyle(
+                color: OpticsColors.textMuted,
+                fontFamily: 'monospace',
+                fontSize: 12,
+              ),
+              contentPadding: EdgeInsets.only(right: 12),
+            ),
+            onChanged: (v) {
+              _debounce?.cancel();
+              _debounce = Timer(const Duration(milliseconds: 600), () {
+                widget.onChanged(v);
+              });
+            },
           ),
-          contentPadding: EdgeInsets.zero,
         ),
-        onChanged: (v) {
-          _debounce?.cancel();
-          _debounce = Timer(const Duration(milliseconds: 600), () {
-            widget.onChanged(v);
-          });
-        },
       ),
     );
   }

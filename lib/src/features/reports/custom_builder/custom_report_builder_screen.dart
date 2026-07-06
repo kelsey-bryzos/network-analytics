@@ -3725,46 +3725,43 @@ class _RawSqlEditorState extends State<_RawSqlEditor> {
           borderRadius: BorderRadius.circular(OpticsRadii.sm),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        child: Scrollbar(
-          controller: _scroll,
-          thumbVisibility: true,
-          child: ScrollConfiguration(
-            // Suppress TextField's built-in scrollbar so only our styled
-            // outer Scrollbar shows (otherwise Flutter web/desktop renders
-            // two overlapping scrollbars on long SQL).
-            behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-            child: TextField(
-              controller: _ctl,
-              focusNode: _focus,
-              scrollController: _scroll,
-              maxLines: null,
-              expands: true,
-              textAlignVertical: TextAlignVertical.top,
-              style: const TextStyle(
-                color: OpticsColors.textPrimary,
-                fontSize: 12,
-                fontFamily: 'monospace',
-                height: 1.4,
-              ),
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                isDense: true,
-                hintText: 'SELECT ...',
-                hintStyle: TextStyle(
-                  color: OpticsColors.textMuted,
-                  fontFamily: 'monospace',
-                  fontSize: 12,
-                ),
-                contentPadding: EdgeInsets.only(right: 12),
-              ),
-              onChanged: (v) {
-                _debounce?.cancel();
-                _debounce = Timer(const Duration(milliseconds: 600), () {
-                  widget.onChanged(v);
-                });
-              },
-            ),
+        // NOTE: We deliberately do NOT wrap this TextField in an outer
+        // Scrollbar. TextField ships with its own internal Scrollable whose
+        // scrollbar is rendered by the ambient MaterialScrollBehavior on
+        // web/desktop. Wrapping in an outer Scrollbar produced two
+        // overlapping scrollbars as soon as content overflowed. Letting the
+        // TextField's built-in scrollbar handle it gives exactly one clean
+        // scrollbar, driven by _scroll.
+        child: TextField(
+          controller: _ctl,
+          focusNode: _focus,
+          scrollController: _scroll,
+          maxLines: null,
+          expands: true,
+          textAlignVertical: TextAlignVertical.top,
+          style: const TextStyle(
+            color: OpticsColors.textPrimary,
+            fontSize: 12,
+            fontFamily: 'monospace',
+            height: 1.4,
           ),
+          decoration: const InputDecoration(
+            border: InputBorder.none,
+            isDense: true,
+            hintText: 'SELECT ...',
+            hintStyle: TextStyle(
+              color: OpticsColors.textMuted,
+              fontFamily: 'monospace',
+              fontSize: 12,
+            ),
+            contentPadding: EdgeInsets.only(right: 12),
+          ),
+          onChanged: (v) {
+            _debounce?.cancel();
+            _debounce = Timer(const Duration(milliseconds: 600), () {
+              widget.onChanged(v);
+            });
+          },
         ),
       ),
     );

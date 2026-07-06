@@ -3768,46 +3768,51 @@ class _RawSqlEditorState extends State<_RawSqlEditor> {
   }
 }
 
+// Double-quote a Postgres identifier so reserved words (`user`, `order`,
+// `group`, etc.) and mixed-case names survive the raw editor round-trip.
+// Any embedded double-quote is escaped by doubling per SQL spec.
+String _q(String ident) => '"${ident.replaceAll('"', '""')}"';
+
 String _summarySql(CustomReportQueryV2 q) {
   if (q.primaryTable == null) return '-- pick a primary table';
   final sb = StringBuffer();
   sb.write('SELECT\n');
   final selectParts = <String>[
     for (final c in q.columns)
-      '  ${_bare(c.table)}.${c.column} AS ${c.alias}',
+      '  ${_q(c.table)}.${_q(c.column)} AS ${_q(c.alias)}',
     for (final a in q.aggregates)
-      '  ${a.fn.toUpperCase()}(${_bare(a.table)}.${a.column}) AS ${a.alias}',
+      '  ${a.fn.toUpperCase()}(${_q(a.table)}.${_q(a.column)}) AS ${_q(a.alias)}',
   ];
   if (selectParts.isEmpty) selectParts.add('  *');
   sb.write(selectParts.join(',\n'));
-  sb.write('\nFROM ${_bare(q.primaryTable!)}\n');
+  sb.write('\nFROM ${_q(q.primaryTable!)}\n');
   for (final j in q.joins) {
     final onPair = j.on.isEmpty ? null : j.on.first;
     final on = onPair == null
         ? ''
-        : 'ON ${_bare(onPair.fromTable)}.${onPair.fromColumn} = ${_bare(onPair.toTable)}.${onPair.toColumn}';
+        : 'ON ${_q(onPair.fromTable)}.${_q(onPair.fromColumn)} = ${_q(onPair.toTable)}.${_q(onPair.toColumn)}';
     final lbl = j.type == JoinType.left ? 'LEFT JOIN' : 'INNER JOIN';
-    sb.write('$lbl ${_bare(j.table)} $on\n');
+    sb.write('$lbl ${_q(j.table)} $on\n');
   }
   if (q.filters.isNotEmpty) {
     sb.write('WHERE\n');
     sb.write(q.filters
         .map((f) =>
-            '  ${_bare(f.table)}.${f.column} ${f.op} ${_renderValue(f)}')
+            '  ${_q(f.table)}.${_q(f.column)} ${f.op} ${_renderValue(f)}')
         .join(' AND\n'));
     sb.write('\n');
   }
   if (q.groupBy.isNotEmpty) {
     sb.write('GROUP BY\n');
     sb.write(q.groupBy
-        .map((g) => '  ${_bare(g.table)}.${g.column}')
+        .map((g) => '  ${_q(g.table)}.${_q(g.column)}')
         .join(',\n'));
     sb.write('\n');
   }
   if (q.orderBy.isNotEmpty) {
     sb.write('ORDER BY\n');
     sb.write(
-        q.orderBy.map((o) => '  ${o.alias} ${o.dir}').join(',\n'));
+        q.orderBy.map((o) => '  ${_q(o.alias)} ${o.dir}').join(',\n'));
     sb.write('\n');
   }
   if (q.limit != null) sb.write('LIMIT ${q.limit}\n');

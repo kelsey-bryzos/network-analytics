@@ -319,7 +319,7 @@ class _CustomReportBuilderScreenState
         'name': st.title,
         'description': st.description,
         'layout': layout,
-        'status': 'draft',
+        'status': 'pending',
         'query_version': 2,
       };
       String? newId = st.reportId;

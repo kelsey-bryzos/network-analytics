@@ -236,9 +236,13 @@ class _CustomReportBuilderScreenState
   Future<void> _checkPermissionAndHydrate() async {
     if (_permissionChecked) return;
     _permissionChecked = true;
-    
-    // Check permission using the same provider as the rest of the app
-    final canEdit = ref.read(canEditProvider);
+
+    // Wait for the tenant role to actually load before deciding. Reading
+    // `canEditProvider` synchronously can return `false` while the async
+    // `activeTenantRoleProvider` is still resolving, which produces a false
+    // "no permission" bounce on cold-load of this screen.
+    final role = await ref.read(activeTenantRoleProvider.future);
+    final canEdit = roleAtLeast(role, 'editor');
     if (!canEdit) {
       // User doesn't have permission — redirect to reports list
       if (mounted) {

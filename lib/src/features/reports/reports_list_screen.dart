@@ -7,7 +7,7 @@
 // row-level actions (Preview, Edit, Share, Archive, Delete).
 //
 // • Preview      → right-side drawer (NOT a modal dialog).
-// • Edit         → /reports/<id>/edit for custom reports; canned reports clone first and open read-only.
+// • Edit         → /reports/<id>/edit for custom reports; canned reports clone first, then also open in the Builder (edit mode).
 // • Multi-select → bulk Archive / Delete from a top action bar.
 // • Drag & drop  → drop report A onto report B to create a new
 //                  "combined" custom report (combined_from = [A,B]).
@@ -575,8 +575,8 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
 
   /// Clone/open action for reports.
   /// - Canned reports clone via the `clone-canned-report` Edge Function,
-  ///   then open the cloned report viewer. They must not route into the old
-  ///   Report Builder / Explore builder flow.
+  ///   then open the cloned report directly in the Report Builder (edit mode)
+  ///   so the user can immediately tweak name / columns / SQL.
   /// - Custom reports keep the normal editor behavior.
   Future<void> _edit(BuildContext ctx, WidgetRef ref, Report r) async {
     if (r.isCanned) {
@@ -588,7 +588,13 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
       if (!ctx.mounted) return;
       // ignore: unused_result
       ref.refresh(reportsProvider);
-      ctx.go('/reports/${Uri.encodeComponent(cloned)}');
+      // Route directly into the Builder in edit mode so the user lands on the
+      // Report Builder screen (not the viewer) with the cloned report open.
+      if (OpticsFlags.customBuilderV2) {
+        ctx.go('/reports/${Uri.encodeComponent(cloned)}/edit');
+      } else {
+        ctx.go('/reports/${Uri.encodeComponent(cloned)}');
+      }
       return;
     }
     if (OpticsFlags.customBuilderV2) {

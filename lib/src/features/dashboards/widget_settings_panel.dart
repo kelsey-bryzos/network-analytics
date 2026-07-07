@@ -1,18 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models.dart';
+import '../../data/supabase_repo.dart';
 import '../../design/theme.dart';
+import '../../shared/secure_error.dart';
 import 'time_range_options.dart';
 import 'time_range_picker.dart';
 
-/// The two-page per-widget settings panel that matches the spec mockups.
-/// Page 1: Title · Chart Type · Color Scheme · Group By · Sort By · Time Range.
-/// Page 2: Data Filters · Max Items · Display toggles · Auto-Refresh.
+/// The per-widget settings panel that matches the spec mockups.
+/// Page 1 (Basics): Title · Chart Type · Color Scheme · Group By · Sort By · Time Range.
+/// Page 2 (Data & Display): Data Filters · Max Items · Display toggles · Auto-Refresh.
+/// Page 3 (SQL) — Bryzos users only: Raw SQL editor + table/column reference browser.
 /// Footer: Reset / Cancel / Apply.
 ///
 /// **Reset** restores the widget to its ORIGINAL state (when the panel was opened),
 /// not to arbitrary defaults.
-class WidgetSettingsPanel extends StatefulWidget {
+class WidgetSettingsPanel extends ConsumerStatefulWidget {
   final WidgetModel widget;
   final void Function(WidgetModel updated) onApply;
   final VoidCallback onCancel;
@@ -28,10 +33,16 @@ class WidgetSettingsPanel extends StatefulWidget {
   });
 
   @override
-  State<WidgetSettingsPanel> createState() => _WidgetSettingsPanelState();
+  ConsumerState<WidgetSettingsPanel> createState() => _WidgetSettingsPanelState();
 }
 
-class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
+/// Provider for the RDS catalog (table + column list). Cached across panel opens.
+final _widgetSqlCatalogProvider =
+    FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  return ref.read(repoProvider).rdsCatalog();
+});
+
+class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
   late TextEditingController _title;
   late WidgetKind _kind;
 
@@ -44,6 +55,10 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
   }
 
   bool get _disallowPieDonut => _metric == 'avg_order_price_trend';
+
+  /// The SQL tab is Bryzos-only. Non-Bryzos users never see this option — the
+  /// panel shows only Basics + Data & Display, exactly as before.
+  bool get _showSqlTab => isBryzosUser(ref);
   late String _colorScheme;
   late String _groupBy;
   late String _sortBy;
@@ -53,6 +68,13 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
   late Map<String, bool> _toggles;
   late Map<String, bool> _filters;
   int _page = 0;
+
+  // ── Raw SQL escape hatch (Bryzos-only) ──
+  late TextEditingController _rawSql;
+  // Column browser filter (Bryzos-only SQL tab)
+  String _catalogFilter = '';
+  // Tracks which tables are expanded in the reference browser.
+  final Set<String> _expandedTables = <String>{};
 
   // ── Original values (for Reset) ──
   late final String _origTitle;
@@ -65,6 +87,7 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
   late final String _origBarOrientation;
   late final Map<String, bool> _origToggles;
   late final Map<String, bool> _origFilters;
+  late final String _origRawSql;
 
   @override
   void initState() {
@@ -110,6 +133,11 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
       'Include Reserved': (s['includeReserved'] as bool?) ?? true,
       'Show Reorder Level': (s['showReorderLevel'] as bool?) ?? false,
     };
+    // Raw SQL escape hatch — stored under binding.raw_sql.
+    _origRawSql =
+        (widget.widget.binding['raw_sql'] as String?)?.toString() ?? '';
+    _rawSql = TextEditingController(text: _origRawSql);
+    _rawSql.addListener(_emitPreview);
 
     // Set current values
     _title = TextEditingController(text: _origTitle);
@@ -132,14 +160,34 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
   void dispose() {
     _title.removeListener(_emitPreview);
     _title.dispose();
+    _rawSql.removeListener(_emitPreview);
+    _rawSql.dispose();
     super.dispose();
   }
 
   /// Build a WidgetModel from current panel state (used for both preview & apply).
   WidgetModel _buildCurrentModel() {
+    // Merge raw_sql into binding. Empty string clears the escape hatch so the
+    // widget falls back to the canned brz.metric pipeline.
+    final rawSqlText = _rawSql.text.trim();
+    final mergedBinding = Map<String, dynamic>.from(widget.widget.binding);
+    if (rawSqlText.isEmpty) {
+      mergedBinding.remove('raw_sql');
+      mergedBinding.remove('raw_sql_author_email');
+    } else {
+      mergedBinding['raw_sql'] = rawSqlText;
+      // Stamp the current Bryzos author so the runtime knows the SQL was
+      // authored by a Bryzos user (used later for shared-viewer execution).
+      final email =
+          ref.read(supabaseProvider).auth.currentUser?.email;
+      if (email != null && isBryzosEmail(email)) {
+        mergedBinding['raw_sql_author_email'] = email;
+      }
+    }
     return widget.widget.copyWith(
       title: _title.text.trim().isEmpty ? widget.widget.title : _title.text.trim(),
       kind: _kind,
+      binding: mergedBinding,
       settings: {
         ...widget.widget.settings,
         'colorScheme': _colorScheme,
@@ -187,6 +235,7 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
       _groupBy = _origGroupBy;
       _sortBy = _origSortBy;
       _timeRange = _origTimeRange;
+      _rawSql.text = _origRawSql;
       _maxItems = _origMaxItems;
       _barOrientation = _origBarOrientation;
       _toggles = Map<String, bool>.from(_origToggles);
@@ -223,12 +272,26 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
               ],
             ),
           ),
-          _PageTabs(page: _page, onChange: (p) => setState(() => _page = p)),
+          _PageTabs(
+            page: _page,
+            labels: _showSqlTab
+                ? const ['Basics', 'Data & Display', 'SQL']
+                : const ['Basics', 'Data & Display'],
+            onChange: (p) => setState(() => _page = p),
+          ),
           Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(OpticsSpacing.lg),
-              child: _page == 0 ? _page1() : _page2(),
-            ),
+            child: _page == 2 && _showSqlTab
+                // SQL tab has its own internal layout (editor + reference browser)
+                // that manages its own scrolling regions — don't wrap in a global
+                // scroll view.
+                ? Padding(
+                    padding: const EdgeInsets.all(OpticsSpacing.lg),
+                    child: _pageSql(),
+                  )
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.all(OpticsSpacing.lg),
+                    child: _page == 0 ? _page1() : _page2(),
+                  ),
           ),
           Container(
             padding: const EdgeInsets.symmetric(
@@ -386,12 +449,289 @@ class _WidgetSettingsPanelState extends State<WidgetSettingsPanel> {
       ],
     );
   }
+
+  // ── Bryzos-only SQL tab ──────────────────────────────────────────────────
+  //
+  // Top half: raw SQL editor. On Apply the SQL is persisted to
+  // widget.binding.raw_sql — the widget renderer routes to
+  // rds_execute_raw_sql_bryzos when this is non-empty, otherwise falls back
+  // to the canned brz.metric pipeline.
+  //
+  // Bottom half: table + column reference browser (rds_catalog). Clicking a
+  // column inserts "table"."column" at the caret position of the editor.
+  Widget _pageSql() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _label('Widget SQL (Bryzos-only)'),
+        // Editor
+        Expanded(
+          flex: 5,
+          child: Container(
+            decoration: BoxDecoration(
+              color: OpticsColors.surfaceElevated,
+              border: Border.all(color: OpticsColors.border),
+              borderRadius: BorderRadius.circular(OpticsRadii.sm),
+            ),
+            padding: const EdgeInsets.all(8),
+            child: TextField(
+              controller: _rawSql,
+              maxLines: null,
+              expands: true,
+              textAlignVertical: TextAlignVertical.top,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 12,
+                height: 1.4,
+              ),
+              decoration: const InputDecoration.collapsed(
+                hintText:
+                    'SELECT ...\nFROM "rds_..."\nWHERE ...\n\nLeave empty to use the widget\'s default metric.',
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Executes via rds_execute_raw_sql_bryzos (read-only, tenant-scoped, single statement).',
+          style: TextStyle(
+            fontSize: 10,
+            color: OpticsColors.textSecondary,
+            height: 1.35,
+          ),
+        ),
+        const SizedBox(height: 12),
+        _label('Tables & columns'),
+        // Search box for column browser
+        SizedBox(
+          height: 30,
+          child: TextField(
+            onChanged: (v) => setState(() => _catalogFilter = v.trim().toLowerCase()),
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: 'Filter tables / columns…',
+              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(OpticsRadii.sm),
+                borderSide: const BorderSide(color: OpticsColors.border),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(OpticsRadii.sm),
+                borderSide: const BorderSide(color: OpticsColors.border),
+              ),
+            ),
+            style: const TextStyle(fontSize: 11),
+          ),
+        ),
+        const SizedBox(height: 6),
+        // Column browser (scrollable)
+        Expanded(
+          flex: 4,
+          child: Container(
+            decoration: BoxDecoration(
+              color: OpticsColors.surfaceElevated,
+              border: Border.all(color: OpticsColors.border),
+              borderRadius: BorderRadius.circular(OpticsRadii.sm),
+            ),
+            child: Builder(
+              builder: (context) {
+                final async = ref.watch(_widgetSqlCatalogProvider);
+                return async.when(
+                  loading: () => const Center(
+                    child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                  error: (e, _) => Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Text(
+                      isBryzosUser(ref) ? 'Catalog error: $e' : 'Catalog unavailable.',
+                      style: const TextStyle(fontSize: 11, color: OpticsColors.danger),
+                    ),
+                  ),
+                  data: (tables) => _buildCatalogList(tables),
+                );
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Renders the filtered table/column list. Click a table to expand; click
+  /// a column to insert `"table"."column"` at the current caret position.
+  Widget _buildCatalogList(List<Map<String, dynamic>> tables) {
+    final filter = _catalogFilter;
+    // Filter tables: keep any table whose name/display matches, OR any table
+    // that has at least one column matching. For matching tables, we still
+    // show all columns; for tables that only match via columns, we show only
+    // the matching columns.
+    final filtered = <Map<String, dynamic>>[];
+    for (final t in tables) {
+      final tName = (t['table_name'] as String? ?? '').toLowerCase();
+      final tDisplay = (t['display_name'] as String? ?? '').toLowerCase();
+      final tableMatches = filter.isEmpty ||
+          tName.contains(filter) ||
+          tDisplay.contains(filter);
+      final cols = (t['columns'] as List? ?? const [])
+          .cast<Map<String, dynamic>>();
+      if (tableMatches) {
+        filtered.add(t);
+      } else {
+        final matchedCols = cols.where((c) =>
+            (c['name'] as String? ?? '').toLowerCase().contains(filter)).toList();
+        if (matchedCols.isNotEmpty) {
+          filtered.add({
+            ...t,
+            'columns': matchedCols,
+            '_partial': true,
+          });
+        }
+      }
+    }
+
+    if (filtered.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(8),
+          child: Text(
+            'No matches.',
+            style: TextStyle(fontSize: 11, color: OpticsColors.textSecondary),
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      itemCount: filtered.length,
+      itemBuilder: (context, i) {
+        final t = filtered[i];
+        final tName = t['table_name'] as String;
+        final tDisplay = t['display_name'] as String? ?? tName;
+        // Auto-expand when the user is filtering (so column matches are visible).
+        final expanded = filter.isNotEmpty || _expandedTables.contains(tName);
+        final cols = (t['columns'] as List? ?? const [])
+            .cast<Map<String, dynamic>>();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            InkWell(
+              onTap: () => setState(() {
+                if (_expandedTables.contains(tName)) {
+                  _expandedTables.remove(tName);
+                } else {
+                  _expandedTables.add(tName);
+                }
+              }),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: Row(
+                  children: [
+                    Icon(
+                      expanded ? Icons.expand_more : Icons.chevron_right,
+                      size: 14,
+                      color: OpticsColors.textSecondary,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        tName,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontFamily: 'monospace',
+                          color: OpticsColors.textPrimary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Text(
+                      tDisplay,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: OpticsColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (expanded)
+              for (final c in cols)
+                InkWell(
+                  onTap: () => _insertAtCursor('"$tName"."${c['name']}"'),
+                  child: Padding(
+                    padding: const EdgeInsets.only(
+                        left: 26, right: 8, top: 2, bottom: 2),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            c['name'] as String,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontFamily: 'monospace',
+                              color: OpticsColors.textPrimary,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Text(
+                          (c['data_type'] as String? ?? '').toLowerCase(),
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: OpticsColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Inserts text at the current caret position of the raw SQL editor. If the
+  /// editor has no selection (e.g. never focused), appends to the end.
+  void _insertAtCursor(String text) {
+    final sel = _rawSql.selection;
+    final current = _rawSql.text;
+    if (sel.isValid && sel.start >= 0 && sel.start <= current.length) {
+      final before = current.substring(0, sel.start);
+      final after = current.substring(sel.end);
+      final next = '$before$text$after';
+      _rawSql.value = TextEditingValue(
+        text: next,
+        selection: TextSelection.collapsed(offset: (before + text).length),
+      );
+    } else {
+      final needsSpace = current.isNotEmpty && !current.endsWith(' ') && !current.endsWith('\n');
+      final next = '$current${needsSpace ? ' ' : ''}$text';
+      _rawSql.value = TextEditingValue(
+        text: next,
+        selection: TextSelection.collapsed(offset: next.length),
+      );
+    }
+    // Also copy to clipboard for convenience so the user can paste elsewhere.
+    Clipboard.setData(ClipboardData(text: text));
+  }
 }
 
 class _PageTabs extends StatelessWidget {
   final int page;
+  final List<String> labels;
   final ValueChanged<int> onChange;
-  const _PageTabs({required this.page, required this.onChange});
+  const _PageTabs({
+    required this.page,
+    required this.labels,
+    required this.onChange,
+  });
   @override
   Widget build(BuildContext context) {
     Widget tab(int i, String label) {
@@ -429,7 +769,11 @@ class _PageTabs extends StatelessWidget {
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: OpticsColors.border)),
       ),
-      child: Row(children: [tab(0, 'Basics'), tab(1, 'Data & Display')]),
+      child: Row(
+        children: [
+          for (int i = 0; i < labels.length; i++) tab(i, labels[i]),
+        ],
+      ),
     );
   }
 }

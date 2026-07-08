@@ -1432,7 +1432,7 @@ class _RowContent extends StatelessWidget {
         _iconBtn(Icons.visibility_outlined, 'Preview', onPreview),
         _iconBtn(
           Icons.edit_outlined,
-          r.isCanned ? 'Clone & open' : 'Edit',
+          r.isCanned ? 'Clone & edit' : 'Edit',
           canEdit && !isArchived ? onEdit : null,
         ),
         _exportMenuBtn(r, isArchived),

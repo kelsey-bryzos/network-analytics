@@ -136,13 +136,13 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
       'Show Reorder Level': (s['showReorderLevel'] as bool?) ?? false,
     };
     // Raw SQL escape hatch — stored under binding.raw_sql.
-    _origRawSql =
+    final String savedRawSql =
         (widget.widget.binding['raw_sql'] as String?)?.toString() ?? '';
     // Auto-populate SQL from the canned metric translation if the field is
     // empty — so the user sees the SQL immediately on opening the SQL tab,
     // with no button to click.
     final String autoSql = () {
-      if (_origRawSql.isNotEmpty) return _origRawSql;
+      if (savedRawSql.isNotEmpty) return savedRawSql;
       final metric = () {
         final brz = widget.widget.binding['brz'];
         if (brz is Map) return (brz['metric'] as String?)?.toLowerCase();
@@ -161,6 +161,9 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
       if (translation == null) return '';
       return generateSqlFromQueryV2(translation.query).combined();
     }();
+    // _origRawSql is what Reset restores to — the auto-populated SQL, not
+    // the empty saved value (which would wipe the field on Reset).
+    _origRawSql = autoSql;
     _rawSql = TextEditingController(text: autoSql);
     _rawSql.addListener(_emitPreview);
 
@@ -488,7 +491,7 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _label('Widget SQL (Bryzos-only)'),
+        _label('Widget SQL'),
         // Editor
         Expanded(
           flex: 5,

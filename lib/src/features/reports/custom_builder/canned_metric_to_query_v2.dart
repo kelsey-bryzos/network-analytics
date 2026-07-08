@@ -42,20 +42,27 @@ class CannedTranslation {
 /// as slices land.
 const Set<String> kSupportedCannedMetrics = {
   'bpns_by_company',
+  'bpns_by_user',
   'cancelled_orders_by_company',
+  'cancelled_orders_by_user',
+  'cancelled_orders_list',
   'count_companies',
   'count_orders',
   'count_users',
   'credit_enabled_companies_kpi',
   'orders_by_month',
   'orders_by_status',
+  'orders_recent_list',
   'quotes_by_company',
+  'quotes_by_user',
   'revenue_by_month',
   'searches_by_company',
+  'searches_by_user',
   'sum_po_price',
   'top_companies_orders',
   'top_companies_revenue',
   'users_by_type',
+  'users_recent_list',
 };
 
 /// Default top-N size when a widget hasn't stored its own `max_items` /
@@ -83,8 +90,14 @@ CannedTranslation? translateCannedMetric({
   switch (metric) {
     case 'bpns_by_company':
       return _bpnsByCompany(maxItems: maxItems ?? kDefaultTopN);
+    case 'bpns_by_user':
+      return _bpnsByUser(maxItems: maxItems ?? kDefaultTopN);
     case 'cancelled_orders_by_company':
       return _cancelledOrdersByCompany(maxItems: maxItems ?? kDefaultTopN);
+    case 'cancelled_orders_by_user':
+      return _cancelledOrdersByUser(maxItems: maxItems ?? kDefaultTopN);
+    case 'cancelled_orders_list':
+      return _cancelledOrdersList(maxItems: maxItems ?? kDefaultTopN);
     case 'count_companies':
       return _countCompanies();
     case 'count_orders':
@@ -97,12 +110,18 @@ CannedTranslation? translateCannedMetric({
       return _ordersByMonth();
     case 'orders_by_status':
       return _ordersByStatus();
+    case 'orders_recent_list':
+      return _ordersRecentList(maxItems: maxItems ?? kDefaultTopN);
     case 'quotes_by_company':
       return _quotesByCompany(maxItems: maxItems ?? kDefaultTopN);
+    case 'quotes_by_user':
+      return _quotesByUser(maxItems: maxItems ?? kDefaultTopN);
     case 'revenue_by_month':
       return _revenueByMonth();
     case 'searches_by_company':
       return _searchesByCompany(maxItems: maxItems ?? kDefaultTopN);
+    case 'searches_by_user':
+      return _searchesByUser(maxItems: maxItems ?? kDefaultTopN);
     case 'sum_po_price':
       return _sumPoPrice();
     case 'top_companies_orders':
@@ -111,6 +130,8 @@ CannedTranslation? translateCannedMetric({
       return _topCompaniesRevenue(maxItems: maxItems ?? kDefaultTopN);
     case 'users_by_type':
       return _usersByType();
+    case 'users_recent_list':
+      return _usersRecentList(maxItems: maxItems ?? kDefaultTopN);
     default:
       return null;
   }
@@ -1050,5 +1071,491 @@ CannedTranslation _searchesByCompany({required int maxItems}) {
         'falling back to user.client_company then "(unknown)". The v2 path '
         'produces the same label via a computed_column coalesce over both '
         'joined tables (j1=user, j2=main_company).',
+  );
+}
+
+// ─── Slice #16: bpns_by_user ─────────────────────────────────────────────
+//
+// widget-data-bryzos:
+//   • fetches user_product_tag_mapping (created_date, is_active, user_id),
+//     user (id, email_id, first_name, last_name, company_id, client_company),
+//     user_main_company (id, company_name)
+//   • filters tags to is_active = 1
+//   • builds a per-user label via buildUserLabels(users, companies, "id"):
+//       "<name-or-email>  (<company>)"  when a company is available,
+//       otherwise "<name-or-email>"     — and "(unknown)" when no user match.
+//   • counts BPNs per user label, sorts DESC, slices top max_items
+//   • emits `_labels`, `_data`, `_col1="User"`, `_col2="BPNs"`,
+//     `_yLabel="BPNs"`.
+//
+// query_v2 equivalent (Path A — current window only, LEFT JOIN chain):
+//
+//   SELECT
+//     case
+//       when j1."id" is null then '(unknown)'
+//       when coalesce(nullif(btrim(j2."company_name"),''), j1."client_company",'') <> ''
+//         then coalesce(nullif(btrim(concat_ws(' ',j1."first_name",j1."last_name")),''),
+//                       j1."email_id", j1."id"::text)
+//              || '  (' || coalesce(nullif(btrim(j2."company_name"),''), j1."client_company") || ')'
+//       else coalesce(nullif(btrim(concat_ws(' ',j1."first_name",j1."last_name")),''),
+//                     j1."email_id", j1."id"::text, '(unknown)')
+//     end                                     AS "User",
+//     count(*)                                AS "BPNs"
+//   FROM rds_user_product_tag_mapping t
+//   LEFT JOIN public.rds_user j1
+//     ON t."user_id"::text = j1."id"::text
+//    AND j1."tenant_id" = :tenant_id
+//    AND j1."data_source_id" = :data_source_id
+//   LEFT JOIN public.rds_user_main_company j2
+//     ON j1."company_id"::text = j2."id"::text
+//    AND j2."tenant_id" = :tenant_id
+//    AND j2."data_source_id" = :data_source_id
+//   WHERE t."tenant_id" = :tenant_id
+//     AND t."data_source_id" = :data_source_id
+//     AND t."is_active" = 1
+//   GROUP BY "User"
+//   ORDER BY "BPNs" DESC
+//   LIMIT :max_items;
+CannedTranslation _bpnsByUser({required int maxItems}) {
+  const userLabelExpr = 'case '
+      'when j1."id" is null then \'(unknown)\' '
+      'when coalesce(nullif(btrim(j2."company_name"), \'\'), j1."client_company", \'\') <> \'\' '
+      'then coalesce(nullif(btrim(concat_ws(\' \', j1."first_name", j1."last_name")), \'\'), '
+      'j1."email_id", j1."id"::text) '
+      '|| \'  (\' || coalesce(nullif(btrim(j2."company_name"), \'\'), j1."client_company") || \')\' '
+      'else coalesce(nullif(btrim(concat_ws(\' \', j1."first_name", j1."last_name")), \'\'), '
+      'j1."email_id", j1."id"::text, \'(unknown)\') '
+      'end';
+
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_product_tag_mapping',
+    joins: [
+      JoinSpec(
+        table: 'rds_user',
+        type: JoinType.left,
+        on: [
+          JoinOnPair(
+            fromTable: 'rds_user_product_tag_mapping',
+            fromColumn: 'user_id',
+            toTable: 'rds_user',
+            toColumn: 'id',
+          ),
+        ],
+      ),
+      JoinSpec(
+        table: 'rds_user_main_company',
+        type: JoinType.left,
+        on: [
+          JoinOnPair(
+            fromTable: 'rds_user',
+            fromColumn: 'company_id',
+            toTable: 'rds_user_main_company',
+            toColumn: 'id',
+          ),
+        ],
+      ),
+    ],
+    computedColumns: [
+      ComputedColumn(
+        expression: userLabelExpr,
+        alias: 'User',
+      ),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_product_tag_mapping',
+        column: '',
+        fn: 'count',
+        alias: 'BPNs',
+      ),
+    ],
+    filters: [
+      FilterSpec(
+        table: 'rds_user_product_tag_mapping',
+        column: 'is_active',
+        op: '=',
+        value: 1,
+      ),
+    ],
+    groupBy: [
+      GroupBySpec.alias('User'),
+    ],
+    orderBy: [
+      OrderBySpec(alias: 'BPNs', dir: 'DESC'),
+    ],
+    limit: maxItems,
+    viz: VizSpec(
+      chartType: 'bar',
+      x: 'User',
+      y: 'BPNs',
+    ),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos composes the per-user label in memory via '
+        'buildUserLabels(users, companies, "id"), producing '
+        '"<name-or-email>  (<company>)" or "(unknown)" when no user match. '
+        'The v2 path pushes the same label composition into a computed_column '
+        'CASE expression over j1=user + j2=main_company, so top-N ordering '
+        'matches the legacy widget.',
+  );
+}
+
+// ─── Slice #17: cancelled_orders_by_user ─────────────────────────────────
+CannedTranslation _cancelledOrdersByUser({required int maxItems}) {
+  const userLabelExpr = 'case '
+      'when j1."id" is null then coalesce(nullif(btrim(t."buyer_email"), \'\'), \'(unknown)\') '
+      'when coalesce(nullif(btrim(j2."company_name"), \'\'), j1."client_company", \'\') <> \'\' '
+      'then coalesce(nullif(btrim(concat_ws(\' \', j1."first_name", j1."last_name")), \'\'), '
+      'j1."email_id", j1."id"::text) '
+      '|| \'  (\' || coalesce(nullif(btrim(j2."company_name"), \'\'), j1."client_company") || \')\' '
+      'else coalesce(nullif(btrim(concat_ws(\' \', j1."first_name", j1."last_name")), \'\'), '
+      'j1."email_id", j1."id"::text, \'(unknown)\') '
+      'end';
+
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_purchase_order',
+    joins: [
+      JoinSpec(
+        table: 'rds_user',
+        type: JoinType.left,
+        on: [
+          JoinOnPair(
+            fromTable: 'rds_user_purchase_order',
+            fromColumn: 'buyer_email',
+            toTable: 'rds_user',
+            toColumn: 'email_id',
+          ),
+        ],
+      ),
+      JoinSpec(
+        table: 'rds_user_main_company',
+        type: JoinType.left,
+        on: [
+          JoinOnPair(
+            fromTable: 'rds_user',
+            fromColumn: 'company_id',
+            toTable: 'rds_user_main_company',
+            toColumn: 'id',
+          ),
+        ],
+      ),
+    ],
+    computedColumns: [
+      ComputedColumn(expression: userLabelExpr, alias: 'User'),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_purchase_order',
+        column: '',
+        fn: 'count',
+        alias: 'Disputed',
+      ),
+    ],
+    filters: [
+      FilterSpec(
+        table: 'rds_user_purchase_order',
+        column: 'in_dispute',
+        op: '=',
+        value: 1,
+      ),
+    ],
+    groupBy: [GroupBySpec.alias('User')],
+    orderBy: [OrderBySpec(alias: 'Disputed', dir: 'DESC')],
+    limit: maxItems,
+    viz: VizSpec(chartType: 'bar', x: 'User', y: 'Disputed'),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos joins user via buyer_email->email_id (not user_id). '
+        'Falls back to the raw buyer_email when no user row matches, then to '
+        '"(unknown)". The v2 CASE expression mirrors that fallback chain.',
+  );
+}
+
+// ─── Slice #18: quotes_by_user ───────────────────────────────────────────
+CannedTranslation _quotesByUser({required int maxItems}) {
+  const userLabelExpr = 'case '
+      'when j1."id" is null then \'(unknown)\' '
+      'when coalesce(nullif(btrim(j2."company_name"), \'\'), j1."client_company", \'\') <> \'\' '
+      'then coalesce(nullif(btrim(concat_ws(\' \', j1."first_name", j1."last_name")), \'\'), '
+      'j1."email_id", j1."id"::text) '
+      '|| \'  (\' || coalesce(nullif(btrim(j2."company_name"), \'\'), j1."client_company") || \')\' '
+      'else coalesce(nullif(btrim(concat_ws(\' \', j1."first_name", j1."last_name")), \'\'), '
+      'j1."email_id", j1."id"::text, \'(unknown)\') '
+      'end';
+
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_save_order_draft',
+    joins: [
+      JoinSpec(
+        table: 'rds_user',
+        type: JoinType.left,
+        on: [
+          JoinOnPair(
+            fromTable: 'rds_save_order_draft',
+            fromColumn: 'buyer_id',
+            toTable: 'rds_user',
+            toColumn: 'id',
+          ),
+        ],
+      ),
+      JoinSpec(
+        table: 'rds_user_main_company',
+        type: JoinType.left,
+        on: [
+          JoinOnPair(
+            fromTable: 'rds_user',
+            fromColumn: 'company_id',
+            toTable: 'rds_user_main_company',
+            toColumn: 'id',
+          ),
+        ],
+      ),
+    ],
+    computedColumns: [
+      ComputedColumn(expression: userLabelExpr, alias: 'User'),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_save_order_draft',
+        column: '',
+        fn: 'count',
+        alias: 'Quotes',
+      ),
+    ],
+    groupBy: [GroupBySpec.alias('User')],
+    orderBy: [OrderBySpec(alias: 'Quotes', dir: 'DESC')],
+    limit: maxItems,
+    viz: VizSpec(chartType: 'bar', x: 'User', y: 'Quotes'),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos joins user on save_order_draft.buyer_id->user.id, '
+        'then user_main_company on user.company_id->id, and composes '
+        '"<name-or-email>  (<company>)" in memory. The v2 CASE mirrors that.',
+  );
+}
+
+// ─── Slice #19: searches_by_user ─────────────────────────────────────────
+CannedTranslation _searchesByUser({required int maxItems}) {
+  const userLabelExpr = 'case '
+      'when j1."id" is null then \'(unknown)\' '
+      'when coalesce(nullif(btrim(j2."company_name"), \'\'), j1."client_company", \'\') <> \'\' '
+      'then coalesce(nullif(btrim(concat_ws(\' \', j1."first_name", j1."last_name")), \'\'), '
+      'j1."email_id", j1."id"::text) '
+      '|| \'  (\' || coalesce(nullif(btrim(j2."company_name"), \'\'), j1."client_company") || \')\' '
+      'else coalesce(nullif(btrim(concat_ws(\' \', j1."first_name", j1."last_name")), \'\'), '
+      'j1."email_id", j1."id"::text, \'(unknown)\') '
+      'end';
+
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_search_analytics',
+    joins: [
+      JoinSpec(
+        table: 'rds_user',
+        type: JoinType.left,
+        on: [
+          JoinOnPair(
+            fromTable: 'rds_user_search_analytics',
+            fromColumn: 'user_id',
+            toTable: 'rds_user',
+            toColumn: 'id',
+          ),
+        ],
+      ),
+      JoinSpec(
+        table: 'rds_user_main_company',
+        type: JoinType.left,
+        on: [
+          JoinOnPair(
+            fromTable: 'rds_user',
+            fromColumn: 'company_id',
+            toTable: 'rds_user_main_company',
+            toColumn: 'id',
+          ),
+        ],
+      ),
+    ],
+    computedColumns: [
+      ComputedColumn(expression: userLabelExpr, alias: 'User'),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_search_analytics',
+        column: '',
+        fn: 'count',
+        alias: 'Searches',
+      ),
+    ],
+    groupBy: [GroupBySpec.alias('User')],
+    orderBy: [OrderBySpec(alias: 'Searches', dir: 'DESC')],
+    limit: maxItems,
+    viz: VizSpec(chartType: 'bar', x: 'User', y: 'Searches'),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos joins user via user_id and composes '
+        '"<name-or-email>  (<company>)". The v2 CASE mirrors that.',
+  );
+}
+
+// ─── Slice #20: cancelled_orders_list ────────────────────────────────────
+CannedTranslation _cancelledOrdersList({required int maxItems}) {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_purchase_order',
+    columns: [
+      ColumnRef(
+        table: 'rds_user_purchase_order',
+        column: 'buyer_po_number',
+        alias: 'PO #',
+      ),
+      ColumnRef(
+        table: 'rds_user_purchase_order',
+        column: 'buyer_company_name',
+        alias: 'Company',
+      ),
+      ColumnRef(
+        table: 'rds_user_purchase_order',
+        column: 'buyer_email',
+        alias: 'User',
+      ),
+      ColumnRef(
+        table: 'rds_user_purchase_order',
+        column: 'buyer_po_price',
+        alias: 'Price',
+      ),
+      ColumnRef(
+        table: 'rds_user_purchase_order',
+        column: 'created_date',
+        alias: 'Created',
+      ),
+    ],
+    filters: [
+      FilterSpec(
+        table: 'rds_user_purchase_order',
+        column: 'in_dispute',
+        op: '=',
+        value: 1,
+      ),
+    ],
+    orderBy: [OrderBySpec(alias: 'Created', dir: 'DESC')],
+    limit: maxItems,
+    viz: VizSpec(chartType: 'table'),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'Pure detail listing - no aggregation. widget-data-bryzos surfaces '
+        'buyer_po_number/company_name/email/price/created_date; the v2 path '
+        'selects the same columns via ColumnRef and orders by Created DESC.',
+  );
+}
+
+// ─── Slice #21: orders_recent_list ───────────────────────────────────────
+CannedTranslation _ordersRecentList({required int maxItems}) {
+  const statusExpr = 'case '
+      'when t."is_closed" = 1 then \'Closed\' '
+      'when t."in_dispute" = 1 then \'Disputed\' '
+      'else \'Open\' end';
+
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_purchase_order',
+    columns: [
+      ColumnRef(
+        table: 'rds_user_purchase_order',
+        column: 'buyer_po_number',
+        alias: 'PO #',
+      ),
+      ColumnRef(
+        table: 'rds_user_purchase_order',
+        column: 'buyer_company_name',
+        alias: 'Company',
+      ),
+      ColumnRef(
+        table: 'rds_user_purchase_order',
+        column: 'buyer_po_price',
+        alias: 'Price',
+      ),
+      ColumnRef(
+        table: 'rds_user_purchase_order',
+        column: 'created_date',
+        alias: 'Created',
+      ),
+    ],
+    computedColumns: [
+      ComputedColumn(expression: statusExpr, alias: 'Status'),
+    ],
+    orderBy: [OrderBySpec(alias: 'Created', dir: 'DESC')],
+    limit: maxItems,
+    viz: VizSpec(chartType: 'table'),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos derives status in TypeScript from is_closed / '
+        'in_dispute. The v2 path pushes that same case-cascade into a '
+        'computed_column so the RPC returns a Status column directly.',
+  );
+}
+
+// ─── Slice #22: users_recent_list ────────────────────────────────────────
+CannedTranslation _usersRecentList({required int maxItems}) {
+  const nameExpr = 'coalesce('
+      'nullif(btrim(concat_ws(\' \', t."first_name", t."last_name")), \'\'), '
+      't."email_id", '
+      '\'(unknown)\')';
+  const companyExpr = 'coalesce('
+      'nullif(btrim(j1."company_name"), \'\'), '
+      'nullif(btrim(t."client_company"), \'\'), '
+      'null)';
+
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user',
+    joins: [
+      JoinSpec(
+        table: 'rds_user_main_company',
+        type: JoinType.left,
+        on: [
+          JoinOnPair(
+            fromTable: 'rds_user',
+            fromColumn: 'company_id',
+            toTable: 'rds_user_main_company',
+            toColumn: 'id',
+          ),
+        ],
+      ),
+    ],
+    columns: [
+      ColumnRef(table: 'rds_user', column: 'email_id', alias: 'Email'),
+      ColumnRef(table: 'rds_user', column: 'type', alias: 'Type'),
+      ColumnRef(table: 'rds_user', column: 'created_date', alias: 'Created'),
+    ],
+    computedColumns: [
+      ComputedColumn(expression: nameExpr, alias: 'User'),
+      ComputedColumn(expression: companyExpr, alias: 'Company'),
+    ],
+    orderBy: [OrderBySpec(alias: 'Created', dir: 'DESC')],
+    limit: maxItems,
+    viz: VizSpec(chartType: 'table'),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos composes the user display name from '
+        'first_name/last_name/email in TS, and picks company_name from '
+        'user_main_company with a fall-back to client_company. The v2 path '
+        'mirrors both fall-back chains via computed_columns.',
   );
 }

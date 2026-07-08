@@ -162,13 +162,52 @@ class AggregateSpec {
       );
 }
 
+/// GROUP BY entry. Two shapes are supported:
+///
+///   1. Column form  → `{ table, column }` — groups by a physical column on
+///                     the primary or a joined table.
+///   2. Alias form   → `{ alias }`         — groups by the expression of a
+///                     `ComputedColumn` with the given alias. The RPC emits
+///                     the computed expression (not the alias) into GROUP BY
+///                     so no SQL/1999 alias-in-group-by support is required.
+///
+/// Exactly one form must be used per entry.
 class GroupBySpec {
-  final String table;
-  final String column;
-  GroupBySpec({required this.table, required this.column});
-  Map<String, dynamic> toJson() => {'table': table, 'column': column};
-  static GroupBySpec fromJson(Map<String, dynamic> j) =>
-      GroupBySpec(table: j['table'] as String, column: j['column'] as String);
+  final String? table;
+  final String? column;
+  final String? alias;
+  GroupBySpec({this.table, this.column, this.alias})
+      : assert(
+          (alias != null && alias.isNotEmpty) ||
+              (table != null && column != null),
+          'GroupBySpec requires either {table, column} or {alias}',
+        );
+
+  /// Convenience constructor for the column form (back-compat with existing
+  /// call sites).
+  GroupBySpec.column({required String table, required String column})
+      : this(table: table, column: column);
+
+  /// Convenience constructor for the alias form (references a computed
+  /// column by its alias).
+  GroupBySpec.alias(String alias) : this(alias: alias);
+
+  bool get isAlias => alias != null && alias!.isNotEmpty;
+
+  Map<String, dynamic> toJson() => isAlias
+      ? {'alias': alias}
+      : {'table': table, 'column': column};
+
+  static GroupBySpec fromJson(Map<String, dynamic> j) {
+    final a = j['alias'] as String?;
+    if (a != null && a.isNotEmpty) {
+      return GroupBySpec.alias(a);
+    }
+    return GroupBySpec.column(
+      table: j['table'] as String,
+      column: j['column'] as String,
+    );
+  }
 }
 
 class OrderBySpec {
@@ -178,6 +217,71 @@ class OrderBySpec {
   Map<String, dynamic> toJson() => {'alias': alias, 'dir': dir};
   static OrderBySpec fromJson(Map<String, dynamic> j) =>
       OrderBySpec(alias: j['alias'] as String, dir: (j['dir'] as String?) ?? 'ASC');
+}
+
+/// A SQL expression evaluated in the SELECT list (e.g. `CASE WHEN ... END`).
+/// Bryzos-authored only — the RPC validates the expression against the same
+/// keyword blacklist used by `rds_execute_raw_sql_bryzos`.
+class ComputedColumn {
+  final String expression;
+  final String alias;
+  ComputedColumn({required this.expression, required this.alias});
+  Map<String, dynamic> toJson() => {
+        'expression': expression,
+        'alias': alias,
+      };
+  static ComputedColumn fromJson(Map<String, dynamic> j) => ComputedColumn(
+        expression: (j['expression'] as String?) ?? '',
+        alias: (j['alias'] as String?) ?? '',
+      );
+}
+
+/// Requests a two-window comparison (current period vs prior period). When
+/// present the RPC runs the base query twice and returns
+/// `{ "current": [...], "prior": [...] }` instead of a flat row array.
+class ComparisonWindow {
+  final String table;
+  final String column;
+  final String currentStart; // ISO-8601
+  final String currentEnd;
+  final String priorStart;
+  final String priorEnd;
+  ComparisonWindow({
+    required this.table,
+    required this.column,
+    required this.currentStart,
+    required this.currentEnd,
+    required this.priorStart,
+    required this.priorEnd,
+  });
+  Map<String, dynamic> toJson() => {
+        'table': table,
+        'column': column,
+        'current_start': currentStart,
+        'current_end': currentEnd,
+        'prior_start': priorStart,
+        'prior_end': priorEnd,
+      };
+  static ComparisonWindow? fromJson(Map<String, dynamic>? j) {
+    if (j == null) return null;
+    final t = j['table'] as String?;
+    final c = j['column'] as String?;
+    final cs = j['current_start'] as String?;
+    final ce = j['current_end'] as String?;
+    final ps = j['prior_start'] as String?;
+    final pe = j['prior_end'] as String?;
+    if (t == null || c == null || cs == null || ce == null || ps == null || pe == null) {
+      return null;
+    }
+    return ComparisonWindow(
+      table: t,
+      column: c,
+      currentStart: cs,
+      currentEnd: ce,
+      priorStart: ps,
+      priorEnd: pe,
+    );
+  }
 }
 
 class VizSpec {
@@ -209,10 +313,37 @@ class CustomReportQueryV2 {
   VizSpec viz;
   bool showShare;
 
+  /// Computed SELECT expressions (Bryzos-only). Emitted verbatim into the
+  /// SELECT list with the given alias; alias becomes referenceable by
+  /// `order_by`.
+  final List<ComputedColumn> computedColumns;
+
+  /// Optional two-window comparison. When set, the RPC returns
+  /// `{ current: [...], prior: [...] }` instead of a flat row array.
+  ComparisonWindow? comparisonWindow;
+
+  /// Free-form note describing any post-fetch aggregation the widget applies
+  /// to the RPC's rows (e.g. "TypeScript groups by month and computes deltas").
+  /// Informational only — not executed anywhere.
+  String? postFetchAggregationNote;
+
   /// Raw-SQL escape hatch (Bryzos-only v1). When `useRawSql` is true the
-  /// wizard locks and the preview/runtime executes `rawSql` verbatim via
+  /// wizard locks and the preview/runtime executes the SQL verbatim via
   /// `rds_execute_raw_sql_bryzos` instead of `rds_execute_query`.
   bool useRawSql;
+
+  /// The user's MySQL text — what they typed and what the editor redisplays.
+  /// This is the source of truth for round-tripping the SQL tab.
+  String? sqlAuthored;
+
+  /// The Postgres text produced by the normalizer from [sqlAuthored].
+  /// Regenerated on save; never user-editable. This is what actually runs.
+  String? sqlNormalized;
+
+  /// Legacy: single raw-SQL field (pre-normalizer). Retained for back-compat
+  /// with rows saved before the authored/normalized split. Reads fall back to
+  /// this when the pair is empty; writes always populate the pair going
+  /// forward.
   String? rawSql;
 
   CustomReportQueryV2({
@@ -223,10 +354,15 @@ class CustomReportQueryV2 {
     List<GroupBySpec>? groupBy,
     List<AggregateSpec>? aggregates,
     List<OrderBySpec>? orderBy,
+    List<ComputedColumn>? computedColumns,
+    this.comparisonWindow,
+    this.postFetchAggregationNote,
     this.limit,
     VizSpec? viz,
     this.showShare = true,
     this.useRawSql = false,
+    this.sqlAuthored,
+    this.sqlNormalized,
     this.rawSql,
   })  : joins = joins ?? [],
         columns = columns ?? [],
@@ -234,6 +370,7 @@ class CustomReportQueryV2 {
         groupBy = groupBy ?? [],
         aggregates = aggregates ?? [],
         orderBy = orderBy ?? [],
+        computedColumns = computedColumns ?? [],
         viz = viz ?? VizSpec();
 
   Map<String, dynamic> toJson() => {
@@ -245,10 +382,22 @@ class CustomReportQueryV2 {
         'group_by': groupBy.map((g) => g.toJson()).toList(),
         'aggregates': aggregates.map((a) => a.toJson()).toList(),
         'order_by': orderBy.map((o) => o.toJson()).toList(),
+        if (computedColumns.isNotEmpty)
+          'computed_columns':
+              computedColumns.map((c) => c.toJson()).toList(),
+        if (comparisonWindow != null)
+          'comparison_window': comparisonWindow!.toJson(),
+        if (postFetchAggregationNote != null &&
+            postFetchAggregationNote!.isNotEmpty)
+          'post_fetch_aggregation_note': postFetchAggregationNote,
         if (limit != null) 'limit': limit,
         'viz': viz.toJson(),
         if (!showShare) 'show_share': false,
         if (useRawSql) 'use_raw_sql': true,
+        if (sqlAuthored != null && sqlAuthored!.isNotEmpty)
+          'sql_authored': sqlAuthored,
+        if (sqlNormalized != null && sqlNormalized!.isNotEmpty)
+          'sql_normalized': sqlNormalized,
         if (rawSql != null && rawSql!.isNotEmpty) 'raw_sql': rawSql,
       };
 
@@ -279,12 +428,24 @@ class CustomReportQueryV2 {
             .whereType<Map<String, dynamic>>()
             .map(OrderBySpec.fromJson)
             .toList(),
+        computedColumns: ((j['computed_columns'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(ComputedColumn.fromJson)
+            .toList(),
+        comparisonWindow: j['comparison_window'] is Map<String, dynamic>
+            ? ComparisonWindow.fromJson(
+                j['comparison_window'] as Map<String, dynamic>)
+            : null,
+        postFetchAggregationNote:
+            j['post_fetch_aggregation_note'] as String?,
         limit: j['limit'] is int ? j['limit'] as int : null,
         viz: j['viz'] is Map<String, dynamic>
             ? VizSpec.fromJson(j['viz'] as Map<String, dynamic>)
             : VizSpec(),
         showShare: j['show_share'] is bool ? j['show_share'] as bool : true,
         useRawSql: j['use_raw_sql'] is bool ? j['use_raw_sql'] as bool : false,
+        sqlAuthored: j['sql_authored'] as String?,
+        sqlNormalized: j['sql_normalized'] as String?,
         rawSql: j['raw_sql'] as String?,
       );
 

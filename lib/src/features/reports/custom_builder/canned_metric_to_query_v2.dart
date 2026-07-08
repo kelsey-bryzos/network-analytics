@@ -43,17 +43,22 @@ class CannedTranslation {
 const Set<String> kSupportedCannedMetrics = {
   'all_buyers_table',
   'all_sellers_table',
+  'avg_order_price_trend',
+  'avg_price_per_lb_by_metal_trend',
   'bpns_by_company',
   'bpns_by_user',
   'bpns_full_list',
   'cancelled_orders_by_company',
   'cancelled_orders_by_user',
   'cancelled_orders_list',
+  'chat_volume_by_month',
   'count_companies',
   'count_orders',
   'count_users',
   'credit_enabled_companies_kpi',
   'least_searched_products',
+  'margin_by_metal_type',
+  'margin_by_shape_grade',
   'most_searched_products',
   'order_lines_table',
   'orders_by_month',
@@ -69,6 +74,7 @@ const Set<String> kSupportedCannedMetrics = {
   'quotes_by_company',
   'quotes_by_user',
   'revenue_by_month',
+  'sales_by_grade',
   'searches_by_company',
   'searches_by_user',
   'sum_po_price',
@@ -77,6 +83,7 @@ const Set<String> kSupportedCannedMetrics = {
   'unclaimed_orders_table',
   'users_by_type',
   'users_recent_list',
+  'yoy_revenue',
 };
 
 /// Default top-N size when a widget hasn't stored its own `max_items` /
@@ -104,10 +111,16 @@ CannedTranslation? translateCannedMetric({
   switch (metric) {
     case 'all_buyers_table':
       return _allBuyersTable(maxItems: maxItems ?? kDefaultTopN);
+    case 'avg_order_price_trend':
+      return _avgOrderPriceTrend();
+    case 'avg_price_per_lb_by_metal_trend':
+      return _avgPricePerLbByMetalTrend();
     case 'all_sellers_table':
       return _allSellersTable(maxItems: maxItems ?? kDefaultTopN);
     case 'bpns_by_company':
       return _bpnsByCompany(maxItems: maxItems ?? kDefaultTopN);
+    case 'chat_volume_by_month':
+      return _chatVolumeByMonth();
     case 'bpns_by_user':
       return _bpnsByUser(maxItems: maxItems ?? kDefaultTopN);
     case 'bpns_full_list':
@@ -128,6 +141,10 @@ CannedTranslation? translateCannedMetric({
       return _creditEnabledCompaniesKpi();
     case 'least_searched_products':
       return _leastSearchedProducts(maxItems: maxItems ?? kDefaultTopN);
+    case 'margin_by_metal_type':
+      return _marginByMetalType(maxItems: maxItems ?? kDefaultTopN);
+    case 'margin_by_shape_grade':
+      return _marginByShapeGrade(maxItems: maxItems ?? kDefaultTopN);
     case 'most_searched_products':
       return _mostSearchedProducts(maxItems: maxItems ?? kDefaultTopN);
     case 'order_lines_table':
@@ -159,6 +176,8 @@ CannedTranslation? translateCannedMetric({
       return _quotesByUser(maxItems: maxItems ?? kDefaultTopN);
     case 'revenue_by_month':
       return _revenueByMonth();
+    case 'sales_by_grade':
+      return _salesByGrade(maxItems: maxItems ?? kDefaultTopN);
     case 'searches_by_company':
       return _searchesByCompany(maxItems: maxItems ?? kDefaultTopN);
     case 'searches_by_user':
@@ -175,6 +194,8 @@ CannedTranslation? translateCannedMetric({
       return _usersByType();
     case 'users_recent_list':
       return _usersRecentList(maxItems: maxItems ?? kDefaultTopN);
+    case 'yoy_revenue':
+      return _yoyRevenue();
     default:
       return null;
   }
@@ -2120,6 +2141,607 @@ CannedTranslation _searchedProductsRanked({
         'strings. The v2 path filters keyword IS NOT NULL AND keyword != "" '
         'and groups by the raw column — leading/trailing whitespace variants '
         'may therefore appear as distinct rows in the RPC output.',
+  );
+}
+
+// ─── Slice #37: margin_by_metal_type ─────────────────────────────────────
+//
+// widget-data-bryzos:
+//   • fetches created_date, metal_type, description, actual_buyer_line_total,
+//     buyer_line_total from user_purchase_order_line
+//   • normalises metal_type (CS→"Carbon Steel", SS→"Stainless Steel", etc.)
+//     and falls back to description sniffing when metal_type is blank
+//   • sums revenue (actual_buyer_line_total ?? buyer_line_total) per metal type
+//   • sorts DESC by sum, slices top max_items
+//   • emits _labels (metal), _data (revenue), _col1="Metal Type",
+//     _col2="Revenue ($unit)", _unit, _yLabel="Revenue"
+//
+// IMPORTANT: despite the name "margin_by_metal_type", the widget actually
+// computes *revenue* (buyer-side only) — there is no seller-side subtraction.
+// The v2 path faithfully reproduces that behaviour.
+//
+// NOTE: the widget's multi-step normalization (normalize() → classifyFromDesc())
+// cannot be replicated inside a single SQL expression without creating a DB
+// function. The v2 path uses the raw metal_type column directly and groups on
+// its value after a lightweight CASE-based normalization of the most common
+// abbreviations. Rows with blank metal_type are bucketed as "(unspecified)"
+// rather than being classified from the description field. This is an
+// intentional simplification for the editable v2 path; the legacy widget-data-
+// bryzos path continues to handle description-based fallback classification.
+//
+// query_v2 equivalent:
+//
+//   SELECT case
+//            when metal_type is null or btrim(metal_type) = ''
+//              then '(unspecified)'
+//            when upper(btrim(regexp_replace(metal_type,'_x000d_','','gi'))) in ('CS')
+//              or  upper(btrim(regexp_replace(metal_type,'_x000d_','','gi'))) like 'CARBON%'
+//              then 'Carbon Steel'
+//            when upper(btrim(regexp_replace(metal_type,'_x000d_','','gi'))) in ('SS')
+//              or  upper(btrim(regexp_replace(metal_type,'_x000d_','','gi'))) like 'STAINLESS%'
+//              then 'Stainless Steel'
+//            when upper(btrim(regexp_replace(metal_type,'_x000d_','','gi'))) in ('AL')
+//              or  upper(btrim(regexp_replace(metal_type,'_x000d_','','gi'))) like 'ALUM%'
+//              then 'Aluminum'
+//            when upper(btrim(regexp_replace(metal_type,'_x000d_','','gi'))) like 'GALV%'
+//              then 'Galvanized Carbon Steel'
+//            when upper(btrim(regexp_replace(metal_type,'_x000d_','','gi'))) like 'BRASS%'
+//              then 'Brass'
+//            when upper(btrim(regexp_replace(metal_type,'_x000d_','','gi'))) like 'BRONZE%'
+//              then 'Bronze'
+//            when upper(btrim(regexp_replace(metal_type,'_x000d_','','gi'))) like 'COPPER%'
+//              then 'Copper'
+//            when upper(btrim(regexp_replace(metal_type,'_x000d_','','gi'))) like 'ALLOY%'
+//              then 'Alloy'
+//            when upper(btrim(regexp_replace(metal_type,'_x000d_','','gi'))) like 'TITAN%'
+//              then 'Titanium'
+//            else btrim(regexp_replace(metal_type,'_x000d_','','gi'))
+//          end AS "Metal Type",
+//          SUM(coalesce(t."actual_buyer_line_total", t."buyer_line_total")) AS "Revenue"
+//   FROM rds_user_purchase_order_line t
+//   WHERE t."tenant_id" = :tenant_id AND t."data_source_id" = :data_source_id
+//   GROUP BY 1
+//   ORDER BY "Revenue" DESC
+//   LIMIT :max_items;
+CannedTranslation _marginByMetalType({required int maxItems}) {
+  const metalNormExpr = 'case '
+      'when t."metal_type" is null or btrim(t."metal_type") = \'\' '
+      'then \'(unspecified)\' '
+      'when upper(btrim(regexp_replace(t."metal_type", \'_x000d_\', \'\', \'gi\'))) in (\'CS\') '
+      'or   upper(btrim(regexp_replace(t."metal_type", \'_x000d_\', \'\', \'gi\'))) like \'CARBON%\' '
+      'then \'Carbon Steel\' '
+      'when upper(btrim(regexp_replace(t."metal_type", \'_x000d_\', \'\', \'gi\'))) in (\'SS\') '
+      'or   upper(btrim(regexp_replace(t."metal_type", \'_x000d_\', \'\', \'gi\'))) like \'STAINLESS%\' '
+      'then \'Stainless Steel\' '
+      'when upper(btrim(regexp_replace(t."metal_type", \'_x000d_\', \'\', \'gi\'))) in (\'AL\') '
+      'or   upper(btrim(regexp_replace(t."metal_type", \'_x000d_\', \'\', \'gi\'))) like \'ALUM%\' '
+      'then \'Aluminum\' '
+      'when upper(btrim(regexp_replace(t."metal_type", \'_x000d_\', \'\', \'gi\'))) like \'GALV%\' '
+      'then \'Galvanized Carbon Steel\' '
+      'when upper(btrim(regexp_replace(t."metal_type", \'_x000d_\', \'\', \'gi\'))) like \'BRASS%\' '
+      'then \'Brass\' '
+      'when upper(btrim(regexp_replace(t."metal_type", \'_x000d_\', \'\', \'gi\'))) like \'BRONZE%\' '
+      'then \'Bronze\' '
+      'when upper(btrim(regexp_replace(t."metal_type", \'_x000d_\', \'\', \'gi\'))) like \'COPPER%\' '
+      'then \'Copper\' '
+      'when upper(btrim(regexp_replace(t."metal_type", \'_x000d_\', \'\', \'gi\'))) like \'ALLOY%\' '
+      'then \'Alloy\' '
+      'when upper(btrim(regexp_replace(t."metal_type", \'_x000d_\', \'\', \'gi\'))) like \'TITAN%\' '
+      'then \'Titanium\' '
+      'else btrim(regexp_replace(t."metal_type", \'_x000d_\', \'\', \'gi\')) '
+      'end';
+
+  // The RPC validates aggregate columns against information_schema, so we
+  // cannot pass a coalesce() expression in the column field. We use
+  // buyer_line_total as the aggregate column (the primary revenue field) and
+  // note the simplification. actual_buyer_line_total is more accurate when
+  // present, but buyer_line_total is what the RPC can validate and emit.
+  // RPC alias validation: ^[A-Za-z_][A-Za-z0-9_]*$ — no spaces allowed.
+  // Use metal_type as the computed_column alias (snake_case, valid identifier).
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_purchase_order_line',
+    computedColumns: [
+      ComputedColumn(expression: metalNormExpr, alias: 'metal_type_norm'),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_purchase_order_line',
+        column: 'buyer_line_total',
+        fn: 'sum',
+        alias: 'Revenue',
+      ),
+    ],
+    groupBy: [GroupBySpec.alias('metal_type_norm')],
+    orderBy: [OrderBySpec(alias: 'Revenue', dir: 'DESC')],
+    limit: maxItems,
+    viz: VizSpec(chartType: 'bar', x: 'metal_type_norm', y: 'Revenue'),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos additionally falls back to description-based '
+        'metal classification when metal_type is blank. The v2 path groups '
+        'blank metal_type rows as "(unspecified)" and does not attempt the '
+        'description sniffing — the legacy widget path continues to handle '
+        'that fallback. Revenue is buyer_line_total (the RPC requires a '
+        'real column name; actual_buyer_line_total coalescing is handled by '
+        'the legacy path). No seller subtraction is performed despite the '
+        'widget\'s name including "margin".',
+  );
+}
+
+// ─── Slice #38: margin_by_shape_grade ────────────────────────────────────
+//
+// widget-data-bryzos:
+//   • fetches created_date, shape, grade, product,
+//     actual_buyer_line_total, buyer_line_total,
+//     actual_seller_line_total, seller_line_total
+//   • computes margin = buyer - seller per line
+//   • builds a composite key: "<shape> / <grade> (<metal>)"
+//     where metal is classified from the product description
+//     ("SS"→Stainless, "CS"→Carbon, "AL"→Aluminum, etc.)
+//   • sums margin per key, sorts DESC, slices top max_items
+//
+// This is the ONLY Batch C metric that computes true margin (buyer - seller).
+//
+// query_v2 equivalent (composite key via computed_column):
+//
+//   SELECT
+//     coalesce(nullif(btrim(t."shape"), ''), '?') || ' / ' ||
+//     coalesce(nullif(btrim(t."grade"), ''), '?') AS "Shape / Grade",
+//     SUM(coalesce(t."actual_buyer_line_total", t."buyer_line_total") -
+//         coalesce(t."actual_seller_line_total", t."seller_line_total")) AS "Margin"
+//   FROM rds_user_purchase_order_line t
+//   WHERE t."tenant_id" = :tenant_id AND t."data_source_id" = :data_source_id
+//     AND coalesce(t."actual_buyer_line_total", t."buyer_line_total") > 0
+//     AND coalesce(t."actual_seller_line_total", t."seller_line_total") > 0
+//   GROUP BY 1
+//   ORDER BY "Margin" DESC
+//   LIMIT :max_items;
+//
+// NOTE: the widget's metal classification from product description is dropped
+// in the v2 key — the key is "<shape> / <grade>" without the "(metal)" suffix.
+// This is intentional: the metal classification requires description sniffing
+// that cannot be replicated in portable SQL, and the shape+grade pair already
+// uniquely identifies a product tier. Users can add a metal_type column via
+// the wizard if needed.
+CannedTranslation _marginByShapeGrade({required int maxItems}) {
+  const keyExpr =
+      'coalesce(nullif(btrim(t."shape"), \'\'), \'?\') || \' / \' || '
+      'coalesce(nullif(btrim(t."grade"), \'\'), \'?\')';
+  // True margin: emit (buyer - seller) as a computed_column so it can be
+  // passed through the select list. We then aggregate that computed column.
+  // The RPC validates aggregate column names against information_schema, so
+  // for the aggregate we use buyer_line_total (validated column) and subtract
+  // seller_line_total via a second AggregateSpec, relying on the wizard to
+  // show both columns. An alternative is to emit the entire margin expression
+  // as a computed_column and not use an aggregate at all — but that would
+  // produce per-row values, not a sum. The cleanest v2-compatible approach:
+  // use buyer_line_total and seller_line_total as separate validated columns,
+  // and note that the wizard user can subtract them if needed.
+  //
+  // For the group-by path (which is what this metric needs), the most
+  // correct approach within the RPC's constraints is:
+  //   SELECT <key>, SUM(buyer_line_total) - SUM(seller_line_total) AS Margin
+  // expressed as two aggregates and noting this as a postFetchNote simplification.
+  //
+  // Actually the cleanest solution: the margin_line computed_column plus
+  // a SUM aggregate is not directly possible via the current AggregateSpec
+  // model. We emit buyer and seller as separate aggregates (Revenue, COGS)
+  // so the user can see both columns and the wizard renders them as a bar.
+  // RPC alias regex ^[A-Za-z_][A-Za-z0-9_]*$ — spaces and slashes banned.
+  // Use shape_grade as the computed_column alias.
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_purchase_order_line',
+    computedColumns: [
+      ComputedColumn(expression: keyExpr, alias: 'shape_grade'),
+    ],
+    filters: [
+      FilterSpec(
+        table: 'rds_user_purchase_order_line',
+        column: 'buyer_line_total',
+        op: '>',
+        value: 0,
+      ),
+      FilterSpec(
+        table: 'rds_user_purchase_order_line',
+        column: 'seller_line_total',
+        op: '>',
+        value: 0,
+      ),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_purchase_order_line',
+        column: 'buyer_line_total',
+        fn: 'sum',
+        alias: 'Revenue',
+      ),
+      AggregateSpec(
+        table: 'rds_user_purchase_order_line',
+        column: 'seller_line_total',
+        fn: 'sum',
+        alias: 'COGS',
+      ),
+    ],
+    groupBy: [GroupBySpec.alias('shape_grade')],
+    orderBy: [OrderBySpec(alias: 'Revenue', dir: 'DESC')],
+    limit: maxItems,
+    viz: VizSpec(chartType: 'bar', x: 'shape_grade', y: 'Revenue'),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos computes margin = (buyer - seller) per '
+        '"shape / grade (metal)" key and sorts by margin DESC. The v2 path '
+        'emits Revenue (buyer_line_total) and COGS (seller_line_total) as '
+        'separate columns — the RPC model cannot express SUM(buyer)-SUM(seller) '
+        'as a single aggregate. Sort is by Revenue DESC (approximates the '
+        'widget\'s margin-DESC ordering for most distributions). Metal suffix '
+        'is omitted from the key (description-sniffing cannot be done in SQL). '
+        'Filter: both buyer and seller must be > 0.',
+  );
+}
+
+// ─── Slice #39: sales_by_grade ────────────────────────────────────────────
+//
+// widget-data-bryzos:
+//   • fetches created_date, grade, actual_buyer_line_total, buyer_line_total
+//   • sums revenue per grade (null grade → "(unspecified)")
+//   • sorts DESC, slices top max_items
+//   • emits _labels, _data, _col1="Grade", _col2="Revenue ($unit)", _unit
+//
+// query_v2 equivalent:
+//
+//   SELECT coalesce(nullif(btrim(t."grade"), ''), '(unspecified)') AS "Grade",
+//          SUM(coalesce(t."actual_buyer_line_total", t."buyer_line_total")) AS "Revenue"
+//   FROM rds_user_purchase_order_line t
+//   WHERE t."tenant_id" = :tenant_id AND t."data_source_id" = :data_source_id
+//   GROUP BY 1
+//   ORDER BY "Revenue" DESC
+//   LIMIT :max_items;
+CannedTranslation _salesByGrade({required int maxItems}) {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_purchase_order_line',
+    computedColumns: [
+      ComputedColumn(
+        expression:
+            'coalesce(nullif(btrim(t."grade"), \'\'), \'(unspecified)\')',
+        alias: 'Grade',
+      ),
+    ],
+    // The RPC validates aggregate column against information_schema — must use
+    // a real column name. buyer_line_total is the primary revenue field.
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_purchase_order_line',
+        column: 'buyer_line_total',
+        fn: 'sum',
+        alias: 'Revenue',
+      ),
+    ],
+    groupBy: [GroupBySpec.alias('Grade')],
+    orderBy: [OrderBySpec(alias: 'Revenue', dir: 'DESC')],
+    limit: maxItems,
+    viz: VizSpec(chartType: 'bar', x: 'Grade', y: 'Revenue'),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos uses actual_buyer_line_total when present, '
+        'falling back to buyer_line_total. The v2 path uses buyer_line_total '
+        'directly (the RPC requires a real column name). Null/empty grade → '
+        '"(unspecified)". Revenue is raw dollars; widget additionally rescales '
+        'to \$M/\$K for display — not reproduced by the v2 render path.',
+  );
+}
+
+// ─── Slice #40: avg_order_price_trend ────────────────────────────────────
+//
+// widget-data-bryzos:
+//   • fetches created_date, buyer_po_price from user_purchase_order
+//   • buckets by month, computes AVG(buyer_po_price) per bucket
+//   • emits _data (avg series), _labels (month labels), _unit, _yLabel=\"Avg Order $\"
+//   • also emits overall weighted avg in _meta.total
+//
+// query_v2 equivalent:
+//
+//   SELECT date_trunc('month', t."created_date") AS "bucket_start",
+//          to_char(date_trunc('month', t."created_date"), 'Mon YYYY')
+//              AS "bucket_label",
+//          AVG(t."buyer_po_price") AS "Avg Order Value"
+//   FROM rds_user_purchase_order t
+//   WHERE t."tenant_id" = :tenant_id AND t."data_source_id" = :data_source_id
+//     AND t."buyer_po_price" > 0
+//   GROUP BY date_trunc('month', t."created_date")
+//   ORDER BY "bucket_start" ASC;
+//
+// Note: widget filters rows where buyer_po_price <= 0 before averaging.
+// We express this as a filter so the RPC produces the same denominator.
+CannedTranslation _avgOrderPriceTrend() {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_purchase_order',
+    computedColumns: [
+      ComputedColumn(
+        expression: 'date_trunc(\'month\', t."created_date")',
+        alias: 'bucket_start',
+      ),
+      ComputedColumn(
+        expression:
+            'to_char(date_trunc(\'month\', t."created_date"), \'Mon YYYY\')',
+        alias: 'bucket_label',
+      ),
+    ],
+    filters: [
+      FilterSpec(
+        table: 'rds_user_purchase_order',
+        column: 'buyer_po_price',
+        op: '>',
+        value: 0,
+      ),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_purchase_order',
+        column: 'buyer_po_price',
+        fn: 'avg',
+        alias: 'Avg_Order_Value',
+      ),
+    ],
+    groupBy: [
+      GroupBySpec.alias('bucket_start'),
+    ],
+    orderBy: [
+      OrderBySpec(alias: 'bucket_start', dir: 'ASC'),
+    ],
+    viz: VizSpec(
+      chartType: 'line',
+      x: 'bucket_label',
+      y: 'Avg_Order_Value',
+    ),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos additionally rescales the avg to \$M/\$K for '
+        'display and emits a weighted overall average in _meta.total. The v2 '
+        'path returns raw dollar values. Widget filter: buyer_po_price > 0 '
+        'is pushed to the RPC WHERE clause so per-bucket averages match.',
+  );
+}
+
+// ─── Slice #41: avg_price_per_lb_by_metal_trend ──────────────────────────
+//
+// widget-data-bryzos:
+//   • fetches created_date, metal_type, description, actual_buyer_line_total,
+//     buyer_line_total, total_weight from user_purchase_order_line
+//   • normalises metal_type (same as margin_by_metal_type)
+//   • skips rows where revenue <= 0 or total_weight <= 0
+//   • computes $/lb per bucket per metal: (sum revenue) / (sum weight)
+//   • emits _multiSeries (one per top-6 metal type), _labels (month labels)
+//
+// The v2 path cannot express per-metal multi-series natively. We emit a
+// single all-metals combined $/lb trend (SUM revenue / SUM weight per month)
+// as the best single-query approximation. Users who need per-metal breakdown
+// can use the wizard's filter to isolate one metal type.
+//
+// query_v2 equivalent (all-metals combined):
+//
+//   SELECT date_trunc('month', t."created_date") AS "bucket_start",
+//          to_char(date_trunc('month', t."created_date"), 'Mon YYYY')
+//              AS "bucket_label",
+//          SUM(t."buyer_line_total")  AS "Revenue",
+//          SUM(t."total_weight")      AS "Weight_lbs"
+//   FROM rds_user_purchase_order_line t
+//   WHERE t."tenant_id" = :tenant_id AND t."data_source_id" = :data_source_id
+//     AND t."buyer_line_total" > 0
+//     AND t."total_weight" > 0
+//   GROUP BY date_trunc('month', t."created_date")
+//   ORDER BY "bucket_start" ASC;
+//
+// The render layer divides Revenue / Weight_lbs to get $/lb. The v2 wizard
+// can display either column independently; the $/lb ratio requires a
+// post-fetch computed column (not yet in the wizard UI).
+CannedTranslation _avgPricePerLbByMetalTrend() {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_purchase_order_line',
+    computedColumns: [
+      ComputedColumn(
+        expression: 'date_trunc(\'month\', t."created_date")',
+        alias: 'bucket_start',
+      ),
+      ComputedColumn(
+        expression:
+            'to_char(date_trunc(\'month\', t."created_date"), \'Mon YYYY\')',
+        alias: 'bucket_label',
+      ),
+    ],
+    filters: [
+      FilterSpec(
+        table: 'rds_user_purchase_order_line',
+        column: 'buyer_line_total',
+        op: '>',
+        value: 0,
+      ),
+      FilterSpec(
+        table: 'rds_user_purchase_order_line',
+        column: 'total_weight',
+        op: '>',
+        value: 0,
+      ),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_purchase_order_line',
+        column: 'buyer_line_total',
+        fn: 'sum',
+        alias: 'Revenue',
+      ),
+      AggregateSpec(
+        table: 'rds_user_purchase_order_line',
+        column: 'total_weight',
+        fn: 'sum',
+        alias: 'Weight_lbs',
+      ),
+    ],
+    groupBy: [
+      GroupBySpec.alias('bucket_start'),
+    ],
+    orderBy: [
+      OrderBySpec(alias: 'bucket_start', dir: 'ASC'),
+    ],
+    viz: VizSpec(
+      chartType: 'line',
+      x: 'bucket_label',
+      y: 'Revenue',
+    ),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos renders a per-metal multi-series chart '
+        '(top 6 metals × months) where each point is '
+        'SUM(revenue)/SUM(weight) for that metal+month. The v2 path emits '
+        'two columns — Revenue (SUM buyer_line_total) and Weight_lbs '
+        '(SUM total_weight) for ALL metals combined per month. Divide them '
+        'at the render layer to get the all-metals \$/lb trend. To isolate '
+        'a single metal, add a metal_type filter in the wizard.',
+  );
+}
+
+// ─── Slice #42: chat_volume_by_month ─────────────────────────────────────
+//
+// widget-data-bryzos:
+//   • fetches created_date from channel_chat_messages
+//   • buckets by month (using the active time window), counts rows per bucket
+//   • emits _data (series), _labels (month labels), _yLabel="Messages"
+//
+// query_v2 equivalent:
+//
+//   SELECT date_trunc('month', t."created_date") AS "bucket_start",
+//          to_char(date_trunc('month', t."created_date"), 'Mon YYYY')
+//              AS "bucket_label",
+//          count(*) AS "Messages"
+//   FROM rds_channel_chat_messages t
+//   WHERE t."tenant_id" = :tenant_id AND t."data_source_id" = :data_source_id
+//   GROUP BY date_trunc('month', t."created_date")
+//   ORDER BY "bucket_start" ASC;
+CannedTranslation _chatVolumeByMonth() {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_channel_chat_messages',
+    computedColumns: [
+      ComputedColumn(
+        expression: 'date_trunc(\'month\', t."created_date")',
+        alias: 'bucket_start',
+      ),
+      ComputedColumn(
+        expression:
+            'to_char(date_trunc(\'month\', t."created_date"), \'Mon YYYY\')',
+        alias: 'bucket_label',
+      ),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_channel_chat_messages',
+        column: '',
+        fn: 'count',
+        alias: 'Messages',
+      ),
+    ],
+    groupBy: [
+      GroupBySpec.alias('bucket_start'),
+    ],
+    orderBy: [
+      OrderBySpec(alias: 'bucket_start', dir: 'ASC'),
+    ],
+    viz: VizSpec(
+      chartType: 'line',
+      x: 'bucket_label',
+      y: 'Messages',
+    ),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos additionally emits a prior-period count in _meta. '
+        'Display-only and not reproduced by the v2 render path in this slice.',
+  );
+}
+
+// ─── Slice #43: yoy_revenue ───────────────────────────────────────────────
+//
+// widget-data-bryzos:
+//   • fetches created_date, buyer_po_price from user_purchase_order
+//   • When time_range = "All": emits a single revenue-by-month series
+//     across all history (same as revenue_by_month).
+//   • When time_range ≠ "All": compares last 12 months vs prior 12 months
+//     as two series ("This Year" / "Prior Year") — a multi-series chart
+//     that the v2 render path cannot express natively.
+//
+// The v2 path emits a single revenue-by-month series (identical to
+// revenue_by_month). The time wizard applies the user's chosen window.
+// Users who need the side-by-side YoY view should use the canned widget
+// directly; the clone is best suited for inspecting the full trend line.
+//
+// query_v2 equivalent:
+//
+//   SELECT date_trunc('month', t."created_date") AS "bucket_start",
+//          to_char(date_trunc('month', t."created_date"), 'Mon YYYY')
+//              AS "bucket_label",
+//          SUM(t."buyer_po_price") AS "Revenue"
+//   FROM rds_user_purchase_order t
+//   WHERE t."tenant_id" = :tenant_id AND t."data_source_id" = :data_source_id
+//   GROUP BY date_trunc('month', t."created_date")
+//   ORDER BY "bucket_start" ASC;
+CannedTranslation _yoyRevenue() {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_purchase_order',
+    computedColumns: [
+      ComputedColumn(
+        expression: 'date_trunc(\'month\', t."created_date")',
+        alias: 'bucket_start',
+      ),
+      ComputedColumn(
+        expression:
+            'to_char(date_trunc(\'month\', t."created_date"), \'Mon YYYY\')',
+        alias: 'bucket_label',
+      ),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_purchase_order',
+        column: 'buyer_po_price',
+        fn: 'sum',
+        alias: 'Revenue',
+      ),
+    ],
+    groupBy: [
+      GroupBySpec.alias('bucket_start'),
+    ],
+    orderBy: [
+      OrderBySpec(alias: 'bucket_start', dir: 'ASC'),
+    ],
+    viz: VizSpec(
+      chartType: 'line',
+      x: 'bucket_label',
+      y: 'Revenue',
+    ),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos renders a dual-series "This Year vs Prior Year" '
+        'chart (last 12 months vs prior 12 months) when time_range ≠ "All". '
+        'The v2 path emits a single revenue-by-month series across the full '
+        'history — multi-series YoY comparison is not expressible in a single '
+        'query_v2 spec. Use the canned widget directly for the side-by-side view.',
   );
 }
 

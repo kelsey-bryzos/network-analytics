@@ -511,10 +511,6 @@ class _WidgetRendererCore extends StatelessWidget {
         return _pie(donut: model.kind == WidgetKind.donut);
       case WidgetKind.table:
         return _table();
-      case WidgetKind.map:
-        return const Center(
-          child: Text('Map widget — coming soon', style: OpticsTextStyles.bodySm),
-        );
       case WidgetKind.markdown:
         return SingleChildScrollView(
           child: Text(

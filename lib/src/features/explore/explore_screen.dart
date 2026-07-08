@@ -1969,8 +1969,6 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         return Icons.pie_chart_outline;
       case 'table':
         return Icons.table_chart_outlined;
-      case 'map':
-        return Icons.public_outlined;
       case 'text':
       case 'markdown':
         return Icons.notes_outlined;

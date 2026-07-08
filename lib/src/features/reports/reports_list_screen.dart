@@ -13,7 +13,8 @@
 //                  "combined" custom report (combined_from = [A,B]).
 //                  Drop further reports onto that combined row to
 //                  append more sources. Originals are never deleted.
-// • Share        → flips reports.shared_with_tenant.
+// • Share        → tenant-wide toggle (shared_with_tenant) + per-user sharing
+//                  via report_shares table (View/Run/Export only, no editing).
 // =====================================================================
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -1431,7 +1432,7 @@ class _RowContent extends StatelessWidget {
         _iconBtn(Icons.visibility_outlined, 'Preview', onPreview),
         _iconBtn(
           Icons.edit_outlined,
-          r.isCanned ? 'Clone & open' : 'Edit',
+          r.isCanned ? 'Clone & edit' : 'Edit',
           canEdit && !isArchived ? onEdit : null,
         ),
         _exportMenuBtn(r, isArchived),
@@ -2036,48 +2037,211 @@ class ShareReportDialog extends ConsumerStatefulWidget {
 }
 
 class ShareReportDialogState extends ConsumerState<ShareReportDialog> {
-  late bool _tenantWide = widget.report.sharedWithTenant;
-  bool _busy = false;
-  String? _err;
+  final _emailController = TextEditingController();
 
-  Future<void> _save() async {
-    setState(() {
-      _busy = true;
-      _err = null;
-    });
+  // Tenant-wide toggle
+  late bool _tenantWide = widget.report.sharedWithTenant;
+  bool _savingTenantWide = false;
+
+  // Per-user share picker
+  List<Map<String, dynamic>> _candidates = const [];
+  List<Map<String, dynamic>> _shares = const [];
+  bool _loadingCandidates = true;
+  bool _loadingShares = true;
+  bool _submitting = false;
+  bool _showManage = false;
+  final Set<String> _selectedUserIds = {};
+
+  String? _candidatesError;
+  String? _sharesError;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final repo = ref.read(repoProvider);
     try {
-      await ref
-          .read(repoProvider)
-          .setReportSharedWithTenant(widget.report.id, _tenantWide);
-      if (mounted) Navigator.pop(context);
+      final rows = await repo.listShareableUsersForReport(widget.report.id);
+      if (!mounted) return;
+      setState(() {
+        _candidates = rows;
+        _loadingCandidates = false;
+      });
     } catch (e) {
-      setState(() => _err = e.toString());
-    } finally {
-      if (mounted) setState(() => _busy = false);
+      if (!mounted) return;
+      setState(() {
+        _candidatesError = 'Could not load users.';
+        _loadingCandidates = false;
+      });
     }
+    try {
+      final rows = await repo.listReportShares(widget.report.id);
+      if (!mounted) return;
+      setState(() {
+        _shares = rows;
+        _loadingShares = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _sharesError = 'Could not load current shares.';
+        _loadingShares = false;
+      });
+    }
+  }
+
+  Future<void> _saveTenantWide() async {
+    setState(() => _savingTenantWide = true);
+    try {
+      await ref.read(repoProvider).setReportSharedWithTenant(widget.report.id, _tenantWide);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Failed to update: $e',
+              style: const TextStyle(color: Colors.white)),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _savingTenantWide = false);
+    }
+  }
+
+  Future<void> _submitShare() async {
+    final typed = _emailController.text.trim().toLowerCase();
+    final targets = <Map<String, String>>[];
+    for (final uid in _selectedUserIds) {
+      targets.add({'user_id': uid});
+    }
+    if (typed.isNotEmpty && typed.contains('@')) {
+      targets.add({'email': typed});
+    }
+    if (targets.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text(
+          'Pick at least one user or type an email to share with.',
+          style: TextStyle(color: Colors.white),
+        ),
+      ));
+      return;
+    }
+    setState(() => _submitting = true);
+    try {
+      final result = await ref.read(repoProvider).shareReportBatch(
+            reportId: widget.report.id,
+            targets: targets,
+          );
+      final List<dynamic> rows = (result['results'] as List?) ?? const [];
+      final ok = rows.where((r) => (r as Map)['ok'] == true).length;
+      final fails = rows.where((r) => (r as Map)['ok'] != true).toList();
+      if (!mounted) return;
+
+      final messenger = ScaffoldMessenger.of(context);
+      if (fails.isEmpty) {
+        messenger.showSnackBar(SnackBar(
+          content: Text(
+            'Shared with $ok ${ok == 1 ? "person" : "people"}.',
+            style: const TextStyle(color: Colors.white),
+          ),
+        ));
+        _emailController.clear();
+        _selectedUserIds.clear();
+        _loadingCandidates = true;
+        _loadingShares = true;
+        await _load();
+        return;
+      }
+      final firstFail = (fails.first as Map).cast<String, dynamic>();
+      final errMsg = (firstFail['error'] ?? 'share failed').toString();
+      messenger.showSnackBar(SnackBar(
+        content: Text(
+          ok > 0
+              ? 'Shared with $ok; ${fails.length} failed. First error: $errMsg'
+              : 'Could not share: $errMsg',
+          style: const TextStyle(color: Colors.white),
+        ),
+      ));
+      if (ok > 0) {
+        _loadingShares = true;
+        await _load();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Failed to share: $e',
+              style: const TextStyle(color: Colors.white)),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _revoke(String shareId) async {
+    setState(() => _submitting = true);
+    try {
+      await ref.read(repoProvider).revokeReportShare(shareId);
+      _loadingShares = true;
+      _loadingCandidates = true;
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Failed to revoke: $e',
+              style: const TextStyle(color: Colors.white)),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  String _shareButtonLabel() {
+    final picked = _selectedUserIds.length;
+    final hasEmail = _emailController.text.trim().contains('@');
+    final total = picked + (hasEmail ? 1 : 0);
+    if (total <= 0) return 'Share';
+    return 'Share with $total';
   }
 
   @override
   Widget build(BuildContext context) {
+    // canAdminProvider: true for owner/admin — controls whether guest invite
+    // (email field) is shown. Editors can share with existing users only.
+    final canAdmin = ref.watch(canAdminProvider);
+    final mq = MediaQuery.of(context).size;
+    final dialogWidth = mq.width.clamp(360.0, 640.0);
+    final dialogMaxHeight = mq.height * 0.85;
+
     return Dialog(
       backgroundColor: OpticsColors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(OpticsRadii.md),
-        side: const BorderSide(color: OpticsColors.border),
-      ),
-      child: SizedBox(
-        width: 460,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: dialogWidth, maxHeight: dialogMaxHeight),
         child: Padding(
-          padding: const EdgeInsets.all(OpticsSpacing.lg),
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Title
               Row(
                 children: [
-                  const Text('SHARE REPORT',
-                      style: OpticsTextStyles.sectionLabel),
-                  const Spacer(),
+                  Expanded(
+                    child: Text(
+                      'SHARE "${widget.report.name.toUpperCase()}"',
+                      style: OpticsTextStyles.headingMd,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                   IconButton(
                     tooltip: 'Close',
                     icon: const Icon(Icons.close, size: 18),
@@ -2086,60 +2250,470 @@ class ShareReportDialogState extends ConsumerState<ShareReportDialog> {
                 ],
               ),
               const SizedBox(height: 4),
-              Text(widget.report.name.toUpperCase(),
-                  style: OpticsTextStyles.headingMd),
-              const SizedBox(height: 16),
+              const Text(
+                'Shared access: View, Run & Export only — no editing.',
+                style: TextStyle(color: OpticsColors.textSecondary, fontSize: 12),
+              ),
+              const SizedBox(height: 14),
+
+              // Tenant-wide toggle
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
                 value: _tenantWide,
-                onChanged: (v) => setState(() => _tenantWide = v),
+                onChanged: _savingTenantWide
+                    ? null
+                    : (v) {
+                        setState(() => _tenantWide = v);
+                        _saveTenantWide();
+                      },
                 title: const Text('Share with everyone in this tenant',
                     style: TextStyle(fontSize: 13)),
                 subtitle: const Text(
-                  'All members will be able to preview and run this report. Only you (or an Owner) can edit, archive, or delete it.',
-                  style: TextStyle(
-                      fontSize: 11, color: OpticsColors.textSecondary),
+                  'All members can view, run, and export this report.',
+                  style: TextStyle(fontSize: 11, color: OpticsColors.textSecondary),
                 ),
                 activeThumbColor: OpticsColors.accentCyan,
               ),
-              const SizedBox(height: 4),
+
+              const Divider(color: Color(0x1AFFFFFF), height: 24),
+
+              // Per-user section header
               const Text(
-                'Sharing with specific users (instead of the whole tenant) '
-                'will be available once team management is added — coming soon.',
-                style: TextStyle(
-                    fontSize: 11, color: OpticsColors.textMuted),
+                'OR SHARE WITH SPECIFIC PEOPLE',
+                style: OpticsTextStyles.sectionLabel,
               ),
-              if (_err != null) ...[
-                const SizedBox(height: 8),
-                Text(_err!,
-                    style: const TextStyle(
-                        color: OpticsColors.danger, fontSize: 12)),
+              const SizedBox(height: 8),
+
+              // Email input — only shown for owner/admin
+              if (canAdmin) ...[
+                TextField(
+                  controller: _emailController,
+                  style: const TextStyle(color: OpticsColors.textPrimary),
+                  decoration: const InputDecoration(
+                    hintText: 'Email address (invite a guest)',
+                    hintStyle: TextStyle(color: OpticsColors.textSecondary),
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 10),
+              ] else ...[
+                const Text(
+                  'Only Owners and Admins can invite guests by email.',
+                  style: TextStyle(fontSize: 11, color: OpticsColors.textMuted),
+                ),
+                const SizedBox(height: 10),
               ],
-              const SizedBox(height: 16),
+
+              // Picker list
+              Flexible(
+                child: _ReportPickerList(
+                  loading: _loadingCandidates,
+                  error: _candidatesError,
+                  rows: _candidates,
+                  selectedIds: _selectedUserIds,
+                  onToggle: (id, on) {
+                    setState(() {
+                      if (on) {
+                        _selectedUserIds.add(id);
+                      } else {
+                        _selectedUserIds.remove(id);
+                      }
+                    });
+                  },
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              // Manage Access toggle
+              InkWell(
+                onTap: () => setState(() => _showManage = !_showManage),
+                child: Row(
+                  children: [
+                    Icon(
+                      _showManage ? Icons.expand_less : Icons.expand_more,
+                      size: 18,
+                      color: OpticsColors.textSecondary,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'MANAGE ACCESS (${_shares.length})',
+                      style: OpticsTextStyles.headingMd.copyWith(fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+
+              if (_showManage) ...[
+                const SizedBox(height: 6),
+                _ReportManageAccessList(
+                  loading: _loadingShares,
+                  error: _sharesError,
+                  shares: _shares,
+                  busy: _submitting,
+                  onRevoke: _revoke,
+                ),
+              ],
+
+              const SizedBox(height: 12),
+
+              // Action row
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Cancel'),
+                    onPressed: _submitting ? null : () => Navigator.pop(context),
+                    child: const Text('Close'),
                   ),
                   const SizedBox(width: 8),
                   ElevatedButton(
-                    onPressed: _busy ? null : _save,
-                    child: _busy
+                    onPressed: _submitting ? null : _submitShare,
+                    child: _submitting
                         ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.black),
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Text('Save'),
+                        : Text(_shareButtonLabel()),
                   ),
                 ],
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ── Per-user picker ────────────────────────────────────────────────────────────
+
+class _ReportPickerList extends StatelessWidget {
+  final bool loading;
+  final String? error;
+  final List<Map<String, dynamic>> rows;
+  final Set<String> selectedIds;
+  final void Function(String userId, bool on) onToggle;
+  const _ReportPickerList({
+    required this.loading,
+    required this.error,
+    required this.rows,
+    required this.selectedIds,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const SizedBox(
+        height: 80,
+        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      );
+    }
+    if (error != null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Text(error!,
+            style: const TextStyle(color: OpticsColors.textSecondary, fontSize: 12)),
+      );
+    }
+    if (rows.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 14),
+        child: Text(
+          'No users available to share with.',
+          style: TextStyle(color: OpticsColors.textSecondary, fontSize: 12),
+        ),
+      );
+    }
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0x1AFFFFFF)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: ListView.separated(
+        shrinkWrap: true,
+        itemCount: rows.length,
+        separatorBuilder: (_, __) =>
+            const Divider(color: Color(0x14FFFFFF), height: 1),
+        itemBuilder: (ctx, i) {
+          final u = rows[i];
+          final uid = (u['user_id'] ?? '').toString();
+          final name = (u['display_name'] ?? '').toString();
+          final email = (u['email'] ?? '').toString();
+          final memberships = (u['memberships'] as List?) ?? const [];
+          final alreadyShared = u['is_already_shared'] == true;
+          final selected = selectedIds.contains(uid);
+
+          final primary = name.trim().isEmpty ? email : name;
+          final showEmailSecondary = name.trim().isNotEmpty &&
+              name.trim().toLowerCase() != email.toLowerCase();
+
+          final tenantChips = <Widget>[];
+          for (final m in memberships) {
+            final mm = (m as Map).cast<String, dynamic>();
+            final tenant = (mm['tenant_name'] ?? '').toString();
+            final role = (mm['role'] ?? '').toString();
+            final colorHex = (mm['tenant_color'] ?? '').toString();
+            tenantChips.add(_ReportRoleChip(
+              tenant: tenant,
+              role: role,
+              tenantColorHex: colorHex,
+            ));
+          }
+
+          final row = Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: Checkbox(
+                    value: selected,
+                    onChanged: alreadyShared ? null : (v) => onToggle(uid, v ?? false),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            primary,
+                            style: TextStyle(
+                              color: alreadyShared
+                                  ? OpticsColors.textSecondary
+                                  : OpticsColors.textPrimary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          ...tenantChips,
+                        ],
+                      ),
+                      if (showEmailSecondary) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          email,
+                          style: const TextStyle(
+                            color: OpticsColors.textSecondary,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+
+          if (alreadyShared) {
+            return Tooltip(
+              message: 'Already shared — manage in Manage Access below.',
+              child: Opacity(opacity: 0.55, child: row),
+            );
+          }
+          return row;
+        },
+      ),
+    );
+  }
+}
+
+class _ReportRoleChip extends StatelessWidget {
+  final String tenant;
+  final String role;
+  final String tenantColorHex;
+  const _ReportRoleChip({
+    required this.tenant,
+    required this.role,
+    required this.tenantColorHex,
+  });
+
+  static const Color _fallback = Color(0xFF9CA3B5);
+
+  Color _parseColor(String hex) {
+    final s = hex.trim().replaceFirst('#', '');
+    if (s.length != 6) return _fallback;
+    final v = int.tryParse(s, radix: 16);
+    if (v == null) return _fallback;
+    return Color(0xFF000000 | v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tenantColor = _parseColor(tenantColorHex);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        border: Border.all(color: tenantColor.withValues(alpha: 0.55)),
+        borderRadius: BorderRadius.circular(4),
+        color: tenantColor.withValues(alpha: 0.08),
+      ),
+      child: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: tenant.toUpperCase(),
+              style: TextStyle(
+                color: tenantColor,
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.4,
+              ),
+            ),
+            TextSpan(
+              text: '  ${role.toUpperCase()}',
+              style: TextStyle(
+                color: tenantColor.withValues(alpha: 0.65),
+                fontSize: 9,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0.4,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ReportManageAccessList extends StatelessWidget {
+  final bool loading;
+  final String? error;
+  final List<Map<String, dynamic>> shares;
+  final bool busy;
+  final void Function(String shareId) onRevoke;
+  const _ReportManageAccessList({
+    required this.loading,
+    required this.error,
+    required this.shares,
+    required this.busy,
+    required this.onRevoke,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 10),
+        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      );
+    }
+    if (error != null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Text(error!,
+            style: const TextStyle(color: OpticsColors.textSecondary, fontSize: 12)),
+      );
+    }
+    if (shares.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 6),
+        child: Text(
+          'Not shared with anyone specifically yet.',
+          style: TextStyle(color: OpticsColors.textSecondary, fontSize: 12),
+        ),
+      );
+    }
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0x1AFFFFFF)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          for (int i = 0; i < shares.length; i++) ...[
+            if (i > 0) const Divider(color: Color(0x14FFFFFF), height: 1),
+            _shareRow(shares[i]),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _shareRow(Map<String, dynamic> s) {
+    final shareId = (s['share_id'] ?? '').toString();
+    final name = (s['display_name'] ?? s['email'] ?? '').toString();
+    final email = (s['email'] ?? '').toString();
+    final isPending = s['is_pending'] == true;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        name,
+                        style: const TextStyle(
+                          color: OpticsColors.textPrimary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (isPending) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                              color: const Color(0xFFFFB454).withValues(alpha: 0.6)),
+                          borderRadius: BorderRadius.circular(4),
+                          color: const Color(0xFFFFB454).withValues(alpha: 0.08),
+                        ),
+                        child: const Text(
+                          'PENDING',
+                          style: TextStyle(
+                            color: Color(0xFFFFB454),
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 2),
+                if (email.isNotEmpty)
+                  Text(
+                    email,
+                    style: const TextStyle(
+                      color: OpticsColors.textSecondary,
+                      fontSize: 11,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Revoke access',
+            icon: const Icon(Icons.remove_circle_outline, size: 18),
+            onPressed: busy ? null : () => onRevoke(shareId),
+          ),
+        ],
       ),
     );
   }

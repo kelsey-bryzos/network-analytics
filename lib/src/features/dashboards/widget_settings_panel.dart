@@ -136,9 +136,35 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
       'Show Reorder Level': (s['showReorderLevel'] as bool?) ?? false,
     };
     // Raw SQL escape hatch — stored under binding.raw_sql.
-    _origRawSql =
+    final String savedRawSql =
         (widget.widget.binding['raw_sql'] as String?)?.toString() ?? '';
-    _rawSql = TextEditingController(text: _origRawSql);
+    // Auto-populate SQL from the canned metric translation if the field is
+    // empty — so the user sees the SQL immediately on opening the SQL tab,
+    // with no button to click.
+    final String autoSql = () {
+      if (savedRawSql.isNotEmpty) return savedRawSql;
+      final metric = () {
+        final brz = widget.widget.binding['brz'];
+        if (brz is Map) return (brz['metric'] as String?)?.toLowerCase();
+        return null;
+      }();
+      if (metric == null || !isCannedMetricTranslatable(metric)) return '';
+      final sTimeRange = (widget.widget.settings['timeRange'] as String?);
+      final tr = migrateTimeRange(
+        (sTimeRange != null && sTimeRange.isNotEmpty)
+            ? sTimeRange
+            : (widget.widget.binding['brz'] is Map
+                ? (widget.widget.binding['brz']['time_range'] as String?)
+                : null),
+      );
+      final translation = translateCannedMetric(metric: metric, timeRange: tr);
+      if (translation == null) return '';
+      return generateSqlFromQueryV2(translation.query).combined();
+    }();
+    // _origRawSql is what Reset restores to — the auto-populated SQL, not
+    // the empty saved value (which would wipe the field on Reset).
+    _origRawSql = autoSql;
+    _rawSql = TextEditingController(text: autoSql);
     _rawSql.addListener(_emitPreview);
 
     // Set current values
@@ -465,7 +491,7 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _label('Widget SQL (Bryzos-only)'),
+        _label('Widget SQL'),
         // Editor
         Expanded(
           flex: 5,
@@ -488,48 +514,12 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
               ),
               decoration: const InputDecoration.collapsed(
                 hintText:
-                    'SELECT ...\nFROM "rds_..."\nWHERE ...\n\nLeave empty to use the widget\'s default metric.',
+                    'SELECT ...\nFROM "rds_..."\nWHERE ...\n\nClear to restore the widget\'s default metric.',
               ),
             ),
           ),
         ),
         const SizedBox(height: 6),
-        // "Load this widget's SQL" — Bryzos-only affordance. Only visible when
-        // (a) the widget's canned metric has a query_v2 translation available,
-        // and (b) the editor is currently empty. Clicking pre-fills the
-        // editor with the Postgres SQL equivalent of the canned metric so the
-        // user has an editable starting point.
-        if (isCannedMetricTranslatable(_metric) && _rawSql.text.trim().isEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                icon: const Icon(Icons.download_outlined, size: 14),
-                label: const Text("Load this widget's SQL"),
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  textStyle: const TextStyle(fontSize: 11),
-                ),
-                onPressed: () {
-                  final metric = _metric;
-                  if (metric == null) return;
-                  final translation = translateCannedMetric(
-                    metric: metric,
-                    timeRange: _timeRange,
-                  );
-                  if (translation == null) return;
-                  final sql = generateSqlFromQueryV2(translation.query);
-                  setState(() {
-                    _rawSql.text = sql.combined();
-                  });
-                  _emitPreview();
-                },
-              ),
-            ),
-          ),
         Text(
           'Executes via rds_execute_raw_sql_bryzos (read-only, tenant-scoped, single statement).',
           style: TextStyle(

@@ -83,7 +83,6 @@ enum WidgetKind {
   pie,
   donut,
   table,
-  map,
   markdown;
 
   /// The type string accepted by the `widgets.type` DB check constraint.
@@ -134,7 +133,6 @@ enum WidgetKind {
       'table': WidgetKind.table,
       'grid': WidgetKind.table,
       'list': WidgetKind.table,
-      'map': WidgetKind.map,
       'markdown': WidgetKind.markdown,
       'text': WidgetKind.markdown,
       'note': WidgetKind.markdown,

@@ -1125,6 +1125,53 @@ class SupabaseRepo {
     }).eq('id', id);
   }
 
+  /// Picker data — returns shareable users for a report.
+  Future<List<Map<String, dynamic>>> listShareableUsersForReport(String reportId) async {
+    final rows = await client.rpc(
+      'list_shareable_users_for_report',
+      params: {'p_report_id': reportId},
+    );
+    return (rows as List).cast<Map<String, dynamic>>();
+  }
+
+  /// Manage Access data — current share rows for a report.
+  Future<List<Map<String, dynamic>>> listReportShares(String reportId) async {
+    final rows = await client.rpc(
+      'list_report_shares',
+      params: {'p_report_id': reportId},
+    );
+    return (rows as List).cast<Map<String, dynamic>>();
+  }
+
+  /// Share a report with a batch of targets (user_id or email).
+  Future<Map<String, dynamic>> shareReportBatch({
+    required String reportId,
+    required List<Map<String, String>> targets,
+  }) async {
+    final res = await client.functions.invoke(
+      'share-report',
+      body: {'report_id': reportId, 'targets': targets},
+      headers: _fnHeaders(),
+    );
+    if (res.status != 200 && res.status != 201) {
+      throw Exception(res.data?['error'] ?? 'Unknown error sharing report');
+    }
+    return (res.data as Map?)?.cast<String, dynamic>() ?? {};
+  }
+
+  /// Revoke a single report share by its share row id.
+  Future<bool> revokeReportShare(String shareId) async {
+    final res = await client.functions.invoke(
+      'revoke-report-share',
+      body: {'share_id': shareId},
+      headers: _fnHeaders(),
+    );
+    if (res.status != 200 && res.status != 201) {
+      throw Exception(res.data?['error'] ?? 'Unknown error revoking report share');
+    }
+    return (res.data as Map?)?['removed_membership'] == true;
+  }
+
   // ------------------ Export & Schedule ------------------
 
   /// Generate an export (PDF or XLSX) for a report by invoking the matching

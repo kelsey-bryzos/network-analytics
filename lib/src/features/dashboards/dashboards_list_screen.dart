@@ -1836,7 +1836,6 @@ class _AddWidgetDialogState extends State<_AddWidgetDialog> {
         'pie' => Icons.pie_chart_outline,
         'donut' => Icons.donut_large,
         'table' => Icons.table_chart_outlined,
-        'map' => Icons.map_outlined,
         'markdown' => Icons.text_fields,
         _ => Icons.widgets_outlined,
       };
@@ -1865,7 +1864,6 @@ class _AddWidgetDialogState extends State<_AddWidgetDialog> {
         'pie' => 'Pie',
         'donut' => 'Donut',
         'table' => 'Table',
-        'map' => 'Map',
         'markdown' => 'Text',
         _ => t,
       };

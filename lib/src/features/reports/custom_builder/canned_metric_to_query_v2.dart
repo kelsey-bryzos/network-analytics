@@ -41,8 +41,11 @@ class CannedTranslation {
 /// Registry of supported canned metrics. Add entries here (alphabetically)
 /// as slices land.
 const Set<String> kSupportedCannedMetrics = {
+  'all_buyers_table',
+  'all_sellers_table',
   'bpns_by_company',
   'bpns_by_user',
+  'bpns_full_list',
   'cancelled_orders_by_company',
   'cancelled_orders_by_user',
   'cancelled_orders_list',
@@ -50,9 +53,19 @@ const Set<String> kSupportedCannedMetrics = {
   'count_orders',
   'count_users',
   'credit_enabled_companies_kpi',
+  'least_searched_products',
+  'most_searched_products',
+  'order_lines_table',
   'orders_by_month',
   'orders_by_status',
+  'orders_in_dispute_table',
+  'orders_previewed_by_sellers_table',
   'orders_recent_list',
+  'orders_with_chat',
+  'price_search_feed_price_search_kpi',
+  'price_search_feed_purchasing_kpi',
+  'price_search_feed_quoting_kpi',
+  'price_search_feed_table',
   'quotes_by_company',
   'quotes_by_user',
   'revenue_by_month',
@@ -61,6 +74,7 @@ const Set<String> kSupportedCannedMetrics = {
   'sum_po_price',
   'top_companies_orders',
   'top_companies_revenue',
+  'unclaimed_orders_table',
   'users_by_type',
   'users_recent_list',
 };
@@ -88,10 +102,16 @@ CannedTranslation? translateCannedMetric({
   int? maxItems,
 }) {
   switch (metric) {
+    case 'all_buyers_table':
+      return _allBuyersTable(maxItems: maxItems ?? kDefaultTopN);
+    case 'all_sellers_table':
+      return _allSellersTable(maxItems: maxItems ?? kDefaultTopN);
     case 'bpns_by_company':
       return _bpnsByCompany(maxItems: maxItems ?? kDefaultTopN);
     case 'bpns_by_user':
       return _bpnsByUser(maxItems: maxItems ?? kDefaultTopN);
+    case 'bpns_full_list':
+      return _bpnsFullList(maxItems: maxItems ?? kDefaultTopN);
     case 'cancelled_orders_by_company':
       return _cancelledOrdersByCompany(maxItems: maxItems ?? kDefaultTopN);
     case 'cancelled_orders_by_user':
@@ -106,12 +126,33 @@ CannedTranslation? translateCannedMetric({
       return _countUsers();
     case 'credit_enabled_companies_kpi':
       return _creditEnabledCompaniesKpi();
+    case 'least_searched_products':
+      return _leastSearchedProducts(maxItems: maxItems ?? kDefaultTopN);
+    case 'most_searched_products':
+      return _mostSearchedProducts(maxItems: maxItems ?? kDefaultTopN);
+    case 'order_lines_table':
+      return _orderLinesTable(maxItems: maxItems ?? kDefaultTopN);
     case 'orders_by_month':
       return _ordersByMonth();
     case 'orders_by_status':
       return _ordersByStatus();
+    case 'orders_in_dispute_table':
+      return _ordersInDisputeTable(maxItems: maxItems ?? kDefaultTopN);
+    case 'orders_previewed_by_sellers_table':
+      return _ordersPreviewedBySellersTable(
+          maxItems: maxItems ?? kDefaultTopN);
     case 'orders_recent_list':
       return _ordersRecentList(maxItems: maxItems ?? kDefaultTopN);
+    case 'orders_with_chat':
+      return _ordersWithChat();
+    case 'price_search_feed_price_search_kpi':
+      return _priceSearchFeedKpi('Price Search');
+    case 'price_search_feed_purchasing_kpi':
+      return _priceSearchFeedKpi('Purchasing');
+    case 'price_search_feed_quoting_kpi':
+      return _priceSearchFeedKpi('Quoting');
+    case 'price_search_feed_table':
+      return _priceSearchFeedTable(maxItems: maxItems ?? kDefaultTopN);
     case 'quotes_by_company':
       return _quotesByCompany(maxItems: maxItems ?? kDefaultTopN);
     case 'quotes_by_user':
@@ -128,6 +169,8 @@ CannedTranslation? translateCannedMetric({
       return _topCompaniesOrders(maxItems: maxItems ?? kDefaultTopN);
     case 'top_companies_revenue':
       return _topCompaniesRevenue(maxItems: maxItems ?? kDefaultTopN);
+    case 'unclaimed_orders_table':
+      return _unclaimedOrdersTable(maxItems: maxItems ?? kDefaultTopN);
     case 'users_by_type':
       return _usersByType();
     case 'users_recent_list':
@@ -1557,5 +1600,565 @@ CannedTranslation _usersRecentList({required int maxItems}) {
         'first_name/last_name/email in TS, and picks company_name from '
         'user_main_company with a fall-back to client_company. The v2 path '
         'mirrors both fall-back chains via computed_columns.',
+  );
+}
+
+// ─── Slice #23: all_buyers_table ─────────────────────────────────────────
+//
+// widget-data-bryzos:
+//   • rdsSelect all_buyers_flat (buyer, email, buyer_company, purchases,
+//     aov, total_purchases, date_joined) ORDER BY date_joined DESC LIMIT max
+//
+// query_v2: pure detail-list on rds_all_buyers_flat.
+CannedTranslation _allBuyersTable({required int maxItems}) {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_all_buyers_flat',
+    columns: [
+      ColumnRef(table: 'rds_all_buyers_flat', column: 'buyer', alias: 'Buyer'),
+      ColumnRef(
+          table: 'rds_all_buyers_flat', column: 'email', alias: 'Buyer Email'),
+      ColumnRef(
+          table: 'rds_all_buyers_flat',
+          column: 'buyer_company',
+          alias: 'Buyer Company'),
+      ColumnRef(
+          table: 'rds_all_buyers_flat',
+          column: 'purchases',
+          alias: 'Purchases'),
+      ColumnRef(table: 'rds_all_buyers_flat', column: 'aov', alias: 'AOV'),
+      ColumnRef(
+          table: 'rds_all_buyers_flat',
+          column: 'total_purchases',
+          alias: 'Total Purchases'),
+      ColumnRef(
+          table: 'rds_all_buyers_flat',
+          column: 'date_joined',
+          alias: 'Date Joined'),
+    ],
+    orderBy: [OrderBySpec(alias: 'Date Joined', dir: 'DESC')],
+    limit: maxItems,
+    viz: VizSpec(chartType: 'table'),
+  );
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos also emits prior/current buyer bucket counts in '
+        '_data. This v2 slice returns only the row listing; the prior/current '
+        'counts are not reproduced in edit-mode.',
+  );
+}
+
+// ─── Slice #24: all_sellers_table ────────────────────────────────────────
+CannedTranslation _allSellersTable({required int maxItems}) {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_all_sellers_flat',
+    columns: [
+      ColumnRef(
+          table: 'rds_all_sellers_flat', column: 'seller', alias: 'Seller'),
+      ColumnRef(
+          table: 'rds_all_sellers_flat',
+          column: 'email',
+          alias: 'Seller Email'),
+      ColumnRef(
+          table: 'rds_all_sellers_flat',
+          column: 'seller_company',
+          alias: 'Seller Company'),
+      ColumnRef(table: 'rds_all_sellers_flat', column: 'sales', alias: 'Sales'),
+      ColumnRef(table: 'rds_all_sellers_flat', column: 'aov', alias: 'AOV'),
+      ColumnRef(
+          table: 'rds_all_sellers_flat',
+          column: 'total_sales',
+          alias: 'Total Sales'),
+      ColumnRef(
+          table: 'rds_all_sellers_flat',
+          column: 'date_joined',
+          alias: 'Date Joined'),
+    ],
+    orderBy: [OrderBySpec(alias: 'Date Joined', dir: 'DESC')],
+    limit: maxItems,
+    viz: VizSpec(chartType: 'table'),
+  );
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos also emits prior/current seller bucket counts in '
+        '_data. This v2 slice returns only the row listing.',
+  );
+}
+
+// ─── Slice #25: bpns_full_list ───────────────────────────────────────────
+//
+// widget-data-bryzos: full BPN listing (tag, description, user, company,
+// created), filtered to is_active = 1, company resolved via
+// tag.company_id -> main_company.id; falls back to user.company_id then
+// user.client_company then "(unknown)".
+CannedTranslation _bpnsFullList({required int maxItems}) {
+  const userExpr = 'coalesce('
+      'nullif(btrim(concat_ws(\' \', j1."first_name", j1."last_name")), \'\'), '
+      'j1."email_id", '
+      '\'(unknown)\')';
+  const companyExpr = 'coalesce('
+      'nullif(btrim(j2."company_name"), \'\'), '
+      'nullif(btrim(j1."client_company"), \'\'), '
+      '\'(unknown)\')';
+
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_product_tag_mapping',
+    joins: [
+      JoinSpec(
+        table: 'rds_user',
+        type: JoinType.left,
+        on: [
+          JoinOnPair(
+            fromTable: 'rds_user_product_tag_mapping',
+            fromColumn: 'user_id',
+            toTable: 'rds_user',
+            toColumn: 'id',
+          ),
+        ],
+      ),
+      JoinSpec(
+        table: 'rds_user_main_company',
+        type: JoinType.left,
+        on: [
+          JoinOnPair(
+            fromTable: 'rds_user_product_tag_mapping',
+            fromColumn: 'company_id',
+            toTable: 'rds_user_main_company',
+            toColumn: 'id',
+          ),
+        ],
+      ),
+    ],
+    columns: [
+      ColumnRef(
+          table: 'rds_user_product_tag_mapping',
+          column: 'tag',
+          alias: 'Tag'),
+      ColumnRef(
+          table: 'rds_user_product_tag_mapping',
+          column: 'description',
+          alias: 'Description'),
+      ColumnRef(
+          table: 'rds_user_product_tag_mapping',
+          column: 'created_date',
+          alias: 'Created'),
+    ],
+    computedColumns: [
+      ComputedColumn(expression: userExpr, alias: 'User'),
+      ComputedColumn(expression: companyExpr, alias: 'Company'),
+    ],
+    filters: [
+      FilterSpec(
+        table: 'rds_user_product_tag_mapping',
+        column: 'is_active',
+        op: '=',
+        value: 1,
+      ),
+    ],
+    orderBy: [OrderBySpec(alias: 'Created', dir: 'DESC')],
+    limit: maxItems,
+    viz: VizSpec(chartType: 'table'),
+  );
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos preferred tag.company_id when present, falling '
+        'back to user.company_id. The v2 join uses tag.company_id directly '
+        '(the primary lookup path); if that is null the company name '
+        'coalesces to user.client_company then "(unknown)".',
+  );
+}
+
+// ─── Slice #26: order_lines_table ────────────────────────────────────────
+CannedTranslation _orderLinesTable({required int maxItems}) {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_order_lines_flat',
+    columns: [
+      ColumnRef(
+          table: 'rds_order_lines_flat',
+          column: 'buyer_po_number',
+          alias: 'Order#'),
+      ColumnRef(
+          table: 'rds_order_lines_flat', column: 'po_line', alias: 'Line'),
+      ColumnRef(
+          table: 'rds_order_lines_flat',
+          column: 'product',
+          alias: 'Product'),
+      ColumnRef(table: 'rds_order_lines_flat', column: 'qty', alias: 'Qty'),
+      ColumnRef(
+          table: 'rds_order_lines_flat', column: 'qty_unit', alias: 'Unit'),
+      ColumnRef(
+          table: 'rds_order_lines_flat',
+          column: 'buyer_price_per_unit',
+          alias: 'Unit Price'),
+      ColumnRef(
+          table: 'rds_order_lines_flat',
+          column: 'buyer_line_total',
+          alias: 'Line Total'),
+      ColumnRef(
+          table: 'rds_order_lines_flat',
+          column: 'buyer_company',
+          alias: 'Buyer Co.'),
+      ColumnRef(
+          table: 'rds_order_lines_flat',
+          column: 'seller_company',
+          alias: 'Seller Co.'),
+      ColumnRef(
+          table: 'rds_order_lines_flat',
+          column: 'line_status',
+          alias: 'Status'),
+      ColumnRef(
+          table: 'rds_order_lines_flat',
+          column: 'created_date',
+          alias: 'Created'),
+    ],
+    orderBy: [OrderBySpec(alias: 'Created', dir: 'DESC')],
+    limit: maxItems,
+    viz: VizSpec(chartType: 'table'),
+  );
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'Detail listing. widget-data-bryzos formats unit price / line total '
+        'as en-US currency strings; the v2 path returns raw numeric columns '
+        'and defers formatting to the render layer.',
+  );
+}
+
+// ─── Slice #27: orders_in_dispute_table ──────────────────────────────────
+//
+// widget-data-bryzos: filters rds_dispute_counters_flat to active statuses
+// (Pending / Countered — Awaiting Seller / Awaiting Buyer) via PostgREST
+// `status=in.(…)`, orders by buyer_po_number DESC.
+CannedTranslation _ordersInDisputeTable({required int maxItems}) {
+  const activeStatuses = <String>[
+    'Pending — Awaiting Seller',
+    'Pending — Awaiting Buyer',
+    'Countered — Awaiting Seller',
+    'Countered — Awaiting Buyer',
+  ];
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_dispute_counters_flat',
+    columns: [
+      ColumnRef(
+          table: 'rds_dispute_counters_flat',
+          column: 'buyer_po_number',
+          alias: 'Order#'),
+      ColumnRef(
+          table: 'rds_dispute_counters_flat',
+          column: 'event',
+          alias: 'Dispute Type'),
+      ColumnRef(
+          table: 'rds_dispute_counters_flat',
+          column: 'buyer_company',
+          alias: 'Buyer Company'),
+      ColumnRef(
+          table: 'rds_dispute_counters_flat',
+          column: 'buyer',
+          alias: 'Buyer'),
+      ColumnRef(
+          table: 'rds_dispute_counters_flat',
+          column: 'seller_company',
+          alias: 'Seller Company'),
+      ColumnRef(
+          table: 'rds_dispute_counters_flat',
+          column: 'seller',
+          alias: 'Seller'),
+      ColumnRef(
+          table: 'rds_dispute_counters_flat',
+          column: 'status',
+          alias: 'Status'),
+    ],
+    filters: [
+      FilterSpec(
+        table: 'rds_dispute_counters_flat',
+        column: 'status',
+        op: 'IN',
+        value: activeStatuses,
+      ),
+    ],
+    orderBy: [OrderBySpec(alias: 'Order#', dir: 'DESC')],
+    limit: maxItems,
+    viz: VizSpec(chartType: 'table'),
+  );
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'Active-dispute filter is expressed as an IN clause on the four '
+        'awaiting-seller/buyer statuses — matches the widget exactly.',
+  );
+}
+
+// ─── Slice #28: orders_previewed_by_sellers_table ────────────────────────
+CannedTranslation _ordersPreviewedBySellersTable({required int maxItems}) {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_orders_previewed_by_sellers_flat',
+    columns: [
+      ColumnRef(
+          table: 'rds_orders_previewed_by_sellers_flat',
+          column: 'order_number',
+          alias: 'Order#'),
+      ColumnRef(
+          table: 'rds_orders_previewed_by_sellers_flat',
+          column: 'purchase_date_fmt',
+          alias: 'Purchase Date'),
+      ColumnRef(
+          table: 'rds_orders_previewed_by_sellers_flat',
+          column: 'buyer_company',
+          alias: 'Buyer Company'),
+      ColumnRef(
+          table: 'rds_orders_previewed_by_sellers_flat',
+          column: 'buyer',
+          alias: 'Buyer'),
+      ColumnRef(
+          table: 'rds_orders_previewed_by_sellers_flat',
+          column: 'seller_company',
+          alias: 'Seller Company'),
+      ColumnRef(
+          table: 'rds_orders_previewed_by_sellers_flat',
+          column: 'seller',
+          alias: 'Seller'),
+      ColumnRef(
+          table: 'rds_orders_previewed_by_sellers_flat',
+          column: 'preview_screen_fmt',
+          alias: 'Preview Screen'),
+      ColumnRef(
+          table: 'rds_orders_previewed_by_sellers_flat',
+          column: 'claim_screen_fmt',
+          alias: 'Claim Screen'),
+    ],
+    orderBy: [OrderBySpec(alias: 'Purchase Date', dir: 'DESC')],
+    limit: maxItems,
+    viz: VizSpec(chartType: 'table'),
+  );
+  return CannedTranslation(query: q);
+}
+
+// ─── Slice #29: unclaimed_orders_table ───────────────────────────────────
+CannedTranslation _unclaimedOrdersTable({required int maxItems}) {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_unclaimed_orders_flat',
+    columns: [
+      ColumnRef(
+          table: 'rds_unclaimed_orders_flat',
+          column: 'purchase_date_fmt',
+          alias: 'Purchase Date'),
+      ColumnRef(
+          table: 'rds_unclaimed_orders_flat',
+          column: 'delivery_date_fmt',
+          alias: 'Delivery Date'),
+      ColumnRef(
+          table: 'rds_unclaimed_orders_flat',
+          column: 'buyer_po_number',
+          alias: 'Order#'),
+      ColumnRef(
+          table: 'rds_unclaimed_orders_flat',
+          column: 'company',
+          alias: 'Company'),
+      ColumnRef(
+          table: 'rds_unclaimed_orders_flat',
+          column: 'buyer',
+          alias: 'Buyer'),
+      ColumnRef(
+          table: 'rds_unclaimed_orders_flat',
+          column: 'deliver_to',
+          alias: 'Deliver To'),
+      ColumnRef(
+          table: 'rds_unclaimed_orders_flat',
+          column: 'order_value_fmt',
+          alias: 'Order Value'),
+      ColumnRef(
+          table: 'rds_unclaimed_orders_flat',
+          column: 'created_date',
+          alias: 'Created'),
+    ],
+    orderBy: [OrderBySpec(alias: 'Created', dir: 'DESC')],
+    limit: maxItems,
+    viz: VizSpec(chartType: 'table'),
+  );
+  return CannedTranslation(query: q);
+}
+
+// ─── Slice #30: price_search_feed_table ──────────────────────────────────
+CannedTranslation _priceSearchFeedTable({required int maxItems}) {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_price_search_feed_flat',
+    columns: [
+      ColumnRef(
+          table: 'rds_price_search_feed_flat',
+          column: 'source',
+          alias: 'Source'),
+      ColumnRef(
+          table: 'rds_price_search_feed_flat',
+          column: 'company',
+          alias: 'Company'),
+      ColumnRef(
+          table: 'rds_price_search_feed_flat',
+          column: 'buyer',
+          alias: 'Buyer'),
+      ColumnRef(
+          table: 'rds_price_search_feed_flat',
+          column: 'searched_product',
+          alias: 'Searched Product'),
+      ColumnRef(
+          table: 'rds_price_search_feed_flat',
+          column: 'price',
+          alias: 'Price'),
+      ColumnRef(
+          table: 'rds_price_search_feed_flat',
+          column: 'searched_at',
+          alias: 'Date'),
+    ],
+    orderBy: [OrderBySpec(alias: 'Date', dir: 'DESC')],
+    limit: maxItems,
+    viz: VizSpec(chartType: 'table'),
+  );
+  return CannedTranslation(query: q);
+}
+
+// ─── Slice #31: price_search_feed_price_search_kpi ───────────────────────
+// ─── Slice #32: price_search_feed_purchasing_kpi ─────────────────────────
+// ─── Slice #33: price_search_feed_quoting_kpi ────────────────────────────
+//
+// widget-data-bryzos returns an exact HEAD count filtered by source.
+// v2 mirrors that as a count(*) on rds_price_search_feed_flat with a
+// source = <label> filter. This does NOT reproduce prior/current sparkline
+// buckets; those are display-only enhancements not needed for the count.
+CannedTranslation _priceSearchFeedKpi(String sourceLabel) {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_price_search_feed_flat',
+    filters: [
+      FilterSpec(
+        table: 'rds_price_search_feed_flat',
+        column: 'source',
+        op: '=',
+        value: sourceLabel,
+      ),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_price_search_feed_flat',
+        column: '',
+        fn: 'count',
+        alias: 'Searches',
+      ),
+    ],
+    viz: VizSpec(chartType: 'kpi', y: 'Searches'),
+  );
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos also computes a prior-window count and a per-'
+        'bucket sparkline; those are display-only, not represented in the '
+        'v2 query.',
+  );
+}
+
+// ─── Slice #34: most_searched_products ───────────────────────────────────
+// ─── Slice #35: least_searched_products ──────────────────────────────────
+//
+// widget-data-bryzos groups rds_user_search_analytics.keyword (trimmed,
+// non-empty), counts occurrences, then either desc-sort (most) or
+// asc-sort (least). The empty-keyword skip becomes an IS NOT NULL guard
+// combined with a keyword != '' filter.
+CannedTranslation _mostSearchedProducts({required int maxItems}) =>
+    _searchedProductsRanked(maxItems: maxItems, direction: 'DESC');
+
+CannedTranslation _leastSearchedProducts({required int maxItems}) =>
+    _searchedProductsRanked(maxItems: maxItems, direction: 'ASC');
+
+CannedTranslation _searchedProductsRanked({
+  required int maxItems,
+  required String direction,
+}) {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_search_analytics',
+    columns: [
+      ColumnRef(
+          table: 'rds_user_search_analytics',
+          column: 'keyword',
+          alias: 'Product / Keyword'),
+    ],
+    filters: [
+      FilterSpec(
+        table: 'rds_user_search_analytics',
+        column: 'keyword',
+        op: 'IS NOT NULL',
+      ),
+      FilterSpec(
+        table: 'rds_user_search_analytics',
+        column: 'keyword',
+        op: '!=',
+        value: '',
+      ),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_search_analytics',
+        column: '',
+        fn: 'count',
+        alias: 'Searches',
+      ),
+    ],
+    groupBy: [
+      GroupBySpec(
+          table: 'rds_user_search_analytics', column: 'keyword'),
+    ],
+    orderBy: [OrderBySpec(alias: 'Searches', dir: direction)],
+    limit: maxItems,
+    viz: VizSpec(
+      chartType: 'bar',
+      x: 'Product / Keyword',
+      y: 'Searches',
+    ),
+  );
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos trims each keyword client-side and skips empty '
+        'strings. The v2 path filters keyword IS NOT NULL AND keyword != "" '
+        'and groups by the raw column — leading/trailing whitespace variants '
+        'may therefore appear as distinct rows in the RPC output.',
+  );
+}
+
+// ─── Slice #36: orders_with_chat ─────────────────────────────────────────
+//
+// widget-data-bryzos: KPI = count(distinct po_number) across
+// channel_chat_messages within the current window. Also emits a top-N table
+// of PO -> message-count pairs, but the KPI itself is just the distinct
+// count.
+CannedTranslation _ordersWithChat() {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_channel_chat_messages',
+    filters: [
+      FilterSpec(
+        table: 'rds_channel_chat_messages',
+        column: 'po_number',
+        op: 'IS NOT NULL',
+      ),
+      FilterSpec(
+        table: 'rds_channel_chat_messages',
+        column: 'po_number',
+        op: '!=',
+        value: '',
+      ),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_channel_chat_messages',
+        column: 'po_number',
+        fn: 'count_distinct',
+        alias: 'Orders w/ Chat',
+      ),
+    ],
+    viz: VizSpec(chartType: 'kpi', y: 'Orders w/ Chat'),
+  );
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'The widget also emits a per-PO message-count table via _rows. This '
+        'v2 slice materialises the KPI only (count-distinct po_number).',
   );
 }

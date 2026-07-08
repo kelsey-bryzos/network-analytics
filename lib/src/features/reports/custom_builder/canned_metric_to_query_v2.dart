@@ -41,6 +41,7 @@ class CannedTranslation {
 /// Registry of supported canned metrics. Add entries here (alphabetically)
 /// as slices land.
 const Set<String> kSupportedCannedMetrics = {
+  'bpns_by_company',
   'cancelled_orders_by_company',
   'count_companies',
   'count_orders',
@@ -48,7 +49,9 @@ const Set<String> kSupportedCannedMetrics = {
   'credit_enabled_companies_kpi',
   'orders_by_month',
   'orders_by_status',
+  'quotes_by_company',
   'revenue_by_month',
+  'searches_by_company',
   'sum_po_price',
   'top_companies_orders',
   'top_companies_revenue',
@@ -78,6 +81,8 @@ CannedTranslation? translateCannedMetric({
   int? maxItems,
 }) {
   switch (metric) {
+    case 'bpns_by_company':
+      return _bpnsByCompany(maxItems: maxItems ?? kDefaultTopN);
     case 'cancelled_orders_by_company':
       return _cancelledOrdersByCompany(maxItems: maxItems ?? kDefaultTopN);
     case 'count_companies':
@@ -92,8 +97,12 @@ CannedTranslation? translateCannedMetric({
       return _ordersByMonth();
     case 'orders_by_status':
       return _ordersByStatus();
+    case 'quotes_by_company':
+      return _quotesByCompany(maxItems: maxItems ?? kDefaultTopN);
     case 'revenue_by_month':
       return _revenueByMonth();
+    case 'searches_by_company':
+      return _searchesByCompany(maxItems: maxItems ?? kDefaultTopN);
     case 'sum_po_price':
       return _sumPoPrice();
     case 'top_companies_orders':
@@ -748,5 +757,298 @@ CannedTranslation _usersByType() {
         'widget-data-bryzos omits the "Other" bucket when its count is 0. '
         'The v2 render path always emits all three rows; a zero-count '
         '"Other" row will appear unless suppressed at the widget layer.',
+  );
+}
+
+// ─── Slice #13: bpns_by_company ──────────────────────────────────────────
+//
+// widget-data-bryzos:
+//   • fetches rows from user_product_tag_mapping (created_date, is_active,
+//     company_id) and user_main_company (id, company_name)
+//   • filters tags to is_active = 1
+//   • joins mapping.company_id → company.id, coalesces missing names to
+//     "(unknown)"
+//   • counts BPNs per company, sorts DESC by count, slices top `max_items`
+//   • emits `_labels`, `_data`, `_col1="Company"`, `_col2="BPNs"`,
+//     `_yLabel="BPNs"`.
+//
+// query_v2 equivalent (Path A — current window only, LEFT JOIN):
+//
+//   SELECT coalesce(j1."company_name",'(unknown)') AS "Company",
+//          count(*)                                AS "BPNs"
+//   FROM rds_user_product_tag_mapping t
+//   LEFT JOIN public.rds_user_main_company j1
+//     ON t."company_id"::text = j1."id"::text
+//    AND j1."tenant_id" = :tenant_id
+//    AND j1."data_source_id" = :data_source_id
+//   WHERE t."tenant_id" = :tenant_id
+//     AND t."data_source_id" = :data_source_id
+//     AND t."is_active" = 1
+//   GROUP BY coalesce(j1."company_name",'(unknown)')
+//   ORDER BY "BPNs" DESC
+//   LIMIT :max_items;
+CannedTranslation _bpnsByCompany({required int maxItems}) {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_product_tag_mapping',
+    joins: [
+      JoinSpec(
+        table: 'rds_user_main_company',
+        type: JoinType.left,
+        on: [
+          JoinOnPair(
+            fromTable: 'rds_user_product_tag_mapping',
+            fromColumn: 'company_id',
+            toTable: 'rds_user_main_company',
+            toColumn: 'id',
+          ),
+        ],
+      ),
+    ],
+    computedColumns: [
+      ComputedColumn(
+        expression: 'coalesce(j1."company_name", \'(unknown)\')',
+        alias: 'Company',
+      ),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_product_tag_mapping',
+        column: '',
+        fn: 'count',
+        alias: 'BPNs',
+      ),
+    ],
+    filters: [
+      FilterSpec(
+        table: 'rds_user_product_tag_mapping',
+        column: 'is_active',
+        op: '=',
+        value: 1,
+      ),
+    ],
+    groupBy: [
+      GroupBySpec.alias('Company'),
+    ],
+    orderBy: [
+      OrderBySpec(alias: 'BPNs', dir: 'DESC'),
+    ],
+    limit: maxItems,
+    viz: VizSpec(
+      chartType: 'bar',
+      x: 'Company',
+      y: 'BPNs',
+    ),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos loads all matching rows in memory and applies '
+        'the is_active filter + coalesce there. The v2 path pushes both to '
+        'the RPC via a filter and a computed_column expression, which '
+        'produces the same top-N ordering.',
+  );
+}
+
+// ─── Slice #14: quotes_by_company ────────────────────────────────────────
+//
+// widget-data-bryzos:
+//   • fetches save_order_draft (created_date, buyer_id, buyer_po_price),
+//     user (id, company_id, client_company), user_main_company
+//     (id, company_name)
+//   • resolves each draft's company as
+//       coalesce(company.company_name via user.company_id,
+//                user.client_company,
+//                '(unknown)')
+//   • counts drafts per resolved company, sorts DESC, slices top max_items
+//   • emits `_labels` (company), `_data` (counts), `_col1="Company"`,
+//     `_col2="Quotes"`, `_yLabel="Quotes"`.
+//
+// query_v2 equivalent (Path A — current window only, LEFT JOIN chain):
+//
+//   SELECT coalesce(j2."company_name", j1."client_company",'(unknown)')
+//            AS "Company",
+//          count(*) AS "Quotes"
+//   FROM rds_save_order_draft t
+//   LEFT JOIN public.rds_user j1
+//     ON t."buyer_id"::text = j1."id"::text
+//    AND j1."tenant_id" = :tenant_id
+//    AND j1."data_source_id" = :data_source_id
+//   LEFT JOIN public.rds_user_main_company j2
+//     ON j1."company_id"::text = j2."id"::text
+//    AND j2."tenant_id" = :tenant_id
+//    AND j2."data_source_id" = :data_source_id
+//   WHERE t."tenant_id" = :tenant_id
+//     AND t."data_source_id" = :data_source_id
+//   GROUP BY coalesce(j2."company_name", j1."client_company",'(unknown)')
+//   ORDER BY "Quotes" DESC
+//   LIMIT :max_items;
+CannedTranslation _quotesByCompany({required int maxItems}) {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_save_order_draft',
+    joins: [
+      JoinSpec(
+        table: 'rds_user',
+        type: JoinType.left,
+        on: [
+          JoinOnPair(
+            fromTable: 'rds_save_order_draft',
+            fromColumn: 'buyer_id',
+            toTable: 'rds_user',
+            toColumn: 'id',
+          ),
+        ],
+      ),
+      JoinSpec(
+        table: 'rds_user_main_company',
+        type: JoinType.left,
+        on: [
+          JoinOnPair(
+            fromTable: 'rds_user',
+            fromColumn: 'company_id',
+            toTable: 'rds_user_main_company',
+            toColumn: 'id',
+          ),
+        ],
+      ),
+    ],
+    computedColumns: [
+      ComputedColumn(
+        expression:
+            'coalesce(j2."company_name", j1."client_company", \'(unknown)\')',
+        alias: 'Company',
+      ),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_save_order_draft',
+        column: '',
+        fn: 'count',
+        alias: 'Quotes',
+      ),
+    ],
+    groupBy: [
+      GroupBySpec.alias('Company'),
+    ],
+    orderBy: [
+      OrderBySpec(alias: 'Quotes', dir: 'DESC'),
+    ],
+    limit: maxItems,
+    viz: VizSpec(
+      chartType: 'bar',
+      x: 'Company',
+      y: 'Quotes',
+    ),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos resolves the company label in-memory by joining '
+        'draft.buyer_id -> user.id, then user.company_id -> main_company.id, '
+        'falling back to user.client_company then "(unknown)". The v2 path '
+        'produces the same label via a computed_column coalesce over both '
+        'joined tables (j1=user, j2=main_company).',
+  );
+}
+
+// ─── Slice #15: searches_by_company ──────────────────────────────────────
+//
+// widget-data-bryzos:
+//   • fetches user_search_analytics (created_date, user_id),
+//     user (id, company_id, client_company), user_main_company
+//     (id, company_name)
+//   • resolves each search's company via user_id -> user.id,
+//     then user.company_id -> main_company.id, falling back to
+//     user.client_company then '(unknown)'
+//   • counts searches per resolved company, sorts DESC, slices top max_items
+//   • emits `_labels` (company), `_data` (counts), `_col1="Company"`,
+//     `_col2="Searches"`, `_yLabel="Searches"`.
+//
+// query_v2 equivalent (Path A — current window only, LEFT JOIN chain):
+//
+//   SELECT coalesce(j2."company_name", j1."client_company",'(unknown)')
+//            AS "Company",
+//          count(*) AS "Searches"
+//   FROM rds_user_search_analytics t
+//   LEFT JOIN public.rds_user j1
+//     ON t."user_id"::text = j1."id"::text
+//    AND j1."tenant_id" = :tenant_id
+//    AND j1."data_source_id" = :data_source_id
+//   LEFT JOIN public.rds_user_main_company j2
+//     ON j1."company_id"::text = j2."id"::text
+//    AND j2."tenant_id" = :tenant_id
+//    AND j2."data_source_id" = :data_source_id
+//   WHERE t."tenant_id" = :tenant_id
+//     AND t."data_source_id" = :data_source_id
+//   GROUP BY coalesce(j2."company_name", j1."client_company",'(unknown)')
+//   ORDER BY "Searches" DESC
+//   LIMIT :max_items;
+CannedTranslation _searchesByCompany({required int maxItems}) {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_search_analytics',
+    joins: [
+      JoinSpec(
+        table: 'rds_user',
+        type: JoinType.left,
+        on: [
+          JoinOnPair(
+            fromTable: 'rds_user_search_analytics',
+            fromColumn: 'user_id',
+            toTable: 'rds_user',
+            toColumn: 'id',
+          ),
+        ],
+      ),
+      JoinSpec(
+        table: 'rds_user_main_company',
+        type: JoinType.left,
+        on: [
+          JoinOnPair(
+            fromTable: 'rds_user',
+            fromColumn: 'company_id',
+            toTable: 'rds_user_main_company',
+            toColumn: 'id',
+          ),
+        ],
+      ),
+    ],
+    computedColumns: [
+      ComputedColumn(
+        expression:
+            'coalesce(j2."company_name", j1."client_company", \'(unknown)\')',
+        alias: 'Company',
+      ),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_search_analytics',
+        column: '',
+        fn: 'count',
+        alias: 'Searches',
+      ),
+    ],
+    groupBy: [
+      GroupBySpec.alias('Company'),
+    ],
+    orderBy: [
+      OrderBySpec(alias: 'Searches', dir: 'DESC'),
+    ],
+    limit: maxItems,
+    viz: VizSpec(
+      chartType: 'bar',
+      x: 'Company',
+      y: 'Searches',
+    ),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos resolves the company label in-memory by joining '
+        'search.user_id -> user.id, then user.company_id -> main_company.id, '
+        'falling back to user.client_company then "(unknown)". The v2 path '
+        'produces the same label via a computed_column coalesce over both '
+        'joined tables (j1=user, j2=main_company).',
   );
 }

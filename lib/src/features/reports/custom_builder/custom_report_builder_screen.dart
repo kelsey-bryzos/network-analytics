@@ -2122,10 +2122,14 @@ class _Step4Group extends StatelessWidget {
           children: [
             for (final g in query.groupBy)
               InputChip(
-                label: Text('${_bare(g.table)}.${g.column}'),
+                label: Text(g.isAlias
+                    ? g.alias!
+                    : '${_bare(g.table!)}.${g.column!}'),
                 onDeleted: () {
                   onMutate((q) => q.groupBy.removeWhere(
-                      (x) => x.table == g.table && x.column == g.column));
+                      (x) => x.isAlias
+                          ? x.alias == g.alias
+                          : (x.table == g.table && x.column == g.column)));
                 },
               ),
             ActionChip(
@@ -3809,7 +3813,9 @@ String _summarySql(CustomReportQueryV2 q) {
   if (q.groupBy.isNotEmpty) {
     sb.write('GROUP BY\n');
     sb.write(q.groupBy
-        .map((g) => '  ${_q(g.table)}.${_q(g.column)}')
+        .map((g) => g.isAlias
+            ? '  ${_q(g.alias!)}'
+            : '  ${_q(g.table!)}.${_q(g.column!)}')
         .join(',\n'));
     sb.write('\n');
   }

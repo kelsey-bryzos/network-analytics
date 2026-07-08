@@ -6,6 +6,8 @@ import '../../data/models.dart';
 import '../../data/supabase_repo.dart';
 import '../../design/theme.dart';
 import '../../shared/secure_error.dart';
+import '../reports/custom_builder/canned_metric_to_query_v2.dart';
+import '../reports/custom_builder/query_v2_sql_generator.dart';
 import 'time_range_options.dart';
 import 'time_range_picker.dart';
 
@@ -492,6 +494,42 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
           ),
         ),
         const SizedBox(height: 6),
+        // "Load this widget's SQL" — Bryzos-only affordance. Only visible when
+        // (a) the widget's canned metric has a query_v2 translation available,
+        // and (b) the editor is currently empty. Clicking pre-fills the
+        // editor with the Postgres SQL equivalent of the canned metric so the
+        // user has an editable starting point.
+        if (isCannedMetricTranslatable(_metric) && _rawSql.text.trim().isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                icon: const Icon(Icons.download_outlined, size: 14),
+                label: const Text("Load this widget's SQL"),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  textStyle: const TextStyle(fontSize: 11),
+                ),
+                onPressed: () {
+                  final metric = _metric;
+                  if (metric == null) return;
+                  final translation = translateCannedMetric(
+                    metric: metric,
+                    timeRange: _timeRange,
+                  );
+                  if (translation == null) return;
+                  final sql = generateSqlFromQueryV2(translation.query);
+                  setState(() {
+                    _rawSql.text = sql.combined();
+                  });
+                  _emitPreview();
+                },
+              ),
+            ),
+          ),
         Text(
           'Executes via rds_execute_raw_sql_bryzos (read-only, tenant-scoped, single statement).',
           style: TextStyle(

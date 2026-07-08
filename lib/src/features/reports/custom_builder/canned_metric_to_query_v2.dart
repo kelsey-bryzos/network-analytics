@@ -1,0 +1,752 @@
+/// Optics — Canned Metric → query_v2 Translator
+///
+/// Pure-Dart translator that produces a `CustomReportQueryV2` faithful to
+/// what a canned `binding.brz.metric` renders today via
+/// `widget-data-bryzos`. Used by:
+///
+///   1. Clone & Edit — when a Bryzos user clones a canned library item,
+///      the clone Edge Function hydrates `layout.builder.query_v2` with the
+///      translator's output so the clone opens in the v2 builder / v2 report
+///      view instead of the legacy widget path.
+///
+///   2. Widget SQL tab (Bryzos-only) — the raw-SQL editor pre-fills its
+///      placeholder text with the generated SQL so a user can see exactly
+///      what the canned metric is doing before they edit it.
+///
+/// **Path A scope:** first vertical slice ships `revenue_by_month` only.
+/// Other metrics return `null` and callers must gracefully fall back to the
+/// legacy `binding.brz.metric` path.
+///
+/// **Non-goals for slice #1:**
+///   * Comparison window / "vs prior period" delta — the widget-data-bryzos
+///     path emits `_meta.total/prior/delta` alongside the series; we render
+///     only the current window here. Delta indicator returns in a follow-up
+///     slice once `V2ReportView` learns the comparison_window response shape.
+library;
+
+import 'custom_report_query_v2.dart';
+
+/// Result of a translation attempt.
+class CannedTranslation {
+  /// The equivalent query_v2 spec. Non-null when the metric is supported.
+  final CustomReportQueryV2 query;
+
+  /// Human-readable note describing anything the widget does *after* the
+  /// RPC returns (e.g. rescaling to $M/$K). Informational only.
+  final String? postFetchNote;
+
+  const CannedTranslation({required this.query, this.postFetchNote});
+}
+
+/// Registry of supported canned metrics. Add entries here (alphabetically)
+/// as slices land.
+const Set<String> kSupportedCannedMetrics = {
+  'cancelled_orders_by_company',
+  'count_companies',
+  'count_orders',
+  'count_users',
+  'credit_enabled_companies_kpi',
+  'orders_by_month',
+  'orders_by_status',
+  'revenue_by_month',
+  'sum_po_price',
+  'top_companies_orders',
+  'top_companies_revenue',
+  'users_by_type',
+};
+
+/// Default top-N size when a widget hasn't stored its own `max_items` /
+/// `settings.maxItems`. Mirrors `widget-data-bryzos`'s default.
+const int kDefaultTopN = 10;
+
+/// Returns true when [metric] has a query_v2 translation available.
+bool isCannedMetricTranslatable(String? metric) {
+  if (metric == null) return false;
+  return kSupportedCannedMetrics.contains(metric);
+}
+
+/// Translate a canned `binding.brz.metric` into a `CustomReportQueryV2`.
+/// Returns null when the metric is not yet supported.
+///
+/// The [timeRange] argument mirrors the widget's stored `settings.timeRange`
+/// / `brz.time_range`. It is preserved on the output as a viz hint but not
+/// used to compute a fixed date filter — the v2 render path applies the
+/// wizard's active time range at execution time.
+CannedTranslation? translateCannedMetric({
+  required String metric,
+  String? timeRange,
+  int? maxItems,
+}) {
+  switch (metric) {
+    case 'cancelled_orders_by_company':
+      return _cancelledOrdersByCompany(maxItems: maxItems ?? kDefaultTopN);
+    case 'count_companies':
+      return _countCompanies();
+    case 'count_orders':
+      return _countOrders();
+    case 'count_users':
+      return _countUsers();
+    case 'credit_enabled_companies_kpi':
+      return _creditEnabledCompaniesKpi();
+    case 'orders_by_month':
+      return _ordersByMonth();
+    case 'orders_by_status':
+      return _ordersByStatus();
+    case 'revenue_by_month':
+      return _revenueByMonth();
+    case 'sum_po_price':
+      return _sumPoPrice();
+    case 'top_companies_orders':
+      return _topCompaniesOrders(maxItems: maxItems ?? kDefaultTopN);
+    case 'top_companies_revenue':
+      return _topCompaniesRevenue(maxItems: maxItems ?? kDefaultTopN);
+    case 'users_by_type':
+      return _usersByType();
+    default:
+      return null;
+  }
+}
+
+// ─── Slice #1: revenue_by_month ──────────────────────────────────────────
+//
+// widget-data-bryzos:
+//   • fetches `created_date`, `buyer_po_price` from user_purchase_order
+//   • buckets by month, sums `buyer_po_price`
+//   • scales total to $M / $K / $ based on magnitude
+//   • emits `_data`, `_labels`, `_unit`, `_yLabel="Revenue"`,
+//     `_meta.{total,prior,delta,totalFormatted}`
+//
+// query_v2 equivalent (Path A — current window only, no comparison_window):
+//
+//   SELECT date_trunc('month', t."created_date") AS "bucket_start",
+//          to_char(date_trunc('month', t."created_date"), 'Mon YYYY')
+//              AS "bucket_label",
+//          SUM(t."buyer_po_price") AS "Revenue"
+//   FROM rds_user_purchase_order t
+//   WHERE t."tenant_id" = :tenant_id
+//     AND t."data_source_id" = :data_source_id
+//   GROUP BY date_trunc('month', t."created_date")
+//   ORDER BY "bucket_start" ASC;
+//
+// Rescaling ($M / $K) is intentionally NOT applied server-side — the widget
+// today rescales for display only; keeping raw dollars in the RPC output
+// makes the number editable in the wizard and matches the schema mirror.
+CannedTranslation _revenueByMonth() {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_purchase_order',
+    computedColumns: [
+      ComputedColumn(
+        expression: 'date_trunc(\'month\', t."created_date")',
+        alias: 'bucket_start',
+      ),
+      ComputedColumn(
+        expression:
+            'to_char(date_trunc(\'month\', t."created_date"), \'Mon YYYY\')',
+        alias: 'bucket_label',
+      ),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_purchase_order',
+        column: 'buyer_po_price',
+        fn: 'sum',
+        alias: 'Revenue',
+      ),
+    ],
+    groupBy: [
+      GroupBySpec.alias('bucket_start'),
+    ],
+    orderBy: [
+      OrderBySpec(alias: 'bucket_start', dir: 'ASC'),
+    ],
+    viz: VizSpec(
+      chartType: 'line',
+      x: 'bucket_label',
+      y: 'Revenue',
+    ),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos additionally rescales the total to \$M/\$K for '
+        'display and emits a prior-period delta in _meta. Both are display-'
+        'only and not reproduced by the v2 render path in this slice.',
+  );
+}
+
+// ─── Slice #2: orders_by_month ───────────────────────────────────────────
+//
+// widget-data-bryzos:
+//   • fetches `created_date` from user_purchase_order
+//   • buckets by month, counts rows per bucket
+//   • emits `_data`, `_labels`, `_unit=""`, `_yLabel="Orders"`,
+//     `_meta.{total,prior,delta}`
+//
+// query_v2 equivalent (Path A — current window only, no comparison_window):
+//
+//   SELECT date_trunc('month', t."created_date") AS "bucket_start",
+//          to_char(date_trunc('month', t."created_date"), 'Mon YYYY')
+//              AS "bucket_label",
+//          count(*) AS "Orders"
+//   FROM rds_user_purchase_order t
+//   WHERE t."tenant_id" = :tenant_id
+//     AND t."data_source_id" = :data_source_id
+//   GROUP BY date_trunc('month', t."created_date")
+//   ORDER BY "bucket_start" ASC;
+CannedTranslation _ordersByMonth() {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_purchase_order',
+    computedColumns: [
+      ComputedColumn(
+        expression: 'date_trunc(\'month\', t."created_date")',
+        alias: 'bucket_start',
+      ),
+      ComputedColumn(
+        expression:
+            'to_char(date_trunc(\'month\', t."created_date"), \'Mon YYYY\')',
+        alias: 'bucket_label',
+      ),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_purchase_order',
+        column: '',
+        fn: 'count',
+        alias: 'Orders',
+      ),
+    ],
+    groupBy: [
+      GroupBySpec.alias('bucket_start'),
+    ],
+    orderBy: [
+      OrderBySpec(alias: 'bucket_start', dir: 'ASC'),
+    ],
+    viz: VizSpec(
+      chartType: 'line',
+      x: 'bucket_label',
+      y: 'Orders',
+    ),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos additionally emits a prior-period delta in _meta. '
+        'Display-only and not reproduced by the v2 render path in this slice.',
+  );
+}
+
+// ─── Slice #3: top_companies_orders ──────────────────────────────────────
+//
+// widget-data-bryzos:
+//   • fetches `created_date`, `buyer_company_name` from user_purchase_order
+//   • counts orders per buyer_company_name (null → "(unknown)")
+//   • sorts DESC by count, slices top `max_items` (default 10)
+//   • emits `_labels` (company names), `_data` (counts),
+//     `_col1="Company"`, `_col2="Orders"`, `_yLabel="Orders"`.
+//
+// query_v2 equivalent (Path A — current window only):
+//
+//   SELECT coalesce(t."buyer_company_name",'(unknown)') AS "Company",
+//          count(*)                                     AS "Orders"
+//   FROM rds_user_purchase_order t
+//   WHERE t."tenant_id" = :tenant_id
+//     AND t."data_source_id" = :data_source_id
+//   GROUP BY coalesce(t."buyer_company_name",'(unknown)')
+//   ORDER BY "Orders" DESC
+//   LIMIT :max_items;
+CannedTranslation _topCompaniesOrders({required int maxItems}) {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_purchase_order',
+    computedColumns: [
+      ComputedColumn(
+        expression: 'coalesce(t."buyer_company_name", \'(unknown)\')',
+        alias: 'Company',
+      ),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_purchase_order',
+        column: '',
+        fn: 'count',
+        alias: 'Orders',
+      ),
+    ],
+    groupBy: [
+      GroupBySpec.alias('Company'),
+    ],
+    orderBy: [
+      OrderBySpec(alias: 'Orders', dir: 'DESC'),
+    ],
+    limit: maxItems,
+    viz: VizSpec(
+      chartType: 'bar',
+      x: 'Company',
+      y: 'Orders',
+    ),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos uses `max_items` (default 10) to control the top-N '
+        'cut. The translator wires this to SQL LIMIT so the wizard can adjust '
+        'it via the standard limit control.',
+  );
+}
+
+// ─── Slice #4: top_companies_revenue ─────────────────────────────────────
+//
+// widget-data-bryzos:
+//   • fetches `created_date`, `buyer_company_name`, `buyer_po_price`
+//   • sums buyer_po_price per buyer_company_name (null → "(unknown)")
+//   • sorts DESC by sum, slices top `max_items` (default 10)
+//   • rescales to $M / $K for display (peak-of-set based) — display-only
+//   • emits `_labels`, `_data`, `_unit`, `_yLabel="Revenue"`,
+//     `_col1="Company"`, `_col2="Revenue ($)"`.
+//
+// query_v2 equivalent (Path A — current window only, raw dollars):
+//
+//   SELECT coalesce(t."buyer_company_name",'(unknown)') AS "Company",
+//          SUM(t."buyer_po_price")                       AS "Revenue"
+//   FROM rds_user_purchase_order t
+//   WHERE t."tenant_id" = :tenant_id
+//     AND t."data_source_id" = :data_source_id
+//   GROUP BY coalesce(t."buyer_company_name",'(unknown)')
+//   ORDER BY "Revenue" DESC
+//   LIMIT :max_items;
+CannedTranslation _topCompaniesRevenue({required int maxItems}) {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_purchase_order',
+    computedColumns: [
+      ComputedColumn(
+        expression: 'coalesce(t."buyer_company_name", \'(unknown)\')',
+        alias: 'Company',
+      ),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_purchase_order',
+        column: 'buyer_po_price',
+        fn: 'sum',
+        alias: 'Revenue',
+      ),
+    ],
+    groupBy: [
+      GroupBySpec.alias('Company'),
+    ],
+    orderBy: [
+      OrderBySpec(alias: 'Revenue', dir: 'DESC'),
+    ],
+    limit: maxItems,
+    viz: VizSpec(
+      chartType: 'bar',
+      x: 'Company',
+      y: 'Revenue',
+    ),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos additionally rescales the top-N revenues to \$M/\$K '
+        'for display (based on peak of set). Display-only; the v2 render path '
+        'shows raw dollar values.',
+  );
+}
+
+// ─── Slice #5: count_orders (KPI) ────────────────────────────────────────
+//
+// widget-data-bryzos:
+//   • fetches `created_date` from user_purchase_order
+//   • counts rows in current vs. prior window; emits _data=[prior,current]
+//
+// query_v2 equivalent (Path A — total count, no comparison window):
+//
+//   SELECT count(*) AS "Orders"
+//   FROM rds_user_purchase_order t
+//   WHERE t."tenant_id" = :tenant_id AND t."data_source_id" = :data_source_id;
+CannedTranslation _countOrders() {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_purchase_order',
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_purchase_order',
+        column: '',
+        fn: 'count',
+        alias: 'Orders',
+      ),
+    ],
+    viz: VizSpec(chartType: 'kpi', y: 'Orders'),
+  );
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos additionally emits a prior-period delta in _meta '
+        '(current vs. prior window). Display-only and not reproduced by the '
+        'v2 render path in this slice.',
+  );
+}
+
+// ─── Slice #6: sum_po_price (KPI) ────────────────────────────────────────
+//
+// widget-data-bryzos:
+//   • fetches `created_date`, `buyer_po_price`
+//   • sums buyer_po_price for current vs. prior window
+//   • rescales to $M/$K/$ for display (display-only)
+//
+// query_v2 equivalent (Path A — raw dollars, no comparison window):
+//
+//   SELECT sum(t."buyer_po_price") AS "Revenue"
+//   FROM rds_user_purchase_order t
+//   WHERE t."tenant_id" = :tenant_id AND t."data_source_id" = :data_source_id;
+CannedTranslation _sumPoPrice() {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_purchase_order',
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_purchase_order',
+        column: 'buyer_po_price',
+        fn: 'sum',
+        alias: 'Revenue',
+      ),
+    ],
+    viz: VizSpec(chartType: 'kpi', y: 'Revenue'),
+  );
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos additionally rescales the total to \$M/\$K for '
+        'display and emits a prior-period delta in _meta. Both are display-'
+        'only; the v2 render path shows raw dollar values.',
+  );
+}
+
+// ─── Slice #7: count_users (KPI) ─────────────────────────────────────────
+//
+// widget-data-bryzos:
+//   • fetches `is_active`, `created_date` from user
+//   • counts active users in current vs. prior window
+//
+// query_v2 equivalent (Path A — active-user total, no comparison window):
+//
+//   SELECT count(*) AS "Users"
+//   FROM rds_user t
+//   WHERE t."tenant_id" = :tenant_id AND t."data_source_id" = :data_source_id
+//     AND t."is_active" = 1;
+CannedTranslation _countUsers() {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user',
+    filters: [
+      FilterSpec(
+        table: 'rds_user',
+        column: 'is_active',
+        op: '=',
+        value: 1,
+      ),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user',
+        column: '',
+        fn: 'count',
+        alias: 'Users',
+      ),
+    ],
+    viz: VizSpec(chartType: 'kpi', y: 'Users'),
+  );
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos additionally emits a prior-period delta and '
+        'all-time total in _meta. Display-only and not reproduced by the '
+        'v2 render path in this slice.',
+  );
+}
+
+// ─── Slice #8: count_companies (KPI) ─────────────────────────────────────
+//
+// widget-data-bryzos:
+//   • fetches `is_active`, `created_date` from user_main_company
+//   • counts active companies in current vs. prior window
+//
+// query_v2 equivalent (Path A — active-company total, no comparison window):
+//
+//   SELECT count(*) AS "Companies"
+//   FROM rds_user_main_company t
+//   WHERE t."tenant_id" = :tenant_id AND t."data_source_id" = :data_source_id
+//     AND t."is_active" = 1;
+CannedTranslation _countCompanies() {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_main_company',
+    filters: [
+      FilterSpec(
+        table: 'rds_user_main_company',
+        column: 'is_active',
+        op: '=',
+        value: 1,
+      ),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_main_company',
+        column: '',
+        fn: 'count',
+        alias: 'Companies',
+      ),
+    ],
+    viz: VizSpec(chartType: 'kpi', y: 'Companies'),
+  );
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos additionally emits a prior-period delta and '
+        'all-time total in _meta. Display-only and not reproduced by the '
+        'v2 render path in this slice.',
+  );
+}
+
+// ─── Slice #9: credit_enabled_companies_kpi (KPI) ────────────────────────
+//
+// widget-data-bryzos:
+//   • fetches `is_active`, `bnpl_status` from user_main_company (no window)
+//   • counts active companies whose bnpl_status = "ENABLED" (case-insensitive)
+//   • emits `_meta.{total, totalActive, pct}`
+//
+// query_v2 equivalent (Path A — BNPL-enabled count, no comparison window):
+//
+//   SELECT count(*) AS "Companies"
+//   FROM rds_user_main_company t
+//   WHERE t."tenant_id" = :tenant_id AND t."data_source_id" = :data_source_id
+//     AND t."is_active" = 1
+//     AND t."bnpl_status" ILIKE 'ENABLED';
+CannedTranslation _creditEnabledCompaniesKpi() {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_main_company',
+    filters: [
+      FilterSpec(
+        table: 'rds_user_main_company',
+        column: 'is_active',
+        op: '=',
+        value: 1,
+      ),
+      FilterSpec(
+        table: 'rds_user_main_company',
+        column: 'bnpl_status',
+        op: 'ILIKE',
+        value: 'ENABLED',
+      ),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_main_company',
+        column: '',
+        fn: 'count',
+        alias: 'Companies',
+      ),
+    ],
+    viz: VizSpec(chartType: 'kpi', y: 'Companies'),
+  );
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos additionally emits the pct-of-active in _meta '
+        '(BNPL enabled / total active). The v2 KPI render shows the count '
+        'only; percentage is not reproduced in this slice.',
+  );
+}
+
+// ─── Slice #10: cancelled_orders_by_company ──────────────────────────────
+//
+// widget-data-bryzos:
+//   • fetches `created_date`, `buyer_company_name`, `in_dispute`
+//   • counts rows where in_dispute is truthy, per buyer_company_name
+//     (null → "(unknown)")
+//   • sorts DESC by count, slices top `max_items` (default 10)
+//   • emits `_labels`, `_data`, `_yLabel="Disputed Orders"`,
+//     `_col1="Company"`, `_col2="Disputed"`.
+//
+// query_v2 equivalent (Path A — current window only):
+//
+//   SELECT coalesce(t."buyer_company_name",'(unknown)') AS "Company",
+//          count(*)                                     AS "Disputed"
+//   FROM rds_user_purchase_order t
+//   WHERE t."tenant_id" = :tenant_id
+//     AND t."data_source_id" = :data_source_id
+//     AND t."in_dispute" = 1
+//   GROUP BY coalesce(t."buyer_company_name",'(unknown)')
+//   ORDER BY "Disputed" DESC
+//   LIMIT :max_items;
+CannedTranslation _cancelledOrdersByCompany({required int maxItems}) {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_purchase_order',
+    computedColumns: [
+      ComputedColumn(
+        expression: 'coalesce(t."buyer_company_name", \'(unknown)\')',
+        alias: 'Company',
+      ),
+    ],
+    filters: [
+      FilterSpec(
+        table: 'rds_user_purchase_order',
+        column: 'in_dispute',
+        op: '=',
+        value: 1,
+      ),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_purchase_order',
+        column: '',
+        fn: 'count',
+        alias: 'Disputed',
+      ),
+    ],
+    groupBy: [
+      GroupBySpec.alias('Company'),
+    ],
+    orderBy: [
+      OrderBySpec(alias: 'Disputed', dir: 'DESC'),
+    ],
+    limit: maxItems,
+    viz: VizSpec(
+      chartType: 'bar',
+      x: 'Company',
+      y: 'Disputed',
+    ),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos uses `in_dispute` as a proxy for cancelled/'
+        'disputed orders. The translator preserves that semantic. `max_items` '
+        '(default 10) is wired to SQL LIMIT so the wizard can adjust it via '
+        'the standard limit control.',
+  );
+}
+
+// ─── Slice #11: orders_by_status ─────────────────────────────────────────
+//
+// widget-data-bryzos:
+//   • fetches created_date, in_dispute, is_closed from user_purchase_order
+//   • buckets each row into Open / Closed / Disputed
+//   • emits _labels, _data, _col1="Status", _col2="Orders"
+//
+// query_v2 equivalent:
+//
+//   SELECT case when t."in_dispute" = 1 then 'Disputed'
+//               when t."is_closed"  = 1 then 'Closed'
+//               else 'Open' end AS "Status",
+//          count(*) AS "Orders"
+//   FROM rds_user_purchase_order t
+//   WHERE t."tenant_id" = :tenant_id AND t."data_source_id" = :data_source_id
+//   GROUP BY 1
+//   ORDER BY "Orders" DESC;
+CannedTranslation _ordersByStatus() {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_purchase_order',
+    computedColumns: [
+      ComputedColumn(
+        expression:
+            'case when t."in_dispute" = 1 then \'Disputed\' '
+            'when t."is_closed" = 1 then \'Closed\' '
+            'else \'Open\' end',
+        alias: 'Status',
+      ),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_purchase_order',
+        column: '',
+        fn: 'count',
+        alias: 'Orders',
+      ),
+    ],
+    groupBy: [
+      GroupBySpec.alias('Status'),
+    ],
+    orderBy: [
+      OrderBySpec(alias: 'Orders', dir: 'DESC'),
+    ],
+    viz: VizSpec(
+      chartType: 'bar',
+      x: 'Status',
+      y: 'Orders',
+    ),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos uses `in_dispute` and `is_closed` as bigint '
+        'proxies for the three status buckets (Disputed / Closed / Open). '
+        'Priority: Disputed > Closed > Open. Translator preserves the same '
+        'ordering via a case expression.',
+  );
+}
+
+// ─── Slice #12: users_by_type ────────────────────────────────────────────
+//
+// widget-data-bryzos:
+//   • fetches created_date, type from user
+//   • buckets by upper(type) into Buyers / Sellers / Other
+//   • omits "Other" bucket when its count is 0
+//   • emits _labels, _data, _col1="Type", _col2="Users"
+//
+// query_v2 equivalent:
+//
+//   SELECT case when upper(t."type") = 'BUYER'  then 'Buyers'
+//               when upper(t."type") = 'SELLER' then 'Sellers'
+//               else 'Other' end AS "Type",
+//          count(*) AS "Users"
+//   FROM rds_user t
+//   WHERE t."tenant_id" = :tenant_id AND t."data_source_id" = :data_source_id
+//   GROUP BY 1
+//   ORDER BY "Users" DESC;
+//
+// Note: v2 render path always returns all three buckets. The widget-side
+// suppression of empty "Other" is a display detail preserved in
+// postFetchNote and not reproduced by the RPC.
+CannedTranslation _usersByType() {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user',
+    computedColumns: [
+      ComputedColumn(
+        expression:
+            'case when upper(t."type") = \'BUYER\' then \'Buyers\' '
+            'when upper(t."type") = \'SELLER\' then \'Sellers\' '
+            'else \'Other\' end',
+        alias: 'Type',
+      ),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user',
+        column: '',
+        fn: 'count',
+        alias: 'Users',
+      ),
+    ],
+    groupBy: [
+      GroupBySpec.alias('Type'),
+    ],
+    orderBy: [
+      OrderBySpec(alias: 'Users', dir: 'DESC'),
+    ],
+    viz: VizSpec(
+      chartType: 'bar',
+      x: 'Type',
+      y: 'Users',
+    ),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos omits the "Other" bucket when its count is 0. '
+        'The v2 render path always emits all three rows; a zero-count '
+        '"Other" row will appear unless suppressed at the widget layer.',
+  );
+}

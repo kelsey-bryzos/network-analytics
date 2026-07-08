@@ -2609,7 +2609,7 @@ CannedTranslation _avgPricePerLbByMetalTrend() {
         'SUM(revenue)/SUM(weight) for that metal+month. The v2 path emits '
         'two columns — Revenue (SUM buyer_line_total) and Weight_lbs '
         '(SUM total_weight) for ALL metals combined per month. Divide them '
-        'at the render layer to get the all-metals $/lb trend. To isolate '
+        'at the render layer to get the all-metals \$/lb trend. To isolate '
         'a single metal, add a metal_type filter in the wizard.',
   );
 }

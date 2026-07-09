@@ -388,7 +388,15 @@ class _WidgetRendererCore extends StatelessWidget {
       migrateTimeRange(model.settings['timeRange'] as String?);
   String get _sortBy {
     final metric = ((model.binding['brz'] as Map?)?['metric'] as String?) ?? '';
-    if (metric == 'avg_order_price_trend') return 'None';
+    // Time-series metrics produce chronologically ordered labels — never re-sort them.
+    const _chronologicalMetrics = {
+      'avg_order_price_trend',
+      'orders_by_month',
+      'revenue_by_month',
+      'searches_by_month',
+      'chat_volume_by_month',
+    };
+    if (_chronologicalMetrics.contains(metric)) return 'None';
     return model.settings['sortBy'] as String? ?? 'Value ↓';
   }
   int get _maxItems => (model.settings['maxItems'] as num?)?.toInt() ?? 0;

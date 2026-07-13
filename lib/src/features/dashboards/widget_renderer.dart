@@ -1512,7 +1512,7 @@ class _WidgetRendererCore extends StatelessWidget {
     // `_rows` rather than the labels/values pair used by ranked tables.
     // When present, render those as a generic multi-column detail table.
     final rawRows = model.binding['_rows'];
-    if (rawRows is List && rawRows.isNotEmpty) {
+    if (rawRows is List) {
       return _rowsDetailTable(rawRows);
     }
     if (_hasMulti) return _multiSeriesTable();

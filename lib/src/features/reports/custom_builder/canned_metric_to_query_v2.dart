@@ -41,12 +41,6 @@ class CannedTranslation {
 /// Registry of supported canned metrics. Add entries here (alphabetically)
 /// as slices land.
 const Set<String> kSupportedCannedMetrics = {
-  'accepted_orders_by_company',
-  'accepted_orders_by_user',
-  'accepted_orders_table',
-  'cancelled_lines_by_company',
-  'cancelled_lines_by_user',
-  'monthly_activity_summary',
   'all_buyers_table',
   'all_sellers_table',
   'avg_order_price_trend',
@@ -115,18 +109,6 @@ CannedTranslation? translateCannedMetric({
   int? maxItems,
 }) {
   switch (metric) {
-    case 'accepted_orders_by_company':
-      return _acceptedOrdersByCompany(maxItems: maxItems ?? kDefaultTopN);
-    case 'accepted_orders_by_user':
-      return _acceptedOrdersByUser(maxItems: maxItems ?? kDefaultTopN);
-    case 'accepted_orders_table':
-      return _acceptedOrdersTable(maxItems: maxItems ?? kDefaultTopN);
-    case 'cancelled_lines_by_company':
-      return _cancelledLinesByCompany(maxItems: maxItems ?? kDefaultTopN);
-    case 'cancelled_lines_by_user':
-      return _cancelledLinesByUser(maxItems: maxItems ?? kDefaultTopN);
-    case 'monthly_activity_summary':
-      return _monthlyActivitySummary();
     case 'all_buyers_table':
       return _allBuyersTable(maxItems: maxItems ?? kDefaultTopN);
     case 'avg_order_price_trend':
@@ -217,292 +199,6 @@ CannedTranslation? translateCannedMetric({
     default:
       return null;
   }
-}
-
-// ─── Accepted Orders: accepted_orders_by_company ─────────────────────────
-//
-// widget-data-bryzos:
-//   • fetches created_date, buyer_company_name, seller_id
-//   • counts rows where seller_id IS NOT NULL/non-empty, per buyer_company_name
-//   • sorts DESC by count, slices top max_items
-//
-// query_v2 equivalent:
-//
-//   SELECT coalesce(t."buyer_company_name",'(unknown)') AS "Company",
-//          count(*)                                     AS "Accepted"
-//   FROM rds_user_purchase_order t
-//   WHERE t."tenant_id" = :tenant_id
-//     AND t."data_source_id" = :data_source_id
-//     AND t."seller_id" IS NOT NULL
-//     AND t."seller_id" != ''
-//   GROUP BY coalesce(t."buyer_company_name",'(unknown)')
-//   ORDER BY "Accepted" DESC
-//   LIMIT :max_items;
-CannedTranslation _acceptedOrdersByCompany({required int maxItems}) {
-  final q = CustomReportQueryV2(
-    primaryTable: 'rds_user_purchase_order',
-    computedColumns: [
-      ComputedColumn(
-        expression: 'coalesce(t."buyer_company_name", \'(unknown)\')',
-        alias: 'Company',
-      ),
-    ],
-    filters: [
-      FilterSpec(
-        table: 'rds_user_purchase_order',
-        column: 'seller_id',
-        op: 'IS NOT NULL',
-      ),
-      FilterSpec(
-        table: 'rds_user_purchase_order',
-        column: 'seller_id',
-        op: '!=',
-        value: '',
-      ),
-    ],
-    aggregates: [
-      AggregateSpec(
-        table: 'rds_user_purchase_order',
-        column: '',
-        fn: 'count',
-        alias: 'Accepted',
-      ),
-    ],
-    groupBy: [GroupBySpec.alias('Company')],
-    orderBy: [OrderBySpec(alias: 'Accepted', dir: 'DESC')],
-    limit: maxItems,
-    viz: VizSpec(chartType: 'bar', x: 'Company', y: 'Accepted'),
-  );
-
-  return CannedTranslation(
-    query: q,
-    postFetchNote:
-        'Accepted = order has a seller_id (non-null, non-empty). '
-        'Groups by buyer company; counts orders claimed by any seller.',
-  );
-}
-
-// ─── Accepted Orders: accepted_orders_by_user ────────────────────────────
-//
-// widget-data-bryzos:
-//   • fetches created_date, buyer_email, seller_id
-//   • counts rows where seller_id IS NOT NULL/non-empty, per buyer (user label)
-//   • sorts DESC by count, slices top max_items
-CannedTranslation _acceptedOrdersByUser({required int maxItems}) {
-  const userLabelExpr = 'case '
-      'when j1."id" is null then coalesce(nullif(btrim(t."buyer_email"), \'\'), \'(unknown)\') '
-      'when coalesce(nullif(btrim(j2."company_name"), \'\'), j1."client_company", \'\') <> \'\' '
-      'then coalesce(nullif(btrim(concat_ws(\' \', j1."first_name", j1."last_name")), \'\'), '
-      'j1."email_id", j1."id"::text) '
-      '|| \'  (\' || coalesce(nullif(btrim(j2."company_name"), \'\'), j1."client_company") || \')\' '
-      'else coalesce(nullif(btrim(concat_ws(\' \', j1."first_name", j1."last_name")), \'\'), '
-      'j1."email_id", j1."id"::text, \'(unknown)\') '
-      'end';
-
-  final q = CustomReportQueryV2(
-    primaryTable: 'rds_user_purchase_order',
-    joins: [
-      JoinSpec(
-        table: 'rds_user',
-        type: JoinType.left,
-        on: [
-          JoinOnPair(
-            fromTable: 'rds_user_purchase_order',
-            fromColumn: 'buyer_email',
-            toTable: 'rds_user',
-            toColumn: 'email_id',
-          ),
-        ],
-      ),
-      JoinSpec(
-        table: 'rds_user_main_company',
-        type: JoinType.left,
-        on: [
-          JoinOnPair(
-            fromTable: 'rds_user',
-            fromColumn: 'company_id',
-            toTable: 'rds_user_main_company',
-            toColumn: 'id',
-          ),
-        ],
-      ),
-    ],
-    computedColumns: [
-      ComputedColumn(expression: userLabelExpr, alias: 'User'),
-    ],
-    aggregates: [
-      AggregateSpec(
-        table: 'rds_user_purchase_order',
-        column: '',
-        fn: 'count',
-        alias: 'Accepted',
-      ),
-    ],
-    filters: [
-      FilterSpec(
-        table: 'rds_user_purchase_order',
-        column: 'seller_id',
-        op: 'IS NOT NULL',
-      ),
-      FilterSpec(
-        table: 'rds_user_purchase_order',
-        column: 'seller_id',
-        op: '!=',
-        value: '',
-      ),
-    ],
-    groupBy: [GroupBySpec.alias('User')],
-    orderBy: [OrderBySpec(alias: 'Accepted', dir: 'DESC')],
-    limit: maxItems,
-    viz: VizSpec(chartType: 'bar', x: 'User', y: 'Accepted'),
-  );
-
-  return CannedTranslation(
-    query: q,
-    postFetchNote:
-        'Accepted = order has a seller_id (non-null, non-empty). '
-        'Groups by buyer user. Joins via buyer_email->email_id.',
-  );
-}
-
-// ─── Phase 2: accepted_orders_table ──────────────────────────────────────
-CannedTranslation _acceptedOrdersTable({required int maxItems}) {
-  final q = CustomReportQueryV2(
-    primaryTable: 'rds_user_purchase_order',
-    columns: [
-      ColumnRef(table: 'rds_user_purchase_order', column: 'buyer_po_number', alias: 'PO #'),
-      ColumnRef(table: 'rds_user_purchase_order', column: 'buyer_company_name', alias: 'Company'),
-      ColumnRef(table: 'rds_user_purchase_order', column: 'buyer_email', alias: 'Buyer'),
-      ColumnRef(table: 'rds_user_purchase_order', column: 'buyer_po_price', alias: 'Price'),
-      ColumnRef(table: 'rds_user_purchase_order', column: 'seller_company_name', alias: 'Seller'),
-      ColumnRef(table: 'rds_user_purchase_order', column: 'seller_claim_date', alias: 'Claimed'),
-      ColumnRef(table: 'rds_user_purchase_order', column: 'created_date', alias: 'Created'),
-    ],
-    filters: [
-      FilterSpec(table: 'rds_user_purchase_order', column: 'seller_id', op: 'IS NOT NULL'),
-      FilterSpec(table: 'rds_user_purchase_order', column: 'seller_id', op: '!=', value: ''),
-    ],
-    orderBy: [OrderBySpec(alias: 'Created', dir: 'DESC')],
-    limit: maxItems,
-    viz: VizSpec(chartType: 'table'),
-  );
-  return CannedTranslation(query: q);
-}
-
-// ─── Phase 2: cancelled_lines_by_company ─────────────────────────────────
-CannedTranslation _cancelledLinesByCompany({required int maxItems}) {
-  final q = CustomReportQueryV2(
-    primaryTable: 'rds_user_purchase_order_line',
-    joins: [
-      JoinSpec(
-        table: 'rds_user_purchase_order',
-        type: JoinType.left,
-        on: [
-          JoinOnPair(
-            fromTable: 'rds_user_purchase_order_line',
-            fromColumn: 'purchase_order_id',
-            toTable: 'rds_user_purchase_order',
-            toColumn: 'id',
-          ),
-        ],
-      ),
-    ],
-    computedColumns: [
-      ComputedColumn(
-        expression: 'coalesce(j1."buyer_company_name", \'(unknown)\')',
-        alias: 'Company',
-      ),
-    ],
-    filters: [
-      FilterSpec(table: 'rds_user_purchase_order_line', column: 'is_active', op: '=', value: 0),
-      FilterSpec(table: 'rds_user_purchase_order_line', column: 'line_cancel_date', op: 'IS NOT NULL'),
-    ],
-    aggregates: [
-      AggregateSpec(table: 'rds_user_purchase_order_line', column: '', fn: 'count', alias: 'Cancelled_Lines'),
-    ],
-    groupBy: [GroupBySpec.alias('Company')],
-    orderBy: [OrderBySpec(alias: 'Cancelled_Lines', dir: 'DESC')],
-    limit: maxItems,
-    viz: VizSpec(chartType: 'bar', x: 'Company', y: 'Cancelled_Lines'),
-  );
-  return CannedTranslation(
-    query: q,
-    postFetchNote: 'Cancelled lines = is_active=0 AND line_cancel_date IS NOT NULL. Joins to purchase_order for company name.',
-  );
-}
-
-// ─── Phase 2: cancelled_lines_by_user ────────────────────────────────────
-CannedTranslation _cancelledLinesByUser({required int maxItems}) {
-  final q = CustomReportQueryV2(
-    primaryTable: 'rds_user_purchase_order_line',
-    joins: [
-      JoinSpec(
-        table: 'rds_user_purchase_order',
-        type: JoinType.left,
-        on: [
-          JoinOnPair(
-            fromTable: 'rds_user_purchase_order_line',
-            fromColumn: 'purchase_order_id',
-            toTable: 'rds_user_purchase_order',
-            toColumn: 'id',
-          ),
-        ],
-      ),
-    ],
-    computedColumns: [
-      ComputedColumn(
-        expression: 'coalesce(j1."buyer_email", \'(unknown)\')',
-        alias: 'User',
-      ),
-    ],
-    filters: [
-      FilterSpec(table: 'rds_user_purchase_order_line', column: 'is_active', op: '=', value: 0),
-      FilterSpec(table: 'rds_user_purchase_order_line', column: 'line_cancel_date', op: 'IS NOT NULL'),
-    ],
-    aggregates: [
-      AggregateSpec(table: 'rds_user_purchase_order_line', column: '', fn: 'count', alias: 'Cancelled_Lines'),
-    ],
-    groupBy: [GroupBySpec.alias('User')],
-    orderBy: [OrderBySpec(alias: 'Cancelled_Lines', dir: 'DESC')],
-    limit: maxItems,
-    viz: VizSpec(chartType: 'bar', x: 'User', y: 'Cancelled_Lines'),
-  );
-  return CannedTranslation(
-    query: q,
-    postFetchNote: 'Cancelled lines = is_active=0 AND line_cancel_date IS NOT NULL. Groups by buyer email from the parent order.',
-  );
-}
-
-// ─── Phase 2: monthly_activity_summary ───────────────────────────────────
-CannedTranslation _monthlyActivitySummary() {
-  final q = CustomReportQueryV2(
-    primaryTable: 'rds_user_purchase_order',
-    computedColumns: [
-      ComputedColumn(
-        expression: 'date_trunc(\'month\', t."created_date")',
-        alias: 'bucket_start',
-      ),
-      ComputedColumn(
-        expression: 'to_char(date_trunc(\'month\', t."created_date"), \'Mon YYYY\')',
-        alias: 'Month',
-      ),
-    ],
-    aggregates: [
-      AggregateSpec(table: 'rds_user_purchase_order', column: '', fn: 'count', alias: 'Orders'),
-      AggregateSpec(table: 'rds_user_purchase_order', column: 'buyer_po_price', fn: 'sum', alias: 'Revenue'),
-    ],
-    groupBy: [GroupBySpec.alias('bucket_start'), GroupBySpec.alias('Month')],
-    orderBy: [OrderBySpec(alias: 'bucket_start', dir: 'ASC')],
-    viz: VizSpec(chartType: 'table', x: 'Month', y: 'Orders'),
-  );
-  return CannedTranslation(
-    query: q,
-    postFetchNote:
-        'widget-data-bryzos monthly_activity_summary computes Quotes, Orders, Cancelled, and Accepted '
-        'columns per month from multiple tables in a single pass. The v2 path produces only Orders '
-        'and Revenue per month from user_purchase_order. For the full multi-column summary, use '
-        'the canned widget directly.',
-  );
 }
 
 // ─── Slice #1: revenue_by_month ──────────────────────────────────────────
@@ -958,24 +654,23 @@ CannedTranslation _creditEnabledCompaniesKpi() {
 // ─── Slice #10: cancelled_orders_by_company ──────────────────────────────
 //
 // widget-data-bryzos:
-//   • fetches `created_date`, `buyer_company_name`, `is_active`, `cancel_date`
-//   • counts rows where is_active=0 AND cancel_date IS NOT NULL/non-empty
+//   • fetches `created_date`, `buyer_company_name`, `in_dispute`
+//   • counts rows where in_dispute is truthy, per buyer_company_name
+//     (null → "(unknown)")
 //   • sorts DESC by count, slices top `max_items` (default 10)
-//   • emits `_labels`, `_data`, `_yLabel="Cancelled Orders"`,
-//     `_col1="Company"`, `_col2="Cancelled"`.
+//   • emits `_labels`, `_data`, `_yLabel="Disputed Orders"`,
+//     `_col1="Company"`, `_col2="Disputed"`.
 //
 // query_v2 equivalent (Path A — current window only):
 //
 //   SELECT coalesce(t."buyer_company_name",'(unknown)') AS "Company",
-//          count(*)                                     AS "Cancelled"
+//          count(*)                                     AS "Disputed"
 //   FROM rds_user_purchase_order t
 //   WHERE t."tenant_id" = :tenant_id
 //     AND t."data_source_id" = :data_source_id
-//     AND t."is_active" = 0
-//     AND t."cancel_date" IS NOT NULL
-//     AND t."cancel_date" != ''
+//     AND t."in_dispute" = 1
 //   GROUP BY coalesce(t."buyer_company_name",'(unknown)')
-//   ORDER BY "Cancelled" DESC
+//   ORDER BY "Disputed" DESC
 //   LIMIT :max_items;
 CannedTranslation _cancelledOrdersByCompany({required int maxItems}) {
   final q = CustomReportQueryV2(
@@ -989,20 +684,9 @@ CannedTranslation _cancelledOrdersByCompany({required int maxItems}) {
     filters: [
       FilterSpec(
         table: 'rds_user_purchase_order',
-        column: 'is_active',
+        column: 'in_dispute',
         op: '=',
-        value: 0,
-      ),
-      FilterSpec(
-        table: 'rds_user_purchase_order',
-        column: 'cancel_date',
-        op: 'IS NOT NULL',
-      ),
-      FilterSpec(
-        table: 'rds_user_purchase_order',
-        column: 'cancel_date',
-        op: '!=',
-        value: '',
+        value: 1,
       ),
     ],
     aggregates: [
@@ -1010,29 +694,30 @@ CannedTranslation _cancelledOrdersByCompany({required int maxItems}) {
         table: 'rds_user_purchase_order',
         column: '',
         fn: 'count',
-        alias: 'Cancelled',
+        alias: 'Disputed',
       ),
     ],
     groupBy: [
       GroupBySpec.alias('Company'),
     ],
     orderBy: [
-      OrderBySpec(alias: 'Cancelled', dir: 'DESC'),
+      OrderBySpec(alias: 'Disputed', dir: 'DESC'),
     ],
     limit: maxItems,
     viz: VizSpec(
       chartType: 'bar',
       x: 'Company',
-      y: 'Cancelled',
+      y: 'Disputed',
     ),
   );
 
   return CannedTranslation(
     query: q,
     postFetchNote:
-        'Cancelled = is_active=0 AND cancel_date IS NOT NULL/non-empty. '
-        'Previously used in_dispute as proxy — that was incorrect. '
-        '`max_items` (default 10) is wired to SQL LIMIT.',
+        'widget-data-bryzos uses `in_dispute` as a proxy for cancelled/'
+        'disputed orders. The translator preserves that semantic. `max_items` '
+        '(default 10) is wired to SQL LIMIT so the wizard can adjust it via '
+        'the standard limit control.',
   );
 }
 
@@ -1630,40 +1315,29 @@ CannedTranslation _cancelledOrdersByUser({required int maxItems}) {
         table: 'rds_user_purchase_order',
         column: '',
         fn: 'count',
-        alias: 'Cancelled',
+        alias: 'Disputed',
       ),
     ],
     filters: [
       FilterSpec(
         table: 'rds_user_purchase_order',
-        column: 'is_active',
+        column: 'in_dispute',
         op: '=',
-        value: 0,
-      ),
-      FilterSpec(
-        table: 'rds_user_purchase_order',
-        column: 'cancel_date',
-        op: 'IS NOT NULL',
-      ),
-      FilterSpec(
-        table: 'rds_user_purchase_order',
-        column: 'cancel_date',
-        op: '!=',
-        value: '',
+        value: 1,
       ),
     ],
     groupBy: [GroupBySpec.alias('User')],
-    orderBy: [OrderBySpec(alias: 'Cancelled', dir: 'DESC')],
+    orderBy: [OrderBySpec(alias: 'Disputed', dir: 'DESC')],
     limit: maxItems,
-    viz: VizSpec(chartType: 'bar', x: 'User', y: 'Cancelled'),
+    viz: VizSpec(chartType: 'bar', x: 'User', y: 'Disputed'),
   );
 
   return CannedTranslation(
     query: q,
     postFetchNote:
-        'Cancelled = is_active=0 AND cancel_date IS NOT NULL/non-empty. '
-        'Previously used in_dispute as proxy — that was incorrect. '
-        'Joins user via buyer_email->email_id.',
+        'widget-data-bryzos joins user via buyer_email->email_id (not user_id). '
+        'Falls back to the raw buyer_email when no user row matches, then to '
+        '"(unknown)". The v2 CASE expression mirrors that fallback chain.',
   );
 }
 
@@ -1825,11 +1499,6 @@ CannedTranslation _cancelledOrdersList({required int maxItems}) {
       ),
       ColumnRef(
         table: 'rds_user_purchase_order',
-        column: 'cancel_date',
-        alias: 'Cancel Date',
-      ),
-      ColumnRef(
-        table: 'rds_user_purchase_order',
         column: 'created_date',
         alias: 'Created',
       ),
@@ -1837,20 +1506,9 @@ CannedTranslation _cancelledOrdersList({required int maxItems}) {
     filters: [
       FilterSpec(
         table: 'rds_user_purchase_order',
-        column: 'is_active',
+        column: 'in_dispute',
         op: '=',
-        value: 0,
-      ),
-      FilterSpec(
-        table: 'rds_user_purchase_order',
-        column: 'cancel_date',
-        op: 'IS NOT NULL',
-      ),
-      FilterSpec(
-        table: 'rds_user_purchase_order',
-        column: 'cancel_date',
-        op: '!=',
-        value: '',
+        value: 1,
       ),
     ],
     orderBy: [OrderBySpec(alias: 'Created', dir: 'DESC')],
@@ -1861,9 +1519,9 @@ CannedTranslation _cancelledOrdersList({required int maxItems}) {
   return CannedTranslation(
     query: q,
     postFetchNote:
-        'Cancelled = is_active=0 AND cancel_date IS NOT NULL/non-empty. '
-        'Previously used in_dispute as proxy — that was incorrect. '
-        'cancel_date column added to output.',
+        'Pure detail listing - no aggregation. widget-data-bryzos surfaces '
+        'buyer_po_number/company_name/email/price/created_date; the v2 path '
+        'selects the same columns via ColumnRef and orders by Created DESC.',
   );
 }
 

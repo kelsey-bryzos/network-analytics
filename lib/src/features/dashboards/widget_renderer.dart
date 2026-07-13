@@ -144,13 +144,24 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
   /// Time-range resolution order:
   ///   1. user-set settings.timeRange (overrides everything)
   ///   2. authored binding.brz.time_range (the report author's default)
-  ///   3. [kDefaultTimeRange] fallback
+  ///   3. "All" for detail-table metrics that should default to all-time
+  ///   4. [kDefaultTimeRange] fallback
   /// Legacy codes are normalised to the canonical vocabulary.
+  static const _allTimeMetrics = {
+    'unclaimed_orders_table',
+    'orders_previewed_by_sellers_table',
+    'orders_in_dispute_table',
+    'all_buyers_table',
+    'all_sellers_table',
+  };
+
   String get _timeRange {
     final s = widget.model.settings['timeRange'] as String?;
     if (s != null && s.isNotEmpty) return migrateTimeRange(s);
     final b = _brz?['time_range'] as String?;
     if (b != null && b.isNotEmpty) return migrateTimeRange(b);
+    final metric = _brz?['metric'] as String?;
+    if (metric != null && _allTimeMetrics.contains(metric)) return 'All';
     return kDefaultTimeRange;
   }
 

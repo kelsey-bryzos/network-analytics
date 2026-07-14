@@ -1731,6 +1731,7 @@ class _WidgetRendererCore extends StatelessWidget {
       'created':    'Date',
       'job_number': 'Job/PO#',
       'price':      'Total Value',
+      'last_login': 'Last Login',
     };
     if (overrides.containsKey(key)) return overrides[key]!;
     if (key.length <= 3 && key == key.toLowerCase()) return key.toUpperCase();
@@ -1781,6 +1782,11 @@ class _WidgetRendererCore extends StatelessWidget {
       'Job/PO#':         4,
       'Total Value':     4,
       'Date':            5,
+      // Last Login by User
+      'name':            7,
+      'email':           8,
+      'last_login':      5,
+      'Last Login':      5,
     };
     return m[key] ?? 5;
   }
@@ -1812,7 +1818,7 @@ class _WidgetRendererCore extends StatelessWidget {
       final d = DateTime.tryParse(s);
       if (d != null) {
         final local = d.toLocal();
-        if (key == 'created') {
+        if (key == 'created' || key == 'last_login') {
           return DateFormat('M-d-yy h:mm a').format(local);
         }
         return DateFormat('M-d-yy').format(local);

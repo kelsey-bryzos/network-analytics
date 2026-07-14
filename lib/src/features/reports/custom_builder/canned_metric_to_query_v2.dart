@@ -87,6 +87,7 @@ const Set<String> kSupportedCannedMetrics = {
   'top_companies_orders',
   'top_companies_revenue',
   'unclaimed_orders_table',
+  'user_last_login',
   'users_by_type',
   'users_recent_list',
   'yoy_revenue',
@@ -210,6 +211,8 @@ CannedTranslation? translateCannedMetric({
       return _unclaimedOrdersTable(maxItems: maxItems ?? kDefaultTopN);
     case 'users_by_type':
       return _usersByType();
+    case 'user_last_login':
+      return _userLastLogin();
     case 'users_recent_list':
       return _usersRecentList(maxItems: maxItems ?? kDefaultTopN);
     case 'yoy_revenue':
@@ -1916,6 +1919,38 @@ CannedTranslation _ordersRecentList({required int maxItems}) {
 }
 
 // ─── Slice #22: users_recent_list ────────────────────────────────────────
+// ─── Slice: user_last_login ───────────────────────────────────────────────
+//
+// widget-data-bryzos: queries rds_user directly from Supabase mirror,
+// returns _rows with name, company, email, last_login sorted DESC.
+CannedTranslation _userLastLogin() {
+  const nameExpr = 'coalesce('
+      'nullif(btrim(concat_ws(\' \', t."first_name", t."last_name")), \'\'), '
+      't."email_id", '
+      '\'(unknown)\')';
+
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user',
+    columns: [
+      ColumnRef(table: 'rds_user', column: 'email_id', alias: 'Email'),
+      ColumnRef(table: 'rds_user', column: 'client_company', alias: 'Company'),
+      ColumnRef(table: 'rds_user', column: 'last_login', alias: 'Last Login'),
+    ],
+    computedColumns: [
+      ComputedColumn(expression: nameExpr, alias: 'User'),
+    ],
+    orderBy: [OrderBySpec(alias: 'Last Login', dir: 'DESC')],
+    viz: VizSpec(chartType: 'table'),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos reads rds_user directly (Supabase mirror), '
+        'returning name, company, email, last_login sorted by last_login DESC.',
+  );
+}
+
 CannedTranslation _usersRecentList({required int maxItems}) {
   const nameExpr = 'coalesce('
       'nullif(btrim(concat_ws(\' \', t."first_name", t."last_name")), \'\'), '

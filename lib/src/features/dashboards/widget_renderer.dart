@@ -1779,8 +1779,8 @@ class _WidgetRendererCore extends StatelessWidget {
       'quotes':          3,
       'total_value':     4,
       // Quotes detail list — unique raw keys
-      'created':         12,
-      'job_number':      4,
+      'created':         7,
+      'job_number':      5,
       'price':           5,
       // Last Login by User / Failed Login Attempts by User
       'name':                 7,

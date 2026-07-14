@@ -174,8 +174,8 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
     'quotes_by_user':             ['created', 'user', 'company', 'job_number', 'price'],
     'orders_by_company':          ['created', 'company', 'order_number', 'price'],
     'orders_by_user':             ['created', 'user', 'company', 'order_number', 'price'],
-    'accepted_orders_by_company': ['Created', 'Company', 'Buyer', 'PO #', 'Price', 'Seller', 'Claimed'],
-    'accepted_orders_by_user':    ['Created', 'Company', 'Buyer', 'PO #', 'Price', 'Seller', 'Claimed'],
+    'accepted_orders_by_company': ['created', 'company', 'buyer', 'po', 'price', 'seller_company', 'claimed'],
+    'accepted_orders_by_user':    ['created', 'company', 'buyer', 'po', 'price', 'seller_company', 'claimed'],
   };
 
   String get _timeRange {
@@ -1802,11 +1802,10 @@ class _WidgetRendererCore extends StatelessWidget {
       'Failed Attempts':      3,
       'last_failed_login_at': 5,
       'Last Failed Login':    5,
-      // Accepted Orders detail (aliases from accepted_orders_table)
-      'Created':  6,
-      'Company':  5,
-      'PO #':     3,
-      'Claimed':  6,
+      // Accepted Orders detail (humanized from raw keys: po, seller_company, claimed)
+      'PO':            3,
+      'Seller Company': 6,
+      'Claimed':        5,
     };
     return m[key] ?? 5;
   }

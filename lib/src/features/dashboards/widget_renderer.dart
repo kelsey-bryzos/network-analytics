@@ -321,12 +321,15 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
         ),
       );
     }
+    final em = _effectiveMetric;
+    final displayCols = em != null ? _detailDisplayColumns[em] : null;
     return _WidgetRendererCore(
       model: _effectiveModel,
       selected: widget.selected,
       chromeless: widget.chromeless,
       onSettingsTap: widget.onSettingsTap,
       onDeleteTap: widget.onDeleteTap,
+      displayColumns: displayCols,
     );
   }
 
@@ -357,6 +360,7 @@ class _WidgetRendererCore extends StatelessWidget {
   final bool chromeless;
   final VoidCallback? onSettingsTap;
   final VoidCallback? onDeleteTap;
+  final List<String>? displayColumns;
 
   const _WidgetRendererCore({
     required this.model,
@@ -364,6 +368,7 @@ class _WidgetRendererCore extends StatelessWidget {
     this.chromeless = false,
     this.onSettingsTap,
     this.onDeleteTap,
+    this.displayColumns,
   });
 
   @override
@@ -1540,12 +1545,7 @@ class _WidgetRendererCore extends StatelessWidget {
     // When present, render those as a generic multi-column detail table.
     final rawRows = model.binding['_rows'];
     if (rawRows is List) {
-      // When in detail mode, restrict columns to the allowed display set.
-      final effectiveMetric = _effectiveMetric;
-      final displayCols = (effectiveMetric != null)
-          ? _detailDisplayColumns[effectiveMetric]
-          : null;
-      return _rowsDetailTable(rawRows, displayColumns: displayCols);
+      return _rowsDetailTable(rawRows, displayColumns: displayColumns);
     }
     if (_hasMulti) return _multiSeriesTable();
     return _singleSeriesTable();

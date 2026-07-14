@@ -155,6 +155,18 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
     'all_sellers_table',
   };
 
+  /// Maps a summary metric to its transaction-level detail companion.
+  /// When tableMode == 'detail', the renderer swaps the metric to this one.
+  static const _detailMetricFor = <String, String>{
+    'quotes_by_company': 'quotes_detail_list',
+  };
+
+  /// Columns to display (in order) when a detail companion is rendered.
+  /// Keys not in this list are fetched but hidden from the table.
+  static const _detailDisplayColumns = <String, List<String>>{
+    'quotes_detail_list': ['created', 'company', 'user', 'job_number', 'price'],
+  };
+
   String get _timeRange {
     final s = widget.model.settings['timeRange'] as String?;
     if (s != null && s.isNotEmpty) return migrateTimeRange(s);
@@ -173,11 +185,26 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
     return 10;
   }
 
+  /// The metric actually fetched — swapped to the detail companion when
+  /// the widget is a table in detail mode.
+  String? get _effectiveMetric {
+    final brz = _brz;
+    if (brz == null) return null;
+    final base = brz['metric'] as String?;
+    if (base == null) return null;
+    final tableMode = widget.model.settings['tableMode'] as String?;
+    if (widget.model.kind == WidgetKind.table && tableMode == 'detail') {
+      return _detailMetricFor[base] ?? base;
+    }
+    return base;
+  }
+
   String get _fetchKey {
     final brz = _brz;
     if (brz == null) return '';
     final tid = ref.read(activeTenantProvider) ?? '';
-    return '${brz['data_source_id']}|${brz['metric']}|$_timeRange|$_maxItems|$tid';
+    final tableMode = widget.model.settings['tableMode'] as String? ?? '';
+    return '${brz['data_source_id']}|${_effectiveMetric ?? ''}|$_timeRange|$_maxItems|$tid|$tableMode';
   }
 
   @override
@@ -200,7 +227,7 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
     _lastFetchKey = key;
 
     final dataSourceId = brz['data_source_id'] as String?;
-    final metric = brz['metric'] as String?;
+    final metric = _effectiveMetric;
     if (dataSourceId == null || metric == null) return;
 
     setState(() {
@@ -1513,7 +1540,12 @@ class _WidgetRendererCore extends StatelessWidget {
     // When present, render those as a generic multi-column detail table.
     final rawRows = model.binding['_rows'];
     if (rawRows is List) {
-      return _rowsDetailTable(rawRows);
+      // When in detail mode, restrict columns to the allowed display set.
+      final effectiveMetric = _effectiveMetric;
+      final displayCols = (effectiveMetric != null)
+          ? _detailDisplayColumns[effectiveMetric]
+          : null;
+      return _rowsDetailTable(rawRows, displayColumns: displayCols);
     }
     if (_hasMulti) return _multiSeriesTable();
     return _singleSeriesTable();
@@ -1524,14 +1556,17 @@ class _WidgetRendererCore extends StatelessWidget {
   /// alignment are inferred from the first row's key set; numeric values
   /// are right-aligned and money-formatted when the unit is monetary, and
   /// date-like ISO strings are formatted human-readably.
-  Widget _rowsDetailTable(List rawRows) {
+  Widget _rowsDetailTable(List rawRows, {List<String>? displayColumns}) {
     final rows = rawRows
         .whereType<Map>()
         .map((m) => m.cast<String, dynamic>())
         .toList();
     if (rows.isEmpty) return _noData();
-    // Column order = first row's key insertion order.
-    final cols = rows.first.keys.toList();
+    // Column order = displayColumns (if specified) else first row's key insertion order.
+    final allCols = rows.first.keys.toList();
+    final cols = (displayColumns != null)
+        ? displayColumns.where((c) => allCols.contains(c)).toList()
+        : allCols;
     final headers = [for (final c in cols) _humanizeKey(c)];
     final aligns = List<TextAlign>.filled(cols.length, TextAlign.left);
 

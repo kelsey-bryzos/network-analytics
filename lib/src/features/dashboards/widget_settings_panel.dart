@@ -58,6 +58,18 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
 
   bool get _disallowPieDonut => _metric == 'avg_order_price_trend';
 
+  /// Metrics that have a transaction-level detail companion.
+  /// When the widget type is Table and one of these metrics is active,
+  /// the "Table View" (Summary / Detail) toggle is shown.
+  static const _metricsWithDetail = {
+    'quotes_by_company',
+  };
+
+  bool get _showTableViewToggle =>
+      _kind == WidgetKind.table &&
+      _metric != null &&
+      _metricsWithDetail.contains(_metric);
+
   /// The SQL tab is Bryzos-only. Non-Bryzos users never see this option — the
   /// panel shows only Basics + Data & Display, exactly as before.
   bool get _showSqlTab => isBryzosUser(ref);
@@ -67,6 +79,7 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
   late String _timeRange;
   late int _maxItems;
   late String _barOrientation;
+  late String _tableMode; // 'summary' | 'detail' — only relevant when kind == table
   late Map<String, bool> _toggles;
   late Map<String, bool> _filters;
   int _page = 0;
@@ -87,6 +100,7 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
   late final String _origTimeRange;
   late final int _origMaxItems;
   late final String _origBarOrientation;
+  late final String _origTableMode;
   late final Map<String, bool> _origToggles;
   late final Map<String, bool> _origFilters;
   late final String _origRawSql;
@@ -121,6 +135,7 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
         ?? (brz['max_items'] as num?)?.toInt()
         ?? 10;
     _origBarOrientation = s['barOrientation'] as String? ?? 'Auto';
+    _origTableMode = s['tableMode'] as String? ?? 'summary';
     _origToggles = {
       'Data Labels': (s['dataLabels'] as bool?) ?? false,
       'Legend': (s['legend'] as bool?) ?? true,
@@ -180,6 +195,7 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
     _timeRange = _origTimeRange;
     _maxItems = _origMaxItems;
     _barOrientation = _origBarOrientation;
+    _tableMode = _origTableMode;
     _toggles = Map<String, bool>.from(_origToggles);
     _filters = Map<String, bool>.from(_origFilters);
   }
@@ -224,6 +240,7 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
         'timeRange': _timeRange,
         'maxItems': _maxItems,
         'barOrientation': _barOrientation,
+        'tableMode': _tableMode,
         'dataLabels': _toggles['Data Labels'],
         'legend': _toggles['Legend'],
         'gridLines': _toggles['Grid Lines'],
@@ -266,6 +283,7 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
       _rawSql.text = _origRawSql;
       _maxItems = _origMaxItems;
       _barOrientation = _origBarOrientation;
+      _tableMode = _origTableMode;
       _toggles = Map<String, bool>.from(_origToggles);
       _filters = Map<String, bool>.from(_origFilters);
     });
@@ -371,6 +389,28 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
               : _kind,
           onChanged: (v) => _updateAndPreview(() => _kind = v),
         ),
+        if (_showTableViewToggle) ...[ 
+          _label('Table View'),
+          _ChipGroup<String>(
+            options: const [
+              ('Summary', 'summary'),
+              ('Detail', 'detail'),
+            ],
+            value: _tableMode,
+            onChanged: (v) => _updateAndPreview(() => _tableMode = v),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'Summary shows totals per company. Detail shows one row per transaction.',
+              style: TextStyle(
+                fontSize: 11,
+                color: OpticsColors.textSecondary,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
         if (_kind == WidgetKind.barVertical ||
             _kind == WidgetKind.barHorizontal ||
             _kind == WidgetKind.barGrouped ||

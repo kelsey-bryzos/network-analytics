@@ -167,7 +167,7 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
   /// even when they share the same underlying detail metric.
   static const _detailDisplayColumns = <String, List<String>>{
     'quotes_by_company': ['created', 'company', 'job_number', 'price'],
-    'quotes_by_user':    ['created', 'user', 'company', 'price'],
+    'quotes_by_user':    ['created', 'user', 'company', 'job_number', 'price'],
   };
 
   String get _timeRange {

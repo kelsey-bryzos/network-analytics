@@ -1291,7 +1291,7 @@ CannedTranslation _ordersByCompany({required int maxItems}) {
       GroupBySpec(table: 'rds_user_purchase_order', column: 'buyer_company_name'),
     ],
     orderBy: [
-      OrderBySpec.alias('Orders', ascending: false),
+      OrderBySpec(alias: 'Orders', dir: 'DESC'),
     ],
     limit: maxItems,
     selectColumns: [
@@ -1319,7 +1319,7 @@ CannedTranslation _ordersByUser({required int maxItems}) {
       GroupBySpec(table: 'rds_user_purchase_order', column: 'buyer_email'),
     ],
     orderBy: [
-      OrderBySpec.alias('Orders', ascending: false),
+      OrderBySpec(alias: 'Orders', dir: 'DESC'),
     ],
     limit: maxItems,
     selectColumns: [
@@ -1336,7 +1336,7 @@ CannedTranslation _ordersDetailList({required int maxItems}) {
       FilterSpec(table: 'rds_user_purchase_order', column: 'seller_id', op: '!=', value: ''),
     ],
     orderBy: [
-      OrderBySpec(table: 'rds_user_purchase_order', column: 'created_date', ascending: false),
+      OrderBySpec(alias: 'created_date', dir: 'DESC'),
     ],
     limit: maxItems,
     selectColumns: [

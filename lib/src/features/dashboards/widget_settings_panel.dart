@@ -63,6 +63,7 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
   /// the "Table View" (Summary / Detail) toggle is shown.
   static const _metricsWithDetail = {
     'quotes_by_company',
+    'quotes_by_user',
   };
 
   bool get _showTableViewToggle =>

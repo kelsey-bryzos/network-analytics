@@ -159,12 +159,15 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
   /// When tableMode == 'detail', the renderer swaps the metric to this one.
   static const _detailMetricFor = <String, String>{
     'quotes_by_company': 'quotes_detail_list',
+    'quotes_by_user':    'quotes_detail_list',
   };
 
   /// Columns to display (in order) when a detail companion is rendered.
-  /// Keys not in this list are fetched but hidden from the table.
+  /// Keyed by the SOURCE (summary) metric so each view can show different columns
+  /// even when they share the same underlying detail metric.
   static const _detailDisplayColumns = <String, List<String>>{
-    'quotes_detail_list': ['created', 'company', 'job_number', 'price'],
+    'quotes_by_company': ['created', 'company', 'job_number', 'price'],
+    'quotes_by_user':    ['created', 'user', 'company', 'job_number', 'price'],
   };
 
   String get _timeRange {
@@ -321,8 +324,8 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
         ),
       );
     }
-    final em = _effectiveMetric;
-    final displayCols = em != null ? _detailDisplayColumns[em] : null;
+    final baseMet = (_brz?['metric'] as String?);
+    final displayCols = baseMet != null ? _detailDisplayColumns[baseMet] : null;
     return _WidgetRendererCore(
       model: _effectiveModel,
       selected: widget.selected,

@@ -1802,9 +1802,9 @@ class _WidgetRendererCore extends StatelessWidget {
       'Failed Attempts':      3,
       'last_failed_login_at': 5,
       'Last Failed Login':    5,
-      // Accepted Orders detail (humanized from raw keys: po, seller_company, claimed)
+      // Accepted Orders detail (humanized from raw keys: po, claimed)
+      // Note: 'Seller Company' already defined above
       'PO':            3,
-      'Seller Company': 6,
       'Claimed':        5,
     };
     return m[key] ?? 5;

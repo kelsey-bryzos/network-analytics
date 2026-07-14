@@ -87,6 +87,7 @@ const Set<String> kSupportedCannedMetrics = {
   'top_companies_orders',
   'top_companies_revenue',
   'unclaimed_orders_table',
+  'user_failed_logins',
   'user_last_login',
   'users_by_type',
   'users_recent_list',
@@ -211,6 +212,8 @@ CannedTranslation? translateCannedMetric({
       return _unclaimedOrdersTable(maxItems: maxItems ?? kDefaultTopN);
     case 'users_by_type':
       return _usersByType();
+    case 'user_failed_logins':
+      return _userFailedLogins();
     case 'user_last_login':
       return _userLastLogin();
     case 'users_recent_list':
@@ -1948,6 +1951,43 @@ CannedTranslation _userLastLogin() {
     postFetchNote:
         'widget-data-bryzos reads rds_user directly (Supabase mirror), '
         'returning name, company, email, last_login sorted by last_login DESC.',
+  );
+}
+
+// ─── Slice: user_failed_logins ────────────────────────────────────────────────
+//
+// widget-data-bryzos: queries rds_user directly from Supabase mirror,
+// returns _rows with name, company, email, failed_attempts, last_failed_login_at
+// for users with failed_login_attempts > 0, sorted by attempts DESC.
+CannedTranslation _userFailedLogins() {
+  const nameExpr = 'coalesce('
+      'nullif(btrim(concat_ws(\' \', t."first_name", t."last_name")), \'\'), '
+      't."email_id", '
+      '\'(unknown)\')';
+
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user',
+    columns: [
+      ColumnRef(table: 'rds_user', column: 'email_id', alias: 'Email'),
+      ColumnRef(table: 'rds_user', column: 'client_company', alias: 'Company'),
+      ColumnRef(table: 'rds_user', column: 'failed_login_attempts', alias: 'Failed Attempts'),
+      ColumnRef(table: 'rds_user', column: 'last_failed_login_at', alias: 'Last Failed Login'),
+    ],
+    computedColumns: [
+      ComputedColumn(expression: nameExpr, alias: 'User'),
+    ],
+    filters: [
+      FilterSpec(column: 'failed_login_attempts', op: '>', value: '0'),
+    ],
+    orderBy: [OrderBySpec(alias: 'Failed Attempts', dir: 'DESC')],
+    viz: VizSpec(chartType: 'table'),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos reads rds_user directly (Supabase mirror), '
+        'returning users with failed_login_attempts > 0 sorted by attempts DESC.',
   );
 }
 

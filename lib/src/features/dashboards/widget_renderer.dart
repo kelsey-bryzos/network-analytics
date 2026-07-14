@@ -1770,6 +1770,17 @@ class _WidgetRendererCore extends StatelessWidget {
       'Total Purchases': 5,
       'Sales':           3,
       'Total Sales':     5,
+      // Quotes by Company / Quotes by User (summary _rows)
+      'company':         9,
+      'user':            9,
+      'quotes':          3,
+      'total_value':     4,
+      // Quotes detail list
+      'Company':         9,
+      'User':            7,
+      'Job/PO#':         4,
+      'Total Value':     4,
+      'Date':            5,
     };
     return m[key] ?? 5;
   }

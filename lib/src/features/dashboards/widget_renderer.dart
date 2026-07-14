@@ -1922,14 +1922,18 @@ class _WidgetRendererCore extends StatelessWidget {
                   child: Text('#', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText))),
               Expanded(flex: 3,
                   child: Text(col1Header, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText))),
-              Expanded(flex: 2,
-                  child: Text(col2Header, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right)),
               if (showCount)
                 SizedBox(width: 60,
                     child: Text('Orders', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right))
               else
                 SizedBox(width: 50,
                     child: Text('Share', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right)),
+              if (showCount)
+                SizedBox(width: 90,
+                    child: Text(col2Header, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right))
+              else
+                Expanded(flex: 2,
+                    child: Text(col2Header, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right)),
             ],
           ),
         ),
@@ -1978,11 +1982,6 @@ class _WidgetRendererCore extends StatelessWidget {
                         style: TextStyle(fontSize: 11, color: _wt.bodyText), overflow: TextOverflow.ellipsis)),
                 ],
               )),
-          Expanded(flex: 2,
-              child: Text(
-                valueStr,
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _palette[dataIdx % _palette.length]),
-                textAlign: TextAlign.right)),
           if (showCount)
             SizedBox(width: 60,
                 child: Text(
@@ -1992,6 +1991,18 @@ class _WidgetRendererCore extends StatelessWidget {
             SizedBox(width: 50,
                 child: Text('${pct.toStringAsFixed(1)}%',
                     style: TextStyle(fontSize: 11, color: _wt.secondaryText), textAlign: TextAlign.right)),
+          if (showCount)
+            SizedBox(width: 90,
+                child: Text(
+                  valueStr,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _palette[dataIdx % _palette.length]),
+                  textAlign: TextAlign.right))
+          else
+            Expanded(flex: 2,
+                child: Text(
+                  valueStr,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _palette[dataIdx % _palette.length]),
+                  textAlign: TextAlign.right)),
         ],
       ),
     );

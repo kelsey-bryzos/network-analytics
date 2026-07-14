@@ -285,7 +285,7 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
     final merged = Map<String, dynamic>.from(widget.model.binding);
     for (final k in const [
       '_data', '_labels', '_multiSeries', '_unit', '_yLabel',
-      '_col1', '_col2', '_rows', '_meta', '_timeRange',
+      '_col1', '_col2', '_rows', '_meta', '_timeRange', '_counts',
     ]) {
       if (live.containsKey(k)) merged[k] = live[k];
     }
@@ -499,6 +499,8 @@ class _WidgetRendererCore extends StatelessWidget {
 
   String get _unit => (model.binding['_unit'] as String?) ?? '';
   String get _yLabel => (model.binding['_yLabel'] as String?) ?? '';
+  List<int> get _counts =>
+      ((model.binding['_counts'] as List?)?.map((e) => (e as num).toInt()).toList()) ?? [];
 
   // ── Data accessors ─────────────────────────────────────────────
 
@@ -1892,6 +1894,11 @@ class _WidgetRendererCore extends StatelessWidget {
     final col2Header = (model.binding['_col2'] as String?) ?? 'Value';
     final total = _series.fold<double>(0, (a, b) => a + b);
 
+    // Metrics that show order count instead of Share %
+    const _metricsWithCount = {'accepted_orders_by_company', 'accepted_orders_by_user'};
+    final showCount = _metricsWithCount.contains(metric);
+    final counts = _counts;
+
     var indices = _sortedIndices(_labels, _series);
     if (_sortBy == 'None' && metric == 'avg_order_price_trend') {
       indices = indices.reversed.toList();
@@ -1918,7 +1925,7 @@ class _WidgetRendererCore extends StatelessWidget {
               Expanded(flex: 2,
                   child: Text(col2Header, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right)),
               SizedBox(width: 50,
-                  child: Text('Share', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right)),
+                  child: Text(showCount ? 'Orders' : 'Share', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right)),
             ],
           ),
         ),
@@ -1928,7 +1935,7 @@ class _WidgetRendererCore extends StatelessWidget {
             child: Column(
               children: [
                 for (int rank = 0; rank < indices.length; rank++)
-                  _singleTableRow(rank, indices[rank], total),
+                  _singleTableRow(rank, indices[rank], total, showCount: showCount, counts: counts),
               ],
             ),
           ),
@@ -1937,7 +1944,7 @@ class _WidgetRendererCore extends StatelessWidget {
     );
   }
 
-  Widget _singleTableRow(int rank, int dataIdx, double total) {
+  Widget _singleTableRow(int rank, int dataIdx, double total, {bool showCount = false, List<int> counts = const []}) {
     final pct = total > 0 ? _series[dataIdx] / total * 100 : 0.0;
     final isOdd = rank % 2 == 1;
     final unitMult = _unit == r'$M' ? 1e6 : _unit == r'$K' ? 1e3 : 1.0;
@@ -1945,6 +1952,9 @@ class _WidgetRendererCore extends StatelessWidget {
     final valueStr = isMoney
         ? _fmtExactMoney(_series[dataIdx] * unitMult)
         : _fmtSmartValue(_series[dataIdx], _unit);
+    final trailingStr = showCount
+        ? (dataIdx < counts.length ? '${counts[dataIdx]}' : '—')
+        : '${pct.toStringAsFixed(1)}%';
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 7, 24, 7),
       color: isOdd ? _wt.headerBg.withValues(alpha: 0.3) : Colors.transparent,
@@ -1973,7 +1983,7 @@ class _WidgetRendererCore extends StatelessWidget {
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _palette[dataIdx % _palette.length]),
                 textAlign: TextAlign.right)),
           SizedBox(width: 50,
-              child: Text('${pct.toStringAsFixed(1)}%',
+              child: Text(trailingStr,
                   style: TextStyle(fontSize: 11, color: _wt.secondaryText), textAlign: TextAlign.right)),
         ],
       ),

@@ -158,20 +158,24 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
   /// Maps a summary metric to its transaction-level detail companion.
   /// When tableMode == 'detail', the renderer swaps the metric to this one.
   static const _detailMetricFor = <String, String>{
-    'quotes_by_company': 'quotes_detail_list',
-    'quotes_by_user':    'quotes_detail_list',
-    'orders_by_company': 'orders_detail_list',
-    'orders_by_user':    'orders_detail_list',
+    'quotes_by_company':          'quotes_detail_list',
+    'quotes_by_user':             'quotes_detail_list',
+    'orders_by_company':          'orders_detail_list',
+    'orders_by_user':             'orders_detail_list',
+    'accepted_orders_by_company': 'accepted_orders_table',
+    'accepted_orders_by_user':    'accepted_orders_table',
   };
 
   /// Columns to display (in order) when a detail companion is rendered.
   /// Keyed by the SOURCE (summary) metric so each view can show different columns
   /// even when they share the same underlying detail metric.
   static const _detailDisplayColumns = <String, List<String>>{
-    'quotes_by_company': ['created', 'company', 'job_number', 'price'],
-    'quotes_by_user':    ['created', 'user', 'company', 'job_number', 'price'],
-    'orders_by_company': ['created', 'company', 'order_number', 'price'],
-    'orders_by_user':    ['created', 'user', 'company', 'order_number', 'price'],
+    'quotes_by_company':          ['created', 'company', 'job_number', 'price'],
+    'quotes_by_user':             ['created', 'user', 'company', 'job_number', 'price'],
+    'orders_by_company':          ['created', 'company', 'order_number', 'price'],
+    'orders_by_user':             ['created', 'user', 'company', 'order_number', 'price'],
+    'accepted_orders_by_company': ['Created', 'Company', 'Buyer', 'PO #', 'Price', 'Seller', 'Claimed'],
+    'accepted_orders_by_user':    ['Created', 'Company', 'Buyer', 'PO #', 'Price', 'Seller', 'Claimed'],
   };
 
   String get _timeRange {
@@ -1798,6 +1802,14 @@ class _WidgetRendererCore extends StatelessWidget {
       'Failed Attempts':      3,
       'last_failed_login_at': 5,
       'Last Failed Login':    5,
+      // Accepted Orders detail (aliases from accepted_orders_table)
+      'Created':  6,
+      'Company':  5,
+      'Buyer':    5,
+      'PO #':     3,
+      'Price':    4,
+      'Seller':   5,
+      'Claimed':  6,
     };
     return m[key] ?? 5;
   }

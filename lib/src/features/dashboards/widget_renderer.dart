@@ -1805,10 +1805,7 @@ class _WidgetRendererCore extends StatelessWidget {
       // Accepted Orders detail (aliases from accepted_orders_table)
       'Created':  6,
       'Company':  5,
-      'Buyer':    5,
       'PO #':     3,
-      'Price':    4,
-      'Seller':   5,
       'Claimed':  6,
     };
     return m[key] ?? 5;

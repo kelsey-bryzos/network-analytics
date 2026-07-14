@@ -1926,7 +1926,7 @@ class _WidgetRendererCore extends StatelessWidget {
                 SizedBox(width: 50,
                     child: Text('Orders', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right)),
               Expanded(flex: 2,
-                  child: Text('Total Value', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right)),
+                  child: Text(showCount ? 'Total Value' : 'Share', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right)),
             ],
           ),
         ),

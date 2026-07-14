@@ -1894,7 +1894,7 @@ class _WidgetRendererCore extends StatelessWidget {
     final col2Header = (model.binding['_col2'] as String?) ?? 'Value';
     final total = _series.fold<double>(0, (a, b) => a + b);
 
-    // Metrics that show order count instead of Share %
+    // Accepted orders metrics show an extra "Orders" count column; all others keep the original Share % layout
     const _metricsWithCount = {'accepted_orders_by_company', 'accepted_orders_by_user'};
     final showCount = _metricsWithCount.contains(metric);
     final counts = _counts;
@@ -1922,11 +1922,14 @@ class _WidgetRendererCore extends StatelessWidget {
                   child: Text('#', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText))),
               Expanded(flex: 3,
                   child: Text(col1Header, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText))),
-              if (showCount)
-                SizedBox(width: 50,
-                    child: Text('Orders', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right)),
               Expanded(flex: 2,
-                  child: Text(showCount ? 'Total Value' : 'Share', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right)),
+                  child: Text(col2Header, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right)),
+              if (showCount)
+                SizedBox(width: 60,
+                    child: Text('Orders', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right))
+              else
+                SizedBox(width: 50,
+                    child: Text('Share', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right)),
             ],
           ),
         ),
@@ -1953,9 +1956,6 @@ class _WidgetRendererCore extends StatelessWidget {
     final valueStr = isMoney
         ? _fmtExactMoney(_series[dataIdx] * unitMult)
         : _fmtSmartValue(_series[dataIdx], _unit);
-    final trailingStr = showCount
-        ? (dataIdx < counts.length ? '${counts[dataIdx]}' : '—')
-        : '${pct.toStringAsFixed(1)}%';
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 7, 24, 7),
       color: isOdd ? _wt.headerBg.withValues(alpha: 0.3) : Colors.transparent,
@@ -1978,15 +1978,20 @@ class _WidgetRendererCore extends StatelessWidget {
                         style: TextStyle(fontSize: 11, color: _wt.bodyText), overflow: TextOverflow.ellipsis)),
                 ],
               )),
-          if (showCount)
-            SizedBox(width: 50,
-                child: Text(trailingStr,
-                    style: TextStyle(fontSize: 11, color: _wt.secondaryText), textAlign: TextAlign.right)),
           Expanded(flex: 2,
               child: Text(
                 valueStr,
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _palette[dataIdx % _palette.length]),
                 textAlign: TextAlign.right)),
+          if (showCount)
+            SizedBox(width: 60,
+                child: Text(
+                    dataIdx < counts.length ? '${counts[dataIdx]}' : '—',
+                    style: TextStyle(fontSize: 11, color: _wt.secondaryText), textAlign: TextAlign.right))
+          else
+            SizedBox(width: 50,
+                child: Text('${pct.toStringAsFixed(1)}%',
+                    style: TextStyle(fontSize: 11, color: _wt.secondaryText), textAlign: TextAlign.right)),
         ],
       ),
     );

@@ -1774,16 +1774,14 @@ class _WidgetRendererCore extends StatelessWidget {
       'Sales':           3,
       'Total Sales':     5,
       // Quotes by Company / Quotes by User (summary _rows)
-      'company':         9,
-      'user':            9,
+      'company':         5,
+      'user':            5,
       'quotes':          3,
       'total_value':     4,
-      // Quotes detail list
-      'Company':         4,
-      'User':            5,
-      'Job/PO#':         4,
-      'Total Value':     5,
-      'Date':            12,
+      // Quotes detail list — unique raw keys
+      'created':         12,
+      'job_number':      4,
+      'price':           5,
       // Last Login by User / Failed Login Attempts by User
       'name':                 7,
       'email':                8,

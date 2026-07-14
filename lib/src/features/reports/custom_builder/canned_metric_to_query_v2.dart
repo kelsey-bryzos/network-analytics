@@ -1977,7 +1977,7 @@ CannedTranslation _userFailedLogins() {
       ComputedColumn(expression: nameExpr, alias: 'User'),
     ],
     filters: [
-      FilterSpec(column: 'failed_login_attempts', op: '>', value: '0'),
+      FilterSpec(table: 'rds_user', column: 'failed_login_attempts', op: '>', value: '0'),
     ],
     orderBy: [OrderBySpec(alias: 'Failed Attempts', dir: 'DESC')],
     viz: VizSpec(chartType: 'table'),

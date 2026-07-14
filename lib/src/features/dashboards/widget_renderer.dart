@@ -1220,7 +1220,7 @@ class _WidgetRendererCore extends StatelessWidget {
                       child: Row(
                         children: [
                           SizedBox(
-                            width: 150,
+                            width: 180,
                             child: Text(labels[i],
                                 style: TextStyle(fontSize: 9, color: _wt.secondaryText),
                                 overflow: TextOverflow.ellipsis),

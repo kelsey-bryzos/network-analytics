@@ -64,6 +64,8 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
   static const _metricsWithDetail = {
     'quotes_by_company',
     'quotes_by_user',
+    'orders_by_company',
+    'orders_by_user',
   };
 
   bool get _showTableViewToggle =>

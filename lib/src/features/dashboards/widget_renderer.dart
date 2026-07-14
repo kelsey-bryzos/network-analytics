@@ -164,7 +164,7 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
   /// Columns to display (in order) when a detail companion is rendered.
   /// Keys not in this list are fetched but hidden from the table.
   static const _detailDisplayColumns = <String, List<String>>{
-    'quotes_detail_list': ['created', 'company', 'user', 'job_number', 'price'],
+    'quotes_detail_list': ['created', 'company', 'job_number', 'price'],
   };
 
   String get _timeRange {
@@ -1721,6 +1721,12 @@ class _WidgetRendererCore extends StatelessWidget {
 
   /// "buyer_company_name" → "Buyer Company Name", "po" → "PO".
   String _humanizeKey(String key) {
+    const overrides = <String, String>{
+      'created':    'Date',
+      'job_number': 'Job/PO#',
+      'price':      'Total Value',
+    };
+    if (overrides.containsKey(key)) return overrides[key]!;
     if (key.length <= 3 && key == key.toLowerCase()) return key.toUpperCase();
     return key
         .split('_')

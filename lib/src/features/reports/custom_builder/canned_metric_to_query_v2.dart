@@ -1277,7 +1277,7 @@ CannedTranslation _ordersByCompany({required int maxItems}) {
   final q = CustomReportQueryV2(
     primaryTable: 'rds_user_purchase_order',
     filters: [
-      FilterSpec(table: 'rds_user_purchase_order', column: 'seller_id', op: 'neq', value: ''),
+      FilterSpec(table: 'rds_user_purchase_order', column: 'seller_id', op: '!=', value: ''),
     ],
     aggregates: [
       AggregateSpec(
@@ -1305,7 +1305,7 @@ CannedTranslation _ordersByUser({required int maxItems}) {
   final q = CustomReportQueryV2(
     primaryTable: 'rds_user_purchase_order',
     filters: [
-      FilterSpec(table: 'rds_user_purchase_order', column: 'seller_id', op: 'neq', value: ''),
+      FilterSpec(table: 'rds_user_purchase_order', column: 'seller_id', op: '!=', value: ''),
     ],
     aggregates: [
       AggregateSpec(
@@ -1333,7 +1333,7 @@ CannedTranslation _ordersDetailList({required int maxItems}) {
   final q = CustomReportQueryV2(
     primaryTable: 'rds_user_purchase_order',
     filters: [
-      FilterSpec(table: 'rds_user_purchase_order', column: 'seller_id', op: 'neq', value: ''),
+      FilterSpec(table: 'rds_user_purchase_order', column: 'seller_id', op: '!=', value: ''),
     ],
     orderBy: [
       OrderBySpec(table: 'rds_user_purchase_order', column: 'created_date', ascending: false),

@@ -174,8 +174,10 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
     'quotes_by_user':             ['created', 'user', 'company', 'job_number', 'price'],
     'orders_by_company':          ['created', 'company', 'order_number', 'price'],
     'orders_by_user':             ['created', 'user', 'company', 'order_number', 'price'],
-    'accepted_orders_by_company': ['created', 'company', 'buyer', 'po', 'price', 'seller_company', 'claimed'],
-    'accepted_orders_by_user':    ['created', 'company', 'buyer', 'po', 'price', 'seller_company', 'claimed'],
+    // By Company detail: #, Claimed, Company (=seller_company), Order (=po), Total Value (=price)
+    'accepted_orders_by_company': ['claimed', 'seller_company', 'po', 'price'],
+    // By User detail: #, Claimed, User (=seller_name), Company (=seller_company), Order (=po), Total Value (=price)
+    'accepted_orders_by_user':    ['claimed', 'seller_name', 'seller_company', 'po', 'price'],
   };
 
   String get _timeRange {
@@ -1736,10 +1738,13 @@ class _WidgetRendererCore extends StatelessWidget {
   /// "buyer_company_name" → "Buyer Company Name", "po" → "PO".
   String _humanizeKey(String key) {
     const overrides = <String, String>{
-      'created':      'Date',
-      'job_number':   'Job/PO#',
-      'order_number': 'Order#',
-      'price':        'Total Value',
+      'created':        'Date',
+      'job_number':     'Job/PO#',
+      'order_number':   'Order#',
+      'price':          'Total Value',
+      'po':             'Order',
+      'seller_company': 'Company',
+      'seller_name':    'User',
       'last_login':          'Last Login',
       'failed_attempts':     'Failed Attempts',
       'last_failed_login_at':'Last Failed Login',
@@ -1802,10 +1807,11 @@ class _WidgetRendererCore extends StatelessWidget {
       'Failed Attempts':      3,
       'last_failed_login_at': 5,
       'Last Failed Login':    5,
-      // Accepted Orders detail (humanized from raw keys: po, claimed)
-      // Note: 'Seller Company' already defined above
-      'PO':            3,
-      'Claimed':        5,
+      // Accepted Orders detail (raw keys)
+      'po':             3,
+      'seller_name':    5,
+      'seller_company': 5,
+      'claimed':        5,
     };
     return m[key] ?? 5;
   }

@@ -325,7 +325,10 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
       );
     }
     final baseMet = (_brz?['metric'] as String?);
-    final displayCols = baseMet != null ? _detailDisplayColumns[baseMet] : null;
+    final tableMode = widget.model.settings['tableMode'] as String?;
+    final displayCols = (tableMode == 'detail' && baseMet != null)
+        ? _detailDisplayColumns[baseMet]
+        : null;
     return _WidgetRendererCore(
       model: _effectiveModel,
       selected: widget.selected,

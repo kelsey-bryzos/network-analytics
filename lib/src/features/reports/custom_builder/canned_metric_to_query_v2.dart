@@ -1294,8 +1294,8 @@ CannedTranslation _ordersByCompany({required int maxItems}) {
       OrderBySpec(alias: 'Orders', dir: 'DESC'),
     ],
     limit: maxItems,
-    selectColumns: [
-      SelectColumn(table: 'rds_user_purchase_order', column: 'buyer_company_name'),
+    columns: [
+      ColumnRef(table: 'rds_user_purchase_order', column: 'buyer_company_name', alias: 'Company'),
     ],
   );
   return CannedTranslation(query: q, postFetchNote: 'Server-side metric — orders_by_company.');
@@ -1322,8 +1322,8 @@ CannedTranslation _ordersByUser({required int maxItems}) {
       OrderBySpec(alias: 'Orders', dir: 'DESC'),
     ],
     limit: maxItems,
-    selectColumns: [
-      SelectColumn(table: 'rds_user_purchase_order', column: 'buyer_email'),
+    columns: [
+      ColumnRef(table: 'rds_user_purchase_order', column: 'buyer_email', alias: 'User'),
     ],
   );
   return CannedTranslation(query: q, postFetchNote: 'Server-side metric — orders_by_user.');
@@ -1339,12 +1339,12 @@ CannedTranslation _ordersDetailList({required int maxItems}) {
       OrderBySpec(alias: 'created_date', dir: 'DESC'),
     ],
     limit: maxItems,
-    selectColumns: [
-      SelectColumn(table: 'rds_user_purchase_order', column: 'created_date'),
-      SelectColumn(table: 'rds_user_purchase_order', column: 'buyer_email'),
-      SelectColumn(table: 'rds_user_purchase_order', column: 'buyer_company_name'),
-      SelectColumn(table: 'rds_user_purchase_order', column: 'buyer_po_number'),
-      SelectColumn(table: 'rds_user_purchase_order', column: 'buyer_po_price'),
+    columns: [
+      ColumnRef(table: 'rds_user_purchase_order', column: 'created_date', alias: 'Date'),
+      ColumnRef(table: 'rds_user_purchase_order', column: 'buyer_email', alias: 'User'),
+      ColumnRef(table: 'rds_user_purchase_order', column: 'buyer_company_name', alias: 'Company'),
+      ColumnRef(table: 'rds_user_purchase_order', column: 'buyer_po_number', alias: 'Order#'),
+      ColumnRef(table: 'rds_user_purchase_order', column: 'buyer_po_price', alias: 'Total Value'),
     ],
   );
   return CannedTranslation(query: q, postFetchNote: 'Server-side metric — orders_detail_list.');

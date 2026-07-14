@@ -1779,11 +1779,11 @@ class _WidgetRendererCore extends StatelessWidget {
       'quotes':          3,
       'total_value':     4,
       // Quotes detail list
-      'Company':         9,
-      'User':            7,
-      'Job/PO#':         4,
-      'Total Value':     4,
-      'Date':            5,
+      'Company':         6,
+      'User':            6,
+      'Job/PO#':         5,
+      'Total Value':     5,
+      'Date':            7,
       // Last Login by User / Failed Login Attempts by User
       'name':                 7,
       'email':                8,

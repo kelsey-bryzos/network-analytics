@@ -1790,10 +1790,16 @@ class _WidgetRendererCore extends StatelessWidget {
       if (n != null) return '${n.toStringAsFixed(2)}%';
     }
     final s = v.toString();
-    // ISO timestamp → short date
+    // ISO timestamp → short date (with time for 'created' columns)
     if (_looksLikeIsoDate(s)) {
       final d = DateTime.tryParse(s);
-      if (d != null) return DateFormat('M-d-yy').format(d.toLocal());
+      if (d != null) {
+        final local = d.toLocal();
+        if (key == 'created') {
+          return DateFormat('M-d-yy h:mm a').format(local);
+        }
+        return DateFormat('M-d-yy').format(local);
+      }
     }
     // Numeric (num or parseable string) — apply money or plain formatting
     final isMoney = _looksLikeMoneyKey(key);

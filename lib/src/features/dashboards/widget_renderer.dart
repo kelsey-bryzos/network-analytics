@@ -160,6 +160,8 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
   static const _detailMetricFor = <String, String>{
     'quotes_by_company': 'quotes_detail_list',
     'quotes_by_user':    'quotes_detail_list',
+    'orders_by_company': 'orders_detail_list',
+    'orders_by_user':    'orders_detail_list',
   };
 
   /// Columns to display (in order) when a detail companion is rendered.
@@ -168,6 +170,8 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
   static const _detailDisplayColumns = <String, List<String>>{
     'quotes_by_company': ['created', 'company', 'job_number', 'price'],
     'quotes_by_user':    ['created', 'user', 'company', 'job_number', 'price'],
+    'orders_by_company': ['created', 'company', 'order_number', 'price'],
+    'orders_by_user':    ['created', 'user', 'company', 'order_number', 'price'],
   };
 
   String get _timeRange {
@@ -1728,9 +1732,10 @@ class _WidgetRendererCore extends StatelessWidget {
   /// "buyer_company_name" → "Buyer Company Name", "po" → "PO".
   String _humanizeKey(String key) {
     const overrides = <String, String>{
-      'created':    'Date',
-      'job_number': 'Job/PO#',
-      'price':      'Total Value',
+      'created':      'Date',
+      'job_number':   'Job/PO#',
+      'order_number': 'Order#',
+      'price':        'Total Value',
       'last_login':          'Last Login',
       'failed_attempts':     'Failed Attempts',
       'last_failed_login_at':'Last Failed Login',
@@ -1777,10 +1782,12 @@ class _WidgetRendererCore extends StatelessWidget {
       'company':         4,
       'user':            5,
       'quotes':          3,
+      'orders':          3,
       'total_value':     4,
-      // Quotes detail list — unique raw keys
+      // Quotes / Orders detail list — unique raw keys
       'created':         6,
       'job_number':      4,
+      'order_number':    4,
       'price':           4,
       // Last Login by User / Failed Login Attempts by User
       'name':                 7,

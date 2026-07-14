@@ -77,6 +77,9 @@ const Set<String> kSupportedCannedMetrics = {
   'price_search_feed_purchasing_kpi',
   'price_search_feed_quoting_kpi',
   'price_search_feed_table',
+  'orders_by_company',
+  'orders_by_user',
+  'orders_detail_list',
   'quotes_by_company',
   'quotes_by_user',
   'revenue_by_month',
@@ -190,6 +193,12 @@ CannedTranslation? translateCannedMetric({
       return _priceSearchFeedKpi('Quoting');
     case 'price_search_feed_table':
       return _priceSearchFeedTable(maxItems: maxItems ?? kDefaultTopN);
+    case 'orders_by_company':
+      return _ordersByCompany(maxItems: maxItems ?? kDefaultTopN);
+    case 'orders_by_user':
+      return _ordersByUser(maxItems: maxItems ?? kDefaultTopN);
+    case 'orders_detail_list':
+      return _ordersDetailList(maxItems: maxItems ?? kDefaultTopN);
     case 'quotes_by_company':
       return _quotesByCompany(maxItems: maxItems ?? kDefaultTopN);
     case 'quotes_by_user':
@@ -1254,6 +1263,91 @@ CannedTranslation _bpnsByCompany({required int maxItems}) {
         'the RPC via a filter and a computed_column expression, which '
         'produces the same top-N ordering.',
   );
+}
+
+// ─── Slice: orders_by_company ─────────────────────────────────────────────
+//
+// widget-data-bryzos: queries user_purchase_order for rows with seller_id set
+// (accepted/real orders), groups by buyer_company_name, counts + sums price.
+// Returns _labels (company), _data (order counts), _rows with company/orders/total_value.
+//
+// NOTE: This metric is handled server-side by widget-data-bryzos.
+// The v2 path below is a best-effort approximation for the report builder.
+CannedTranslation _ordersByCompany({required int maxItems}) {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_purchase_order',
+    filters: [
+      FilterSpec(table: 'rds_user_purchase_order', column: 'seller_id', op: 'neq', value: ''),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_purchase_order',
+        column: '',
+        fn: 'count',
+        alias: 'Orders',
+      ),
+    ],
+    groupBy: [
+      GroupBySpec(table: 'rds_user_purchase_order', column: 'buyer_company_name'),
+    ],
+    orderBy: [
+      OrderBySpec.alias('Orders', ascending: false),
+    ],
+    limit: maxItems,
+    selectColumns: [
+      SelectColumn(table: 'rds_user_purchase_order', column: 'buyer_company_name'),
+    ],
+  );
+  return CannedTranslation(query: q, postFetchNote: 'Server-side metric — orders_by_company.');
+}
+
+CannedTranslation _ordersByUser({required int maxItems}) {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_purchase_order',
+    filters: [
+      FilterSpec(table: 'rds_user_purchase_order', column: 'seller_id', op: 'neq', value: ''),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_purchase_order',
+        column: '',
+        fn: 'count',
+        alias: 'Orders',
+      ),
+    ],
+    groupBy: [
+      GroupBySpec(table: 'rds_user_purchase_order', column: 'buyer_email'),
+    ],
+    orderBy: [
+      OrderBySpec.alias('Orders', ascending: false),
+    ],
+    limit: maxItems,
+    selectColumns: [
+      SelectColumn(table: 'rds_user_purchase_order', column: 'buyer_email'),
+    ],
+  );
+  return CannedTranslation(query: q, postFetchNote: 'Server-side metric — orders_by_user.');
+}
+
+CannedTranslation _ordersDetailList({required int maxItems}) {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_purchase_order',
+    filters: [
+      FilterSpec(table: 'rds_user_purchase_order', column: 'seller_id', op: 'neq', value: ''),
+    ],
+    orderBy: [
+      OrderBySpec(table: 'rds_user_purchase_order', column: 'created_date', ascending: false),
+    ],
+    limit: maxItems,
+    selectColumns: [
+      SelectColumn(table: 'rds_user_purchase_order', column: 'created_date'),
+      SelectColumn(table: 'rds_user_purchase_order', column: 'buyer_email'),
+      SelectColumn(table: 'rds_user_purchase_order', column: 'buyer_company_name'),
+      SelectColumn(table: 'rds_user_purchase_order', column: 'buyer_po_number'),
+      SelectColumn(table: 'rds_user_purchase_order', column: 'buyer_po_price'),
+    ],
+  );
+  return CannedTranslation(query: q, postFetchNote: 'Server-side metric — orders_detail_list.');
 }
 
 // ─── Slice #14: quotes_by_company ────────────────────────────────────────

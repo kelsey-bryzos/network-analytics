@@ -167,7 +167,7 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
   /// even when they share the same underlying detail metric.
   static const _detailDisplayColumns = <String, List<String>>{
     'quotes_by_company': ['created', 'company', 'job_number', 'price'],
-    'quotes_by_user':    ['created', 'user', 'company', 'job_number', 'price'],
+    'quotes_by_user':    ['created', 'user', 'company', 'price'],
   };
 
   String get _timeRange {
@@ -1779,11 +1779,11 @@ class _WidgetRendererCore extends StatelessWidget {
       'quotes':          3,
       'total_value':     4,
       // Quotes detail list
-      'Company':         6,
-      'User':            6,
+      'Company':         5,
+      'User':            5,
       'Job/PO#':         5,
       'Total Value':     5,
-      'Date':            7,
+      'Date':            9,
       // Last Login by User / Failed Login Attempts by User
       'name':                 7,
       'email':                8,

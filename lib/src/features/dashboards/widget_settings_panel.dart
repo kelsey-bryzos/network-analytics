@@ -60,6 +60,19 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
 
   /// Metrics that have a transaction-level detail companion.
   /// When the widget type is Table and one of these metrics is active,
+  /// Metrics that use the Week / Month period toggle.
+  static const _periodSummaryMetrics = {
+    'quotes_saved_summary',
+    'orders_placed_summary',
+    'orders_cancelled_summary',
+    'orders_accepted_summary',
+  };
+
+  bool get _showPeriodToggle =>
+      _kind == WidgetKind.table &&
+      _metric != null &&
+      _periodSummaryMetrics.contains(_metric);
+
   /// the "Table View" (Summary / Detail) toggle is shown.
   static const _metricsWithDetail = {
     'quotes_by_company',
@@ -88,7 +101,8 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
   late String _timeRange;
   late int _maxItems;
   late String _barOrientation;
-  late String _tableMode; // 'summary' | 'detail' — only relevant when kind == table
+  late String _tableMode;  // 'summary' | 'detail' — only relevant when kind == table
+  late String _periodMode; // 'weekly' | 'monthly' — only relevant for period-summary metrics
   late Map<String, bool> _toggles;
   late Map<String, bool> _filters;
   int _page = 0;
@@ -110,6 +124,7 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
   late final int _origMaxItems;
   late final String _origBarOrientation;
   late final String _origTableMode;
+  late final String _origPeriodMode;
   late final Map<String, bool> _origToggles;
   late final Map<String, bool> _origFilters;
   late final String _origRawSql;
@@ -144,7 +159,8 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
         ?? (brz['max_items'] as num?)?.toInt()
         ?? 10;
     _origBarOrientation = s['barOrientation'] as String? ?? 'Auto';
-    _origTableMode = s['tableMode'] as String? ?? 'summary';
+    _origTableMode  = s['tableMode']  as String? ?? 'summary';
+    _origPeriodMode = s['periodMode'] as String? ?? 'weekly';
     _origToggles = {
       'Data Labels': (s['dataLabels'] as bool?) ?? false,
       'Legend': (s['legend'] as bool?) ?? true,
@@ -204,7 +220,8 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
     _timeRange = _origTimeRange;
     _maxItems = _origMaxItems;
     _barOrientation = _origBarOrientation;
-    _tableMode = _origTableMode;
+    _tableMode  = _origTableMode;
+    _periodMode = _origPeriodMode;
     _toggles = Map<String, bool>.from(_origToggles);
     _filters = Map<String, bool>.from(_origFilters);
   }
@@ -249,7 +266,8 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
         'timeRange': _timeRange,
         'maxItems': _maxItems,
         'barOrientation': _barOrientation,
-        'tableMode': _tableMode,
+        'tableMode':  _tableMode,
+        'periodMode': _periodMode,
         'dataLabels': _toggles['Data Labels'],
         'legend': _toggles['Legend'],
         'gridLines': _toggles['Grid Lines'],
@@ -292,7 +310,8 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
       _rawSql.text = _origRawSql;
       _maxItems = _origMaxItems;
       _barOrientation = _origBarOrientation;
-      _tableMode = _origTableMode;
+      _tableMode  = _origTableMode;
+      _periodMode = _origPeriodMode;
       _toggles = Map<String, bool>.from(_origToggles);
       _filters = Map<String, bool>.from(_origFilters);
     });
@@ -412,6 +431,28 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
             padding: const EdgeInsets.only(top: 6),
             child: Text(
               'Summary shows totals per company. Detail shows one row per transaction.',
+              style: TextStyle(
+                fontSize: 11,
+                color: OpticsColors.textSecondary,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+        if (_showPeriodToggle) ...[
+          _label('Period'),
+          _ChipGroup<String>(
+            options: const [
+              ('Weekly', 'weekly'),
+              ('Monthly', 'monthly'),
+            ],
+            value: _periodMode,
+            onChanged: (v) => _updateAndPreview(() => _periodMode = v),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'Weekly shows one row per week. Monthly groups into calendar months.',
               style: TextStyle(
                 fontSize: 11,
                 color: OpticsColors.textSecondary,

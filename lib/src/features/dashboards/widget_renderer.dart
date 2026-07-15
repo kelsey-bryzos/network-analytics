@@ -1823,7 +1823,7 @@ class _WidgetRendererCore extends StatelessWidget {
       'seller_company': 5,
       'claimed':        5,
       // Cancelled Orders detail (raw keys)
-      'cancelled':      5,
+      'cancelled':      3,
       'buyer_name':     5,
     };
     return m[key] ?? 5;

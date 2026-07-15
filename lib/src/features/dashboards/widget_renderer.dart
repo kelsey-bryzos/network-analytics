@@ -1823,7 +1823,7 @@ class _WidgetRendererCore extends StatelessWidget {
       'seller_company': 5,
       'claimed':        5,
       // Cancelled Orders detail (raw keys)
-      'cancelled':      3,
+      'cancelled':      5,
       'buyer_name':     5,
     };
     return m[key] ?? 5;
@@ -1857,7 +1857,7 @@ class _WidgetRendererCore extends StatelessWidget {
       if (d != null) {
         final local = d.toLocal();
         if (key == 'created' || key == 'last_login' || key == 'last_failed_login_at' ||
-            key == 'claimed') {
+            key == 'claimed' || key == 'cancelled') {
           return DateFormat('M-d-yy h:mm a').format(local);
         }
         return DateFormat('M-d-yy').format(local);

@@ -70,6 +70,8 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
     'accepted_orders_by_user',
     'cancelled_orders_by_company',
     'cancelled_orders_by_user',
+    'cancelled_lines_by_company',
+    'cancelled_lines_by_user',
   };
 
   bool get _showTableViewToggle =>

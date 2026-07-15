@@ -166,6 +166,8 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
     'accepted_orders_by_user':     'accepted_orders_table',
     'cancelled_orders_by_company': 'cancelled_orders_table',
     'cancelled_orders_by_user':    'cancelled_orders_table',
+    'cancelled_lines_by_company':  'cancelled_lines_table',
+    'cancelled_lines_by_user':     'cancelled_lines_table',
   };
 
   /// Columns to display (in order) when a detail companion is rendered.
@@ -184,6 +186,10 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
     'cancelled_orders_by_company': ['cancelled', 'company', 'po', 'price'],
     // Cancelled by User: #, Cancelled (date), User (=buyer_name), Company, Order (=po), Total Value (=price)
     'cancelled_orders_by_user':    ['cancelled', 'buyer_name', 'company', 'po', 'price'],
+    // Cancelled Lines by Company: #, Cancel Date, Company, PO, Line Value
+    'cancelled_lines_by_company':  ['line_cancelled', 'company', 'po', 'line_value'],
+    // Cancelled Lines by User: #, Cancel Date, User, Company, PO, Line Value
+    'cancelled_lines_by_user':     ['line_cancelled', 'buyer_name', 'company', 'po', 'line_value'],
   };
 
   String get _timeRange {
@@ -1748,10 +1754,12 @@ class _WidgetRendererCore extends StatelessWidget {
     const overrides = <String, String>{
       'created':        'Date',
       'cancelled':      'Cancel Date',
+      'line_cancelled': 'Cancel Date',
       'buyer_name':     'User',
       'job_number':     'Job/PO#',
       'order_number':   'Order#',
       'price':          'Total Value',
+      'line_value':     'Line Value',
       'po':             'Order',
       'seller_company': 'Company',
       'seller_name':    'User',
@@ -1825,6 +1833,9 @@ class _WidgetRendererCore extends StatelessWidget {
       // Cancelled Orders detail (raw keys)
       'cancelled':      5,
       'buyer_name':     5,
+      // Cancelled Lines detail (raw keys)
+      'line_cancelled': 5,
+      'line_value':     4,
     };
     return m[key] ?? 5;
   }
@@ -1857,7 +1868,7 @@ class _WidgetRendererCore extends StatelessWidget {
       if (d != null) {
         final local = d.toLocal();
         if (key == 'created' || key == 'last_login' || key == 'last_failed_login_at' ||
-            key == 'claimed' || key == 'cancelled') {
+            key == 'claimed' || key == 'cancelled' || key == 'line_cancelled') {
           return DateFormat('M-d-yy h:mm a').format(local);
         }
         return DateFormat('M-d-yy').format(local);
@@ -1910,6 +1921,7 @@ class _WidgetRendererCore extends StatelessWidget {
     const _metricsWithCount = {
       'accepted_orders_by_company', 'accepted_orders_by_user',
       'cancelled_orders_by_company', 'cancelled_orders_by_user',
+      'cancelled_lines_by_company', 'cancelled_lines_by_user',
     };
     final showCount = _metricsWithCount.contains(metric);
     final counts = _counts;

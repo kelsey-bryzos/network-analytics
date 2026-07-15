@@ -162,8 +162,10 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
     'quotes_by_user':             'quotes_detail_list',
     'orders_by_company':          'orders_detail_list',
     'orders_by_user':             'orders_detail_list',
-    'accepted_orders_by_company': 'accepted_orders_table',
-    'accepted_orders_by_user':    'accepted_orders_table',
+    'accepted_orders_by_company':  'accepted_orders_table',
+    'accepted_orders_by_user':     'accepted_orders_table',
+    'cancelled_orders_by_company': 'cancelled_orders_table',
+    'cancelled_orders_by_user':    'cancelled_orders_table',
   };
 
   /// Columns to display (in order) when a detail companion is rendered.
@@ -175,9 +177,13 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
     'orders_by_company':          ['created', 'company', 'order_number', 'price'],
     'orders_by_user':             ['created', 'user', 'company', 'order_number', 'price'],
     // By Company detail: #, Claimed, Company (=seller_company), Order (=po), Total Value (=price)
-    'accepted_orders_by_company': ['claimed', 'seller_company', 'po', 'price'],
+    'accepted_orders_by_company':  ['claimed', 'seller_company', 'po', 'price'],
     // By User detail: #, Claimed, User (=seller_name), Company (=seller_company), Order (=po), Total Value (=price)
-    'accepted_orders_by_user':    ['claimed', 'seller_name', 'seller_company', 'po', 'price'],
+    'accepted_orders_by_user':     ['claimed', 'seller_name', 'seller_company', 'po', 'price'],
+    // Cancelled by Company: #, Cancelled (date), Company, Order (=po), Total Value (=price)
+    'cancelled_orders_by_company': ['cancelled', 'company', 'po', 'price'],
+    // Cancelled by User: #, Cancelled (date), User (=buyer_name), Company, Order (=po), Total Value (=price)
+    'cancelled_orders_by_user':    ['cancelled', 'buyer_name', 'company', 'po', 'price'],
   };
 
   String get _timeRange {
@@ -1741,6 +1747,8 @@ class _WidgetRendererCore extends StatelessWidget {
   String _humanizeKey(String key) {
     const overrides = <String, String>{
       'created':        'Date',
+      'cancelled':      'Cancelled',
+      'buyer_name':     'User',
       'job_number':     'Job/PO#',
       'order_number':   'Order#',
       'price':          'Total Value',
@@ -1814,6 +1822,9 @@ class _WidgetRendererCore extends StatelessWidget {
       'seller_name':    5,
       'seller_company': 5,
       'claimed':        5,
+      // Cancelled Orders detail (raw keys)
+      'cancelled':      5,
+      'buyer_name':     5,
     };
     return m[key] ?? 5;
   }
@@ -1845,7 +1856,8 @@ class _WidgetRendererCore extends StatelessWidget {
       final d = DateTime.tryParse(s);
       if (d != null) {
         final local = d.toLocal();
-        if (key == 'created' || key == 'last_login' || key == 'last_failed_login_at') {
+        if (key == 'created' || key == 'last_login' || key == 'last_failed_login_at' ||
+            key == 'claimed' || key == 'cancelled') {
           return DateFormat('M-d-yy h:mm a').format(local);
         }
         return DateFormat('M-d-yy').format(local);
@@ -1895,7 +1907,10 @@ class _WidgetRendererCore extends StatelessWidget {
     final total = _series.fold<double>(0, (a, b) => a + b);
 
     // Accepted orders metrics show an extra "Orders" count column; all others keep the original Share % layout
-    const _metricsWithCount = {'accepted_orders_by_company', 'accepted_orders_by_user'};
+    const _metricsWithCount = {
+      'accepted_orders_by_company', 'accepted_orders_by_user',
+      'cancelled_orders_by_company', 'cancelled_orders_by_user',
+    };
     final showCount = _metricsWithCount.contains(metric);
     final counts = _counts;
 

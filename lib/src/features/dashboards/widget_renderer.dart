@@ -187,9 +187,9 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
     // Cancelled by User: #, Cancelled (date), User (=buyer_name), Company, Order (=po), Total Value (=price)
     'cancelled_orders_by_user':    ['cancelled', 'buyer_name', 'company', 'po', 'price'],
     // Cancelled Lines by Company: #, Cancel Date, Company, PO, Line Value
-    'cancelled_lines_by_company':  ['line_cancelled', 'company', 'po', 'line_value'],
+    'cancelled_lines_by_company':  ['line_cancelled', 'company', 'order_ln', 'line_value'],
     // Cancelled Lines by User: #, Cancel Date, User, Company, PO, Line Value
-    'cancelled_lines_by_user':     ['line_cancelled', 'buyer_name', 'company', 'po', 'line_value'],
+    'cancelled_lines_by_user':     ['line_cancelled', 'buyer_name', 'company', 'order_ln', 'line_value'],
   };
 
   String get _timeRange {
@@ -1760,6 +1760,7 @@ class _WidgetRendererCore extends StatelessWidget {
       'order_number':   'Order#',
       'price':          'Total Value',
       'line_value':     'Line Value',
+      'order_ln':       'Order-Ln',
       'po':             'Order',
       'seller_company': 'Company',
       'seller_name':    'User',
@@ -1835,6 +1836,7 @@ class _WidgetRendererCore extends StatelessWidget {
       'buyer_name':     5,
       // Cancelled Lines detail (raw keys)
       'line_cancelled': 5,
+      'order_ln':       3,
       'line_value':     4,
     };
     return m[key] ?? 5;
@@ -1951,7 +1953,11 @@ class _WidgetRendererCore extends StatelessWidget {
                   child: Text(col1Header, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText))),
               if (showCount)
                 SizedBox(width: 56,
-                    child: Text('Orders', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right))
+                    child: Text(
+                      (metric == 'cancelled_lines_by_company' || metric == 'cancelled_lines_by_user') ? 'Lines' : 'Orders',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText),
+                      textAlign: TextAlign.right,
+                    ))
               else
                 SizedBox(width: 50,
                     child: Text('Share', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right)),

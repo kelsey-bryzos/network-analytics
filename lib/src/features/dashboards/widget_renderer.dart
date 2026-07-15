@@ -1747,7 +1747,7 @@ class _WidgetRendererCore extends StatelessWidget {
   String _humanizeKey(String key) {
     const overrides = <String, String>{
       'created':        'Date',
-      'cancelled':      'Cancelled',
+      'cancelled':      'Cancel Date',
       'buyer_name':     'User',
       'job_number':     'Job/PO#',
       'order_number':   'Order#',
@@ -1857,7 +1857,7 @@ class _WidgetRendererCore extends StatelessWidget {
       if (d != null) {
         final local = d.toLocal();
         if (key == 'created' || key == 'last_login' || key == 'last_failed_login_at' ||
-            key == 'claimed' || key == 'cancelled') {
+            key == 'claimed') {
           return DateFormat('M-d-yy h:mm a').format(local);
         }
         return DateFormat('M-d-yy').format(local);

@@ -1923,13 +1923,13 @@ class _WidgetRendererCore extends StatelessWidget {
               Expanded(flex: 3,
                   child: Text(col1Header, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText))),
               if (showCount)
-                SizedBox(width: 60,
+                SizedBox(width: 56,
                     child: Text('Orders', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right))
               else
                 SizedBox(width: 50,
                     child: Text('Share', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right)),
               if (showCount)
-                SizedBox(width: 90,
+                SizedBox(width: 120,
                     child: Text(col2Header, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right))
               else
                 Expanded(flex: 2,
@@ -1983,7 +1983,7 @@ class _WidgetRendererCore extends StatelessWidget {
                 ],
               )),
           if (showCount)
-            SizedBox(width: 60,
+            SizedBox(width: 56,
                 child: Text(
                     dataIdx < counts.length ? '${counts[dataIdx]}' : '—',
                     style: TextStyle(fontSize: 11, color: _wt.secondaryText), textAlign: TextAlign.right))
@@ -1992,7 +1992,7 @@ class _WidgetRendererCore extends StatelessWidget {
                 child: Text('${pct.toStringAsFixed(1)}%',
                     style: TextStyle(fontSize: 11, color: _wt.secondaryText), textAlign: TextAlign.right)),
           if (showCount)
-            SizedBox(width: 90,
+            SizedBox(width: 120,
                 child: Text(
                   valueStr,
                   style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _palette[dataIdx % _palette.length]),

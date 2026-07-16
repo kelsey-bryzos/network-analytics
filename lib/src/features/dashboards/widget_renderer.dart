@@ -1798,6 +1798,7 @@ class _WidgetRendererCore extends StatelessWidget {
       // Abandoned Quotes (quote line detail) columns
       'date':           'Date',
       'line_num':       'Line#',
+      'source':         'Screen',
       'qty_uom':        'Qty UOM',
       'price_per_unit': 'Price/Unit',
       'price_uom':      'Price UOM',
@@ -1889,6 +1890,7 @@ class _WidgetRendererCore extends StatelessWidget {
       // Abandoned Quotes line detail columns
       'date':           5,
       'line_num':       2,
+      'source':         4,
       'description':    9,
       'qty':            2,
       'qty_uom':        3,

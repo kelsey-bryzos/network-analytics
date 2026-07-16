@@ -1785,7 +1785,9 @@ class _WidgetRendererCore extends StatelessWidget {
       'period':         'Period',
       'status':         'Final Status',
       'companies':      'Companies',
-      'sales':          'Sales \
+      'sales':          'Sales \$',
+      'items':          'Items',
+      'weight':         'Weight (lbs)',
     };
     if (overrides.containsKey(key)) return overrides[key]!;
     if (key.length <= 3 && key == key.toLowerCase()) return key.toUpperCase();
@@ -1857,7 +1859,7 @@ class _WidgetRendererCore extends StatelessWidget {
       'line_cancelled': 5,
       'order_ln':       3,
       'line_value':     4,
-      // Period-summary (quotes_saved_summary, orders_*_summary, bom_upload_monthly_summary)
+      // Period-summary (quotes_saved_summary, orders_*_summary)
       'period':         6,
       'status':         4,
       'companies':      3,

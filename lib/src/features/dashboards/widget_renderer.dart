@@ -1796,7 +1796,7 @@ class _WidgetRendererCore extends StatelessWidget {
       'purchased_value':   'Purchased Value',
       'purchased_weight':  'Purchased Weight',
       // Abandoned Quotes (quote line detail) columns
-      'date':           'Date',
+      'date':           'Quote Date',
       'line_num':       'Line#',
       'source':         'Screen',
       'qty_uom':        'Qty UOM',

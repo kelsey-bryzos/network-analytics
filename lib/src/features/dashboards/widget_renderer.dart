@@ -1783,8 +1783,693 @@ class _WidgetRendererCore extends StatelessWidget {
       'last_failed_login_at':'Last Failed Login',
       // Period-summary columns
       'period':         'Period',
+      'status':         'Final Status',
       'companies':      'Companies',
-      'sales':          'Sales \$',
+      'sales':          'Sales \
+    };
+    if (overrides.containsKey(key)) return overrides[key]!;
+    if (key.length <= 3 && key == key.toLowerCase()) return key.toUpperCase();
+    return key
+        .split('_')
+        .map((w) =>
+            w.isEmpty ? w : (w[0].toUpperCase() + w.substring(1)))
+        .join(' ');
+  }
+
+  int _flexForCol(String key) {
+    const m = {
+      // Orders in Dispute (Edge Function returns aliased keys)
+      'Order#':          3,
+      'Dispute Type':    5,
+      'Buyer':           4,
+      'Seller':          4,
+      'Status':          9,
+      // Monthly Financial Summary
+      'Month':           5,
+      'Transactions':    4,
+      'Revenue':         4,
+      'COGS':            4,
+      'GP (\$)':         4,
+      'GP (%)':          3,
+      // Orders Previewed by Sellers
+      'Preview Screen':  6,
+      'Claim Screen':    6,
+      // Shared across Orders in Dispute + All Buyers + All Sellers
+      'Buyer Company':   6,
+      'Seller Company':  6,
+      // All Buyers / All Sellers
+      'Buyer Email':     8,
+      'Seller Email':    8,
+      'Purchases':       3,
+      'AOV':             4,
+      'Total Purchases': 5,
+      'Sales':           3,
+      'Total Sales':     5,
+      // Quotes by Company / Quotes by User (summary _rows)
+      'company':         4,
+      'user':            5,
+      'quotes':          3,
+      'orders':          3,
+      'total_value':     4,
+      // Quotes / Orders detail list — unique raw keys
+      'created':         6,
+      'job_number':      4,
+      'order_number':    4,
+      'price':           4,
+      // Last Login by User / Failed Login Attempts by User
+      'name':                 7,
+      'email':                8,
+      'last_login':           5,
+      'Last Login':           5,
+      'failed_attempts':      3,
+      'Failed Attempts':      3,
+      'last_failed_login_at': 5,
+      'Last Failed Login':    5,
+      // Accepted Orders detail (raw keys)
+      'po':             3,
+      'seller_name':    5,
+      'seller_company': 5,
+      'claimed':        5,
+      // Cancelled Orders detail (raw keys)
+      'cancelled':      5,
+      'buyer_name':     5,
+      // Cancelled Lines detail (raw keys)
+      'line_cancelled': 5,
+      'order_ln':       3,
+      'line_value':     4,
+      // Period-summary (quotes_saved_summary, orders_*_summary, bom_upload_monthly_summary)
+      'period':         6,
+      'status':         4,
+      'companies':      3,
+      'sales':          4,
+      'items':          3,
+      'weight':         4,
+    };
+    return m[key] ?? 5;
+  }
+
+  String _formatCell(String key, dynamic v) {
+    if (v == null) return '';
+    // Dispute Type event codes → friendly labels
+    if (key == 'event' || key == 'Dispute Type') {
+      const labels = {
+        'edit_line':    'Qty Change',
+        'cancel_order': 'Order Cancel',
+        'cancel_line':  'Line Cancel',
+        'add_line':     'Line Added',
+        'deliver_by':   'Delivery Date Change',
+        'deliver_to':   'Destination Change',
+        'destination':  'Destination Change',
+      };
+      return labels[v?.toString()] ?? v?.toString() ?? '';
+    }
+    if (v is bool) return v ? 'Yes' : 'No';
+    // GP (%) → show as percentage
+    if (key == 'GP (%)') {
+      final n = v is num ? v.toDouble() : double.tryParse(v.toString());
+      if (n != null) return '${n.toStringAsFixed(2)}%';
+    }
+    final s = v.toString();
+    // ISO timestamp → short date (with time for 'created' columns)
+    if (_looksLikeIsoDate(s)) {
+      final d = DateTime.tryParse(s);
+      if (d != null) {
+        final local = d.toLocal();
+        if (key == 'created' || key == 'last_login' || key == 'last_failed_login_at' ||
+            key == 'claimed' || key == 'cancelled' || key == 'line_cancelled') {
+          return DateFormat('M-d-yy h:mm a').format(local);
+        }
+        return DateFormat('M-d-yy').format(local);
+      }
+    }
+    // Numeric (num or parseable string) — apply money or plain formatting
+    final isMoney = _looksLikeMoneyKey(key);
+    if (v is num) {
+      if (isMoney) return _fmtExactMoney(v.toDouble());
+      return _fmtFull(v.toDouble());
+    }
+    final parsed = double.tryParse(s);
+    if (parsed != null && isMoney) return _fmtExactMoney(parsed);
+    return s;
+  }
+
+  bool _looksLikeMoneyKey(String key) {
+    final k = key.toLowerCase();
+    if (k == 'gp (%)') return false; // percentage, not money
+    return k == 'aov' ||
+        k == 'cogs' ||
+        k == 'gp (\$)' ||
+        k == 'sales' ||
+        k.contains('price') ||
+        k.contains('revenue') ||
+        k.contains('total') ||
+        k.contains('value') ||
+        k.contains('amount') ||
+        k.contains('cost') ||
+        k.contains('spread');
+  }
+
+  bool _looksLikeIsoDate(String s) {
+    if (s.length < 10) return false;
+    return RegExp(r'^\d{4}-\d{2}-\d{2}').hasMatch(s);
+  }
+
+  Widget _singleSeriesTable() {
+    if (_series.length != _labels.length) {
+      return _noData();
+    }
+
+    final metric = ((model.binding['brz'] as Map?)?['metric'] as String?) ?? '';
+    final col1Header = metric == 'avg_order_price_trend'
+        ? 'Transaction Month'
+        : ((model.binding['_col1'] as String?) ?? 'Name');
+    final col2Header = (model.binding['_col2'] as String?) ?? 'Value';
+    final total = _series.fold<double>(0, (a, b) => a + b);
+
+    // Accepted orders metrics show an extra "Orders" count column; all others keep the original Share % layout
+    const _metricsWithCount = {
+      'accepted_orders_by_company', 'accepted_orders_by_user',
+      'cancelled_orders_by_company', 'cancelled_orders_by_user',
+      'cancelled_lines_by_company', 'cancelled_lines_by_user',
+    };
+    final showCount = _metricsWithCount.contains(metric);
+    final counts = _counts;
+
+    var indices = _sortedIndices(_labels, _series);
+    if (_sortBy == 'None' && metric == 'avg_order_price_trend') {
+      indices = indices.reversed.toList();
+    }
+    indices = _limitIndices(indices);
+
+    // Sticky header: frozen header row + scrollable body rows
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _chartHeader(),
+        // Frozen header
+        Container(
+          padding: const EdgeInsets.fromLTRB(12, 8, 24, 8),
+          decoration: BoxDecoration(
+            color: _wt.headerBg,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(6))),
+          child: Row(
+            children: [
+              SizedBox(width: 32,
+                  child: Text('#', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText))),
+              Expanded(flex: 3,
+                  child: Text(col1Header, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText))),
+              if (showCount)
+                SizedBox(width: 56,
+                    child: Text(
+                      (metric == 'cancelled_lines_by_company' || metric == 'cancelled_lines_by_user') ? 'Lines' : 'Orders',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText),
+                      textAlign: TextAlign.right,
+                    ))
+              else
+                SizedBox(width: 50,
+                    child: Text('Share', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right)),
+              if (showCount)
+                SizedBox(width: 120,
+                    child: Text(col2Header, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right))
+              else
+                Expanded(flex: 2,
+                    child: Text(col2Header, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right)),
+            ],
+          ),
+        ),
+        // Scrollable body
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                for (int rank = 0; rank < indices.length; rank++)
+                  _singleTableRow(rank, indices[rank], total, showCount: showCount, counts: counts),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _singleTableRow(int rank, int dataIdx, double total, {bool showCount = false, List<int> counts = const []}) {
+    final pct = total > 0 ? _series[dataIdx] / total * 100 : 0.0;
+    final isOdd = rank % 2 == 1;
+    final unitMult = _unit == r'$M' ? 1e6 : _unit == r'$K' ? 1e3 : 1.0;
+    final isMoney = _unit.isNotEmpty && _unit.codeUnitAt(0) == 36;
+    final valueStr = isMoney
+        ? _fmtExactMoney(_series[dataIdx] * unitMult)
+        : _fmtSmartValue(_series[dataIdx], _unit);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 7, 24, 7),
+      color: isOdd ? _wt.headerBg.withValues(alpha: 0.3) : Colors.transparent,
+      child: Row(
+        children: [
+          SizedBox(width: 32,
+              child: Text('${rank + 1}', style: TextStyle(fontSize: 11, color: _wt.mutedText))),
+          Expanded(flex: 3,
+              child: Row(
+                children: [
+                  Container(
+                    width: 6, height: 6,
+                    margin: const EdgeInsets.only(right: 6),
+                    decoration: BoxDecoration(
+                      color: _palette[dataIdx % _palette.length],
+                      borderRadius: BorderRadius.circular(1)),
+                  ),
+                  Expanded(
+                    child: Text(_labels[dataIdx],
+                        style: TextStyle(fontSize: 11, color: _wt.bodyText), overflow: TextOverflow.ellipsis)),
+                ],
+              )),
+          if (showCount)
+            SizedBox(width: 56,
+                child: Text(
+                    dataIdx < counts.length ? '${counts[dataIdx]}' : '—',
+                    style: TextStyle(fontSize: 11, color: _wt.secondaryText), textAlign: TextAlign.right))
+          else
+            SizedBox(width: 50,
+                child: Text('${pct.toStringAsFixed(1)}%',
+                    style: TextStyle(fontSize: 11, color: _wt.secondaryText), textAlign: TextAlign.right)),
+          if (showCount)
+            SizedBox(width: 120,
+                child: Text(
+                  valueStr,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _palette[dataIdx % _palette.length]),
+                  textAlign: TextAlign.right))
+          else
+            Expanded(flex: 2,
+                child: Text(
+                  valueStr,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _palette[dataIdx % _palette.length]),
+                  textAlign: TextAlign.right)),
+        ],
+      ),
+    );
+  }
+
+  Widget _multiSeriesTable() {
+    final ms = _multiSeries!;
+    final grandTotal = ms.fold(0.0, (double a, _SeriesData s) => a + s.total);
+
+    final names = ms.map((s) => s.name).toList();
+    final totals = ms.map((s) => s.total).toList();
+    var indices = _sortedIndices(names, totals);
+    indices = _limitIndices(indices);
+
+    final rawPrices = model.binding['_unitPrices'];
+    final Map<String, double> unitPrices = rawPrices is Map
+        ? rawPrices.map((k, v) => MapEntry('$k', (v as num).toDouble()))
+        : const {};
+    final hasPricing = unitPrices.isNotEmpty;
+
+    final isMoneyUnit = _unit.contains('\$');
+    final primaryHeader = isMoneyUnit ? 'Total \$' : 'Total #';
+    final grandRevenue = hasPricing
+        ? ms.fold<double>(
+            0, (a, s) => a + s.total * (unitPrices[s.name] ?? 0))
+        : 0.0;
+
+    // Sticky header: frozen header row + scrollable body
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _chartHeader(),
+        // Frozen header
+        Container(
+          padding: const EdgeInsets.fromLTRB(12, 8, 24, 8),
+          decoration: BoxDecoration(
+            color: _wt.headerBg,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(6))),
+          child: Row(
+            children: [
+              SizedBox(width: 32,
+                  child: Text('#', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText))),
+              Expanded(flex: 3,
+                  child: Text('Name', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText))),
+              Expanded(flex: 2,
+                  child: Text(primaryHeader, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right)),
+              if (hasPricing)
+                Expanded(flex: 2,
+                    child: Text('Total Revenue', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right)),
+              SizedBox(width: 50,
+                  child: Text('Share', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right)),
+            ],
+          ),
+        ),
+        // Scrollable body
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                for (int rank = 0; rank < indices.length; rank++)
+                  _multiTableRow(rank, indices[rank], ms, grandTotal,
+                      unitPrices: unitPrices,
+                      grandRevenue: grandRevenue,
+                      hasPricing: hasPricing,
+                      isMoneyUnit: isMoneyUnit),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _multiTableRow(
+    int rank,
+    int idx,
+    List<_SeriesData> ms,
+    double grandTotal, {
+    required Map<String, double> unitPrices,
+    required double grandRevenue,
+    required bool hasPricing,
+    required bool isMoneyUnit,
+  }) {
+    final s = ms[idx];
+    final revenue =
+        hasPricing ? s.total * (unitPrices[s.name] ?? 0) : 0.0;
+
+    final shareBasis = hasPricing ? grandRevenue : grandTotal;
+    final shareValue = hasPricing ? revenue : s.total;
+    final sharePct = shareBasis > 0
+        ? '${(shareValue / shareBasis * 100).toStringAsFixed(1)}%'
+        : '0%';
+
+    // Smart primary formatting — scale by unit multiplier so $K values
+    // display as e.g. "$1.3M" not "$1.3K".
+    final unitMult = _unit == r'$M' ? 1e6 : _unit == r'$K' ? 1e3 : 1.0;
+    final primaryStr = isMoneyUnit
+        ? _fmtSmartMoney(s.total * unitMult)
+        : _fmtFull(s.total);
+    final revenueStr = _fmtSmartMoney(revenue);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 7, 24, 7),
+      color: rank % 2 == 1 ? _wt.headerBg.withValues(alpha: 0.3) : Colors.transparent,
+      child: Row(
+        children: [
+          SizedBox(width: 32,
+              child: Text('${rank + 1}', style: TextStyle(fontSize: 11, color: _wt.mutedText))),
+          Expanded(flex: 3,
+              child: Row(
+                children: [
+                  Container(
+                    width: 6, height: 6,
+                    margin: const EdgeInsets.only(right: 6),
+                    decoration: BoxDecoration(
+                      color: _palette[idx % _palette.length],
+                      borderRadius: BorderRadius.circular(1)),
+                  ),
+                  Expanded(
+                    child: Text(s.name,
+                        style: TextStyle(fontSize: 11, color: _wt.bodyText),
+                        overflow: TextOverflow.ellipsis)),
+                ],
+              )),
+          Expanded(flex: 2,
+              child: Text(
+                primaryStr,
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _palette[idx % _palette.length]),
+                textAlign: TextAlign.right)),
+          if (hasPricing)
+            Expanded(flex: 2,
+                child: Text(
+                  revenueStr,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.bodyText),
+                  textAlign: TextAlign.right)),
+          SizedBox(width: 50,
+              child: Text(
+                sharePct,
+                style: TextStyle(fontSize: 11, color: _wt.secondaryText),
+                textAlign: TextAlign.right)),
+        ],
+      ),
+    );
+  }
+
+
+  /// Standard chart header: time range badge + legend (inline) + Y-label at far right.
+  /// Legend appears between the badge and the Y-label so it never overlaps the chart.
+  Widget _chartHeader({Widget? legendWidget}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          _timeRangeBadge(),
+          const SizedBox(width: 8),
+          if (legendWidget != null) ...[
+            Expanded(child: legendWidget),
+          ] else
+            const Spacer(),
+          if (_yLabel.isNotEmpty)
+            Text(
+              'Y: $_yLabel',
+              style: TextStyle(fontSize: 9, color: _wt.mutedText),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _noData() {
+    return Center(
+      child: Text('No data for this range',
+          style: TextStyle(fontSize: 11, color: _wt.mutedText)),
+    );
+  }
+
+  Widget _multiSeriesLegend(List<_SeriesData> ms) {
+    return SizedBox(
+      height: 18,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          for (int i = 0; i < ms.length; i++) ...[
+            if (i > 0) const SizedBox(width: 10),
+            _legendDot(_palette[i % _palette.length], ms[i].name),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _legendDot(Color color, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 12, height: 2,
+          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(1)),
+        ),
+        const SizedBox(width: 5),
+        Text(label,
+            style: TextStyle(fontSize: 11, color: _wt.mutedText),
+            overflow: TextOverflow.ellipsis),
+      ],
+    );
+  }
+
+  FlTitlesData _titlesData(double interval, List<String> labels) {
+    return FlTitlesData(
+      topTitles: const AxisTitles(
+        sideTitles: SideTitles(showTitles: false, reservedSize: 4),
+      ),
+      rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+      bottomTitles: AxisTitles(
+        sideTitles: SideTitles(
+          showTitles: true, reservedSize: 22,
+          interval: _labelInterval(labels.length),
+          getTitlesWidget: (value, meta) {
+            final idx = value.toInt();
+            if (idx < 0 || idx >= labels.length) return const SizedBox.shrink();
+            return SideTitleWidget(
+              axisSide: meta.axisSide,
+              space: 4,
+              child: Text(
+                labels[idx],
+                style: TextStyle(fontSize: 9, color: _wt.mutedText),
+              ),
+            );
+          },
+        ),
+      ),
+      leftTitles: AxisTitles(
+        // Y-label now shown in _chartHeader row — no axisNameWidget here
+        sideTitles: SideTitles(
+          showTitles: true, reservedSize: 40,
+          interval: interval.toDouble(),
+          getTitlesWidget: (value, meta) => SideTitleWidget(
+            axisSide: meta.axisSide,
+            space: 4,
+            child: Text(
+              _fmtNum(value),
+              style: TextStyle(fontSize: 9, color: _wt.mutedText),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  FlBorderData _borderData() {
+    return FlBorderData(
+      show: true,
+      border: Border(
+        bottom: BorderSide(color: _wt.border, width: 0.5),
+        left: BorderSide(color: _wt.border, width: 0.5),
+      ),
+    );
+  }
+
+  double _barWidth(int count) {
+    // Responsive bar width — 12px gap between bars (set via groupsSpace).
+    // Bars fill as much width as possible; narrows as data points increase.
+    if (count <= 2) return 80;
+    if (count <= 4) return 60;
+    if (count <= 6) return 44;
+    if (count <= 8) return 32;
+    if (count <= 12) return 22;
+    if (count <= 20) return 16;
+    return 10;
+  }
+
+  double _labelInterval(int count) {
+    if (count <= 6) return 1;
+    if (count <= 12) return 2;
+    return 3;
+  }
+
+  double _niceInterval(double range) {
+    if (range <= 0) return 1;
+    final order = math.pow(10, (math.log(range) / math.ln10).floor());
+    final fraction = range / order;
+    double nice;
+    if (fraction <= 1.5) { nice = 1; }
+    else if (fraction <= 3) { nice = 2; }
+    else if (fraction <= 7) { nice = 5; }
+    else { nice = 10; }
+    return nice * order;
+  }
+}
+// ── Settings Gear Button ──────────────────────────────────────────
+
+class _SettingsGear extends StatefulWidget {
+  final VoidCallback onTap;
+  const _SettingsGear({required this.onTap});
+  @override
+  State<_SettingsGear> createState() => _SettingsGearState();
+}
+
+class _SettingsGearState extends State<_SettingsGear> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      cursor: SystemMouseCursors.click,
+      child: Tooltip(
+        message: 'Widget settings',
+        child: GestureDetector(
+          onTap: widget.onTap,
+          behavior: HitTestBehavior.opaque,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: _hovered ? OpticsColors.accentCyan.withValues(alpha: 0.12) : Colors.transparent,
+              borderRadius: BorderRadius.circular(4)),
+            child: Icon(Icons.tune_rounded, size: 14,
+                color: _hovered ? OpticsColors.accentCyan : OpticsColors.textMuted),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Delete (×) Button ─────────────────────────────────────────────
+
+class _DeleteButton extends StatefulWidget {
+  final VoidCallback onTap;
+  const _DeleteButton({required this.onTap});
+  @override
+  State<_DeleteButton> createState() => _DeleteButtonState();
+}
+
+class _DeleteButtonState extends State<_DeleteButton> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      cursor: SystemMouseCursors.click,
+      child: Tooltip(
+        message: 'Remove widget',
+        child: GestureDetector(
+          onTap: widget.onTap,
+          behavior: HitTestBehavior.opaque,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: _hovered
+                  ? OpticsColors.danger.withValues(alpha: 0.14)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Icon(
+              Icons.close_rounded,
+              size: 14,
+              color: _hovered ? OpticsColors.danger : OpticsColors.textMuted,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Mini Sparkline Painter ────────────────────────────────────────
+
+class _SparklinePainter extends CustomPainter {
+  final List<double> data;
+  final double minV, maxV, range;
+  final Color color;
+
+  _SparklinePainter({required this.data, required this.minV, required this.maxV, required this.range, required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (data.length < 2) return;
+    final paint = Paint()..color = color..strokeWidth = 1.5..style = PaintingStyle.stroke..strokeCap = StrokeCap.round;
+
+    final path = Path();
+    for (int i = 0; i < data.length; i++) {
+      final x = size.width * i / (data.length - 1);
+      final y = range > 0 ? size.height - (data[i] - minV) / range * size.height : size.height / 2;
+      if (i == 0) { path.moveTo(x, y); } else { path.lineTo(x, y); }
+    }
+    canvas.drawPath(path, paint);
+
+    final fillPath = Path.from(path)..lineTo(size.width, size.height)..lineTo(0, size.height)..close();
+    final fillPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter, end: Alignment.bottomCenter,
+        colors: [color.withValues(alpha: 0.15), color.withValues(alpha: 0.0)],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+    canvas.drawPath(fillPath, fillPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _SparklinePainter old) => old.data != data || old.color != color;
+}
+,
       'items':          'Items',
       'weight':         'Weight (lbs)',
     };

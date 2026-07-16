@@ -77,6 +77,9 @@ const Set<String> kSupportedCannedMetrics = {
   'price_search_feed_purchasing_kpi',
   'price_search_feed_quoting_kpi',
   'price_search_feed_table',
+  'orders_by_company',
+  'orders_by_user',
+  'orders_detail_list',
   'quotes_by_company',
   'quotes_by_user',
   'revenue_by_month',
@@ -87,6 +90,8 @@ const Set<String> kSupportedCannedMetrics = {
   'top_companies_orders',
   'top_companies_revenue',
   'unclaimed_orders_table',
+  'user_failed_logins',
+  'user_last_login',
   'users_by_type',
   'users_recent_list',
   'yoy_revenue',
@@ -188,6 +193,12 @@ CannedTranslation? translateCannedMetric({
       return _priceSearchFeedKpi('Quoting');
     case 'price_search_feed_table':
       return _priceSearchFeedTable(maxItems: maxItems ?? kDefaultTopN);
+    case 'orders_by_company':
+      return _ordersByCompany(maxItems: maxItems ?? kDefaultTopN);
+    case 'orders_by_user':
+      return _ordersByUser(maxItems: maxItems ?? kDefaultTopN);
+    case 'orders_detail_list':
+      return _ordersDetailList(maxItems: maxItems ?? kDefaultTopN);
     case 'quotes_by_company':
       return _quotesByCompany(maxItems: maxItems ?? kDefaultTopN);
     case 'quotes_by_user':
@@ -210,6 +221,10 @@ CannedTranslation? translateCannedMetric({
       return _unclaimedOrdersTable(maxItems: maxItems ?? kDefaultTopN);
     case 'users_by_type':
       return _usersByType();
+    case 'user_failed_logins':
+      return _userFailedLogins();
+    case 'user_last_login':
+      return _userLastLogin();
     case 'users_recent_list':
       return _usersRecentList(maxItems: maxItems ?? kDefaultTopN);
     case 'yoy_revenue':
@@ -1250,6 +1265,91 @@ CannedTranslation _bpnsByCompany({required int maxItems}) {
   );
 }
 
+// ─── Slice: orders_by_company ─────────────────────────────────────────────
+//
+// widget-data-bryzos: queries user_purchase_order for rows with seller_id set
+// (accepted/real orders), groups by buyer_company_name, counts + sums price.
+// Returns _labels (company), _data (order counts), _rows with company/orders/total_value.
+//
+// NOTE: This metric is handled server-side by widget-data-bryzos.
+// The v2 path below is a best-effort approximation for the report builder.
+CannedTranslation _ordersByCompany({required int maxItems}) {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_purchase_order',
+    filters: [
+      FilterSpec(table: 'rds_user_purchase_order', column: 'seller_id', op: '!=', value: ''),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_purchase_order',
+        column: '',
+        fn: 'count',
+        alias: 'Orders',
+      ),
+    ],
+    groupBy: [
+      GroupBySpec(table: 'rds_user_purchase_order', column: 'buyer_company_name'),
+    ],
+    orderBy: [
+      OrderBySpec(alias: 'Orders', dir: 'DESC'),
+    ],
+    limit: maxItems,
+    columns: [
+      ColumnRef(table: 'rds_user_purchase_order', column: 'buyer_company_name', alias: 'Company'),
+    ],
+  );
+  return CannedTranslation(query: q, postFetchNote: 'Server-side metric — orders_by_company.');
+}
+
+CannedTranslation _ordersByUser({required int maxItems}) {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_purchase_order',
+    filters: [
+      FilterSpec(table: 'rds_user_purchase_order', column: 'seller_id', op: '!=', value: ''),
+    ],
+    aggregates: [
+      AggregateSpec(
+        table: 'rds_user_purchase_order',
+        column: '',
+        fn: 'count',
+        alias: 'Orders',
+      ),
+    ],
+    groupBy: [
+      GroupBySpec(table: 'rds_user_purchase_order', column: 'buyer_email'),
+    ],
+    orderBy: [
+      OrderBySpec(alias: 'Orders', dir: 'DESC'),
+    ],
+    limit: maxItems,
+    columns: [
+      ColumnRef(table: 'rds_user_purchase_order', column: 'buyer_email', alias: 'User'),
+    ],
+  );
+  return CannedTranslation(query: q, postFetchNote: 'Server-side metric — orders_by_user.');
+}
+
+CannedTranslation _ordersDetailList({required int maxItems}) {
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user_purchase_order',
+    filters: [
+      FilterSpec(table: 'rds_user_purchase_order', column: 'seller_id', op: '!=', value: ''),
+    ],
+    orderBy: [
+      OrderBySpec(alias: 'created_date', dir: 'DESC'),
+    ],
+    limit: maxItems,
+    columns: [
+      ColumnRef(table: 'rds_user_purchase_order', column: 'created_date', alias: 'Date'),
+      ColumnRef(table: 'rds_user_purchase_order', column: 'buyer_email', alias: 'User'),
+      ColumnRef(table: 'rds_user_purchase_order', column: 'buyer_company_name', alias: 'Company'),
+      ColumnRef(table: 'rds_user_purchase_order', column: 'buyer_po_number', alias: 'Order#'),
+      ColumnRef(table: 'rds_user_purchase_order', column: 'buyer_po_price', alias: 'Total Value'),
+    ],
+  );
+  return CannedTranslation(query: q, postFetchNote: 'Server-side metric — orders_detail_list.');
+}
+
 // ─── Slice #14: quotes_by_company ────────────────────────────────────────
 //
 // widget-data-bryzos:
@@ -1916,6 +2016,75 @@ CannedTranslation _ordersRecentList({required int maxItems}) {
 }
 
 // ─── Slice #22: users_recent_list ────────────────────────────────────────
+// ─── Slice: user_last_login ───────────────────────────────────────────────
+//
+// widget-data-bryzos: queries rds_user directly from Supabase mirror,
+// returns _rows with name, company, email, last_login sorted DESC.
+CannedTranslation _userLastLogin() {
+  const nameExpr = 'coalesce('
+      'nullif(btrim(concat_ws(\' \', t."first_name", t."last_name")), \'\'), '
+      't."email_id", '
+      '\'(unknown)\')';
+
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user',
+    columns: [
+      ColumnRef(table: 'rds_user', column: 'email_id', alias: 'Email'),
+      ColumnRef(table: 'rds_user', column: 'client_company', alias: 'Company'),
+      ColumnRef(table: 'rds_user', column: 'last_login', alias: 'Last Login'),
+    ],
+    computedColumns: [
+      ComputedColumn(expression: nameExpr, alias: 'User'),
+    ],
+    orderBy: [OrderBySpec(alias: 'Last Login', dir: 'DESC')],
+    viz: VizSpec(chartType: 'table'),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos reads rds_user directly (Supabase mirror), '
+        'returning name, company, email, last_login sorted by last_login DESC.',
+  );
+}
+
+// ─── Slice: user_failed_logins ────────────────────────────────────────────────
+//
+// widget-data-bryzos: queries rds_user directly from Supabase mirror,
+// returns _rows with name, company, email, failed_attempts, last_failed_login_at
+// for users with failed_login_attempts > 0, sorted by attempts DESC.
+CannedTranslation _userFailedLogins() {
+  const nameExpr = 'coalesce('
+      'nullif(btrim(concat_ws(\' \', t."first_name", t."last_name")), \'\'), '
+      't."email_id", '
+      '\'(unknown)\')';
+
+  final q = CustomReportQueryV2(
+    primaryTable: 'rds_user',
+    columns: [
+      ColumnRef(table: 'rds_user', column: 'email_id', alias: 'Email'),
+      ColumnRef(table: 'rds_user', column: 'client_company', alias: 'Company'),
+      ColumnRef(table: 'rds_user', column: 'failed_login_attempts', alias: 'Failed Attempts'),
+      ColumnRef(table: 'rds_user', column: 'last_failed_login_at', alias: 'Last Failed Login'),
+    ],
+    computedColumns: [
+      ComputedColumn(expression: nameExpr, alias: 'User'),
+    ],
+    filters: [
+      FilterSpec(table: 'rds_user', column: 'failed_login_attempts', op: '>', value: '0'),
+    ],
+    orderBy: [OrderBySpec(alias: 'Failed Attempts', dir: 'DESC')],
+    viz: VizSpec(chartType: 'table'),
+  );
+
+  return CannedTranslation(
+    query: q,
+    postFetchNote:
+        'widget-data-bryzos reads rds_user directly (Supabase mirror), '
+        'returning users with failed_login_attempts > 0 sorted by attempts DESC.',
+  );
+}
+
 CannedTranslation _usersRecentList({required int maxItems}) {
   const nameExpr = 'coalesce('
       'nullif(btrim(concat_ws(\' \', t."first_name", t."last_name")), \'\'), '

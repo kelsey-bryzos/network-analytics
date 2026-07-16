@@ -155,6 +155,44 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
     'all_sellers_table',
   };
 
+
+  /// Maps a summary metric to its transaction-level detail companion.
+  /// When tableMode == 'detail', the renderer swaps the metric to this one.
+  static const _detailMetricFor = <String, String>{
+    'quotes_by_company':          'quotes_detail_list',
+    'quotes_by_user':             'quotes_detail_list',
+    'orders_by_company':          'orders_detail_list',
+    'orders_by_user':             'orders_detail_list',
+    'accepted_orders_by_company':  'accepted_orders_table',
+    'accepted_orders_by_user':     'accepted_orders_table',
+    'cancelled_orders_by_company': 'cancelled_orders_table',
+    'cancelled_orders_by_user':    'cancelled_orders_table',
+    'cancelled_lines_by_company':  'cancelled_lines_table',
+    'cancelled_lines_by_user':     'cancelled_lines_table',
+  };
+
+  /// Columns to display (in order) when a detail companion is rendered.
+  /// Keyed by the SOURCE (summary) metric so each view can show different columns
+  /// even when they share the same underlying detail metric.
+  static const _detailDisplayColumns = <String, List<String>>{
+    'quotes_by_company':          ['created', 'company', 'job_number', 'price'],
+    'quotes_by_user':             ['created', 'user', 'company', 'job_number', 'price'],
+    'orders_by_company':          ['created', 'company', 'order_number', 'price'],
+    'orders_by_user':             ['created', 'user', 'company', 'order_number', 'price'],
+    // By Company detail: #, Claimed, Company (=seller_company), Order (=po), Total Value (=price)
+    'accepted_orders_by_company':  ['claimed', 'seller_company', 'po', 'price'],
+    // By User detail: #, Claimed, User (=seller_name), Company (=seller_company), Order (=po), Total Value (=price)
+    'accepted_orders_by_user':     ['claimed', 'seller_name', 'seller_company', 'po', 'price'],
+    // Cancelled by Company: #, Cancelled (date), Company, Order (=po), Total Value (=price)
+    'cancelled_orders_by_company': ['cancelled', 'company', 'po', 'price'],
+    // Cancelled by User: #, Cancelled (date), User (=buyer_name), Company, Order (=po), Total Value (=price)
+    'cancelled_orders_by_user':    ['cancelled', 'buyer_name', 'company', 'po', 'price'],
+    // Cancelled Lines by Company: #, Cancel Date, Company, PO, Line Value
+    'cancelled_lines_by_company':  ['line_cancelled', 'company', 'order_ln', 'line_value'],
+    // Cancelled Lines by User: #, Cancel Date, User, Company, PO, Line Value
+    'cancelled_lines_by_user':     ['line_cancelled', 'buyer_name', 'company', 'order_ln', 'line_value'],
+  };
+
   String get _timeRange {
     final s = widget.model.settings['timeRange'] as String?;
     if (s != null && s.isNotEmpty) return migrateTimeRange(s);
@@ -173,11 +211,26 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
     return 10;
   }
 
+  /// The metric actually fetched — swapped to the detail companion when
+  /// the widget is a table in detail mode.
+  String? get _effectiveMetric {
+    final brz = _brz;
+    if (brz == null) return null;
+    final base = brz['metric'] as String?;
+    if (base == null) return null;
+    final tableMode = widget.model.settings['tableMode'] as String?;
+    if (widget.model.kind == WidgetKind.table && tableMode == 'detail') {
+      return _detailMetricFor[base] ?? base;
+    }
+    return base;
+  }
+
   String get _fetchKey {
     final brz = _brz;
     if (brz == null) return '';
     final tid = ref.read(activeTenantProvider) ?? '';
-    return '${brz['data_source_id']}|${brz['metric']}|$_timeRange|$_maxItems|$tid';
+    final tableMode = widget.model.settings['tableMode'] as String? ?? '';
+    return '${brz['data_source_id']}|${_effectiveMetric ?? ''}|$_timeRange|$_maxItems|$tid|$tableMode';
   }
 
   @override
@@ -200,7 +253,7 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
     _lastFetchKey = key;
 
     final dataSourceId = brz['data_source_id'] as String?;
-    final metric = brz['metric'] as String?;
+    final metric = _effectiveMetric;
     if (dataSourceId == null || metric == null) return;
 
     setState(() {
@@ -245,7 +298,8 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
     final merged = Map<String, dynamic>.from(widget.model.binding);
     for (final k in const [
       '_data', '_labels', '_multiSeries', '_unit', '_yLabel',
-      '_col1', '_col2', '_rows', '_meta', '_timeRange',
+      '_col1', '_col2', '_rows', '_meta', '_timeRange', '_counts',
+      '_rows_weekly', '_rows_monthly', '_view_default',
     ]) {
       if (live.containsKey(k)) merged[k] = live[k];
     }
@@ -294,12 +348,18 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
         ),
       );
     }
+    final baseMet = (_brz?['metric'] as String?);
+    final tableMode = widget.model.settings['tableMode'] as String?;
+    final displayCols = (tableMode == 'detail' && baseMet != null)
+        ? _detailDisplayColumns[baseMet]
+        : null;
     return _WidgetRendererCore(
       model: _effectiveModel,
       selected: widget.selected,
       chromeless: widget.chromeless,
       onSettingsTap: widget.onSettingsTap,
       onDeleteTap: widget.onDeleteTap,
+      displayColumns: displayCols,
     );
   }
 
@@ -330,6 +390,7 @@ class _WidgetRendererCore extends StatelessWidget {
   final bool chromeless;
   final VoidCallback? onSettingsTap;
   final VoidCallback? onDeleteTap;
+  final List<String>? displayColumns;
 
   const _WidgetRendererCore({
     required this.model,
@@ -337,6 +398,7 @@ class _WidgetRendererCore extends StatelessWidget {
     this.chromeless = false,
     this.onSettingsTap,
     this.onDeleteTap,
+    this.displayColumns,
   });
 
   @override
@@ -399,7 +461,15 @@ class _WidgetRendererCore extends StatelessWidget {
       migrateTimeRange(model.settings['timeRange'] as String?);
   String get _sortBy {
     final metric = ((model.binding['brz'] as Map?)?['metric'] as String?) ?? '';
-    if (metric == 'avg_order_price_trend') return 'None';
+    // Time-series metrics produce chronologically ordered labels — never re-sort them.
+    const _chronologicalMetrics = {
+      'avg_order_price_trend',
+      'orders_by_month',
+      'revenue_by_month',
+      'searches_by_month',
+      'chat_volume_by_month',
+    };
+    if (_chronologicalMetrics.contains(metric)) return 'None';
     return model.settings['sortBy'] as String? ?? 'Value ↓';
   }
   int get _maxItems => (model.settings['maxItems'] as num?)?.toInt() ?? 0;
@@ -443,6 +513,8 @@ class _WidgetRendererCore extends StatelessWidget {
 
   String get _unit => (model.binding['_unit'] as String?) ?? '';
   String get _yLabel => (model.binding['_yLabel'] as String?) ?? '';
+  List<int> get _counts =>
+      ((model.binding['_counts'] as List?)?.map((e) => (e as num).toInt()).toList()) ?? [];
 
   // ── Data accessors ─────────────────────────────────────────────
 
@@ -1170,7 +1242,7 @@ class _WidgetRendererCore extends StatelessWidget {
                       child: Row(
                         children: [
                           SizedBox(
-                            width: 150,
+                            width: 180,
                             child: Text(labels[i],
                                 style: TextStyle(fontSize: 9, color: _wt.secondaryText),
                                 overflow: TextOverflow.ellipsis),
@@ -1498,14 +1570,27 @@ class _WidgetRendererCore extends StatelessWidget {
   // ══════════════════════════════════════════════════════════════════
 
   Widget _table() {
+    // Period-summary metrics return _rows_weekly and _rows_monthly instead
+    // of _rows. Pick the right bucket based on periodMode setting.
+    final weeklyRows = model.binding['_rows_weekly'];
+    final monthlyRows = model.binding['_rows_monthly'];
+    if (weeklyRows is List || monthlyRows is List) {
+      final periodMode = (model.settings['periodMode'] as String?) ??
+          (model.binding['_view_default'] as String?) ?? 'weekly';
+      final rawRows = periodMode == 'monthly' ? monthlyRows : weeklyRows;
+      if (rawRows is List) {
+        return _rowsDetailTable(rawRows, displayColumns: displayColumns);
+      }
+    }
+
     // Detail-list metrics (e.g. orders_recent_list, users_recent_list,
     // quotes_detail_list, expired_lost_quotes, cancelled_orders_list,
     // bpns_full_list, bom_upload_detail) return arbitrary-shape rows in
     // `_rows` rather than the labels/values pair used by ranked tables.
     // When present, render those as a generic multi-column detail table.
     final rawRows = model.binding['_rows'];
-    if (rawRows is List && rawRows.isNotEmpty) {
-      return _rowsDetailTable(rawRows);
+    if (rawRows is List) {
+      return _rowsDetailTable(rawRows, displayColumns: displayColumns);
     }
     if (_hasMulti) return _multiSeriesTable();
     return _singleSeriesTable();
@@ -1516,14 +1601,17 @@ class _WidgetRendererCore extends StatelessWidget {
   /// alignment are inferred from the first row's key set; numeric values
   /// are right-aligned and money-formatted when the unit is monetary, and
   /// date-like ISO strings are formatted human-readably.
-  Widget _rowsDetailTable(List rawRows) {
+  Widget _rowsDetailTable(List rawRows, {List<String>? displayColumns}) {
     final rows = rawRows
         .whereType<Map>()
         .map((m) => m.cast<String, dynamic>())
         .toList();
     if (rows.isEmpty) return _noData();
-    // Column order = first row's key insertion order.
-    final cols = rows.first.keys.toList();
+    // Column order = displayColumns (if specified) else first row's key insertion order.
+    final allCols = rows.first.keys.toList();
+    final cols = (displayColumns != null)
+        ? displayColumns.where((c) => allCols.contains(c)).toList()
+        : allCols;
     final headers = [for (final c in cols) _humanizeKey(c)];
     final aligns = List<TextAlign>.filled(cols.length, TextAlign.left);
 
@@ -1615,31 +1703,32 @@ class _WidgetRendererCore extends StatelessWidget {
                             style: TextStyle(fontSize: 11, color: _wt.mutedText)),
                       ),
                       for (int c = 0; c < cols.length; c++)
-                        needsScroll
-                            ? SizedBox(
-                                width: minColWidths[c],
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                                  child: Text(
-                                    _formatCell(cols[c], rows[i][cols[c]]),
-                                    style: TextStyle(fontSize: 11, color: _wt.bodyText),
-                                    textAlign: aligns[c],
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              )
-                            : Expanded(
-                                flex: _flexForCol(cols[c]),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                                  child: Text(
-                                    _formatCell(cols[c], rows[i][cols[c]]),
-                                    style: TextStyle(fontSize: 11, color: _wt.bodyText),
-                                    textAlign: aligns[c],
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ),
+                        Builder(builder: (context) {
+                          final colKey = cols[c];
+                          final cellText = _formatCell(colKey, rows[i][colKey]);
+                          final isDesc = colKey == 'description';
+                          final rawVal = isDesc ? (rows[i][colKey]?.toString() ?? '') : '';
+                          Widget cellWidget = Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: Text(
+                              cellText,
+                              style: TextStyle(fontSize: 11, color: _wt.bodyText),
+                              textAlign: aligns[c],
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          );
+                          if (isDesc && rawVal.isNotEmpty) {
+                            cellWidget = Tooltip(
+                              message: rawVal,
+                              waitDuration: const Duration(milliseconds: 400),
+                              child: cellWidget,
+                            );
+                          }
+                          return needsScroll
+                              ? SizedBox(width: minColWidths[c], child: cellWidget)
+                              : Expanded(flex: _flexForCol(colKey), child: cellWidget);
+                        }),
                     ],
                   ),
                 );
@@ -1678,6 +1767,51 @@ class _WidgetRendererCore extends StatelessWidget {
 
   /// "buyer_company_name" → "Buyer Company Name", "po" → "PO".
   String _humanizeKey(String key) {
+    const overrides = <String, String>{
+      'created':        'Date',
+      'cancelled':      'Cancel Date',
+      'line_cancelled': 'Cancel Date',
+      'buyer_name':     'User',
+      'job_number':     'Job/PO#',
+      'order_number':   'Order#',
+      'price':          'Total Value',
+      'line_value':     'Line Value',
+      'order_ln':       'Order-Ln',
+      'po':             'Order',
+      'seller_company': 'Company',
+      'seller_name':    'User',
+      'last_login':          'Last Login',
+      'failed_attempts':     'Failed Attempts',
+      'last_failed_login_at':'Last Failed Login',
+      // Period-summary columns
+      'period':            'Period',
+      'companies':         'Companies',
+      'sales':             'Sales \$',
+      'items':             'Items',
+      'weight':            'Weight (lbs)',
+      // BOM Upload Summary columns
+      'quoted_items':      'Quoted Items',
+      'quoted_value':      'Quoted Value',
+      'quoted_weight':     'Quoted Weight',
+      'purchased_items':   'Purchased Items',
+      'purchased_value':   'Purchased Value',
+      'purchased_weight':  'Purchased Weight',
+      // Search - No Selection columns
+      'search_date':    'Search Date',
+      'search_user':    'User',
+      'search_company': 'Company',
+      'screen':         'Screen',
+      'keyword':        'Keyword',
+      // Abandoned Quotes (quote line detail) columns
+      'date':           'Quote Date',
+      'line_num':       'Line#',
+      'source':         'Screen',
+      'qty_uom':        'Qty UOM',
+      'price_per_unit': 'Price/Unit',
+      'price_uom':      'Price UOM',
+      'line_total':     'Line Total',
+    };
+    if (overrides.containsKey(key)) return overrides[key]!;
     if (key.length <= 3 && key == key.toLowerCase()) return key.toUpperCase();
     return key
         .split('_')
@@ -1715,6 +1849,67 @@ class _WidgetRendererCore extends StatelessWidget {
       'Total Purchases': 5,
       'Sales':           3,
       'Total Sales':     5,
+      // Quotes by Company / Quotes by User (summary _rows)
+      'company':         4,
+      'user':            5,
+      'quotes':          3,
+      'orders':          3,
+      'total_value':     4,
+      // Quotes / Orders detail list — unique raw keys
+      'created':         6,
+      'job_number':      4,
+      'order_number':    4,
+      'price':           4,
+      // Last Login by User / Failed Login Attempts by User
+      'name':                 7,
+      'email':                8,
+      'last_login':           5,
+      'Last Login':           5,
+      'failed_attempts':      3,
+      'Failed Attempts':      3,
+      'last_failed_login_at': 5,
+      'Last Failed Login':    5,
+      // Accepted Orders detail (raw keys)
+      'po':             3,
+      'seller_name':    5,
+      'seller_company': 5,
+      'claimed':        5,
+      // Cancelled Orders detail (raw keys)
+      'cancelled':      5,
+      'buyer_name':     5,
+      // Cancelled Lines detail (raw keys)
+      'line_cancelled': 5,
+      'order_ln':       3,
+      'line_value':     4,
+      // Period-summary (quotes_saved_summary, orders_*_summary)
+      'period':            3,
+      'companies':         3,
+      'sales':             4,
+      'items':             3,
+      'weight':            4,
+      // BOM Upload Summary pivoted columns
+      'quoted_items':      3,
+      'quoted_value':      4,
+      'quoted_weight':     4,
+      'purchased_items':   3,
+      'purchased_value':   4,
+      'purchased_weight':  4,
+      // Search - No Selection columns
+      'search_date':    2,
+      'search_user':    3,
+      'search_company': 5,
+      'screen':         3,
+      'keyword':        5,
+      // Abandoned Quotes line detail columns
+      'date':           5,
+      'line_num':       2,
+      'source':         4,
+      'description':    9,
+      'qty':            2,
+      'qty_uom':        3,
+      'price_per_unit': 3,
+      'price_uom':      3,
+      'line_total':     4,
     };
     return m[key] ?? 5;
   }
@@ -1741,10 +1936,17 @@ class _WidgetRendererCore extends StatelessWidget {
       if (n != null) return '${n.toStringAsFixed(2)}%';
     }
     final s = v.toString();
-    // ISO timestamp → short date
+    // ISO timestamp → short date (with time for 'created' columns)
     if (_looksLikeIsoDate(s)) {
       final d = DateTime.tryParse(s);
-      if (d != null) return DateFormat('M-d-yy').format(d.toLocal());
+      if (d != null) {
+        final local = d.toLocal();
+        if (key == 'created' || key == 'last_login' || key == 'last_failed_login_at' ||
+            key == 'claimed' || key == 'cancelled' || key == 'line_cancelled') {
+          return DateFormat('M-d-yy h:mm a').format(local);
+        }
+        return DateFormat('M-d-yy').format(local);
+      }
     }
     // Numeric (num or parseable string) — apply money or plain formatting
     final isMoney = _looksLikeMoneyKey(key);
@@ -1763,6 +1965,7 @@ class _WidgetRendererCore extends StatelessWidget {
     return k == 'aov' ||
         k == 'cogs' ||
         k == 'gp (\$)' ||
+        k == 'sales' ||
         k.contains('price') ||
         k.contains('revenue') ||
         k.contains('total') ||
@@ -1789,6 +1992,15 @@ class _WidgetRendererCore extends StatelessWidget {
     final col2Header = (model.binding['_col2'] as String?) ?? 'Value';
     final total = _series.fold<double>(0, (a, b) => a + b);
 
+    // Accepted orders metrics show an extra "Orders" count column; all others keep the original Share % layout
+    const _metricsWithCount = {
+      'accepted_orders_by_company', 'accepted_orders_by_user',
+      'cancelled_orders_by_company', 'cancelled_orders_by_user',
+      'cancelled_lines_by_company', 'cancelled_lines_by_user',
+    };
+    final showCount = _metricsWithCount.contains(metric);
+    final counts = _counts;
+
     var indices = _sortedIndices(_labels, _series);
     if (_sortBy == 'None' && metric == 'avg_order_price_trend') {
       indices = indices.reversed.toList();
@@ -1812,10 +2024,22 @@ class _WidgetRendererCore extends StatelessWidget {
                   child: Text('#', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText))),
               Expanded(flex: 3,
                   child: Text(col1Header, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText))),
-              Expanded(flex: 2,
-                  child: Text(col2Header, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right)),
-              SizedBox(width: 50,
-                  child: Text('Share', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right)),
+              if (showCount)
+                SizedBox(width: 56,
+                    child: Text(
+                      (metric == 'cancelled_lines_by_company' || metric == 'cancelled_lines_by_user') ? 'Lines' : 'Orders',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText),
+                      textAlign: TextAlign.right,
+                    ))
+              else
+                SizedBox(width: 50,
+                    child: Text('Share', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right)),
+              if (showCount)
+                SizedBox(width: 120,
+                    child: Text(col2Header, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right))
+              else
+                Expanded(flex: 2,
+                    child: Text(col2Header, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _wt.mutedText), textAlign: TextAlign.right)),
             ],
           ),
         ),
@@ -1825,7 +2049,7 @@ class _WidgetRendererCore extends StatelessWidget {
             child: Column(
               children: [
                 for (int rank = 0; rank < indices.length; rank++)
-                  _singleTableRow(rank, indices[rank], total),
+                  _singleTableRow(rank, indices[rank], total, showCount: showCount, counts: counts),
               ],
             ),
           ),
@@ -1834,7 +2058,7 @@ class _WidgetRendererCore extends StatelessWidget {
     );
   }
 
-  Widget _singleTableRow(int rank, int dataIdx, double total) {
+  Widget _singleTableRow(int rank, int dataIdx, double total, {bool showCount = false, List<int> counts = const []}) {
     final pct = total > 0 ? _series[dataIdx] / total * 100 : 0.0;
     final isOdd = rank % 2 == 1;
     final unitMult = _unit == r'$M' ? 1e6 : _unit == r'$K' ? 1e3 : 1.0;
@@ -1864,14 +2088,27 @@ class _WidgetRendererCore extends StatelessWidget {
                         style: TextStyle(fontSize: 11, color: _wt.bodyText), overflow: TextOverflow.ellipsis)),
                 ],
               )),
-          Expanded(flex: 2,
-              child: Text(
-                valueStr,
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _palette[dataIdx % _palette.length]),
-                textAlign: TextAlign.right)),
-          SizedBox(width: 50,
-              child: Text('${pct.toStringAsFixed(1)}%',
-                  style: TextStyle(fontSize: 11, color: _wt.secondaryText), textAlign: TextAlign.right)),
+          if (showCount)
+            SizedBox(width: 56,
+                child: Text(
+                    dataIdx < counts.length ? '${counts[dataIdx]}' : '—',
+                    style: TextStyle(fontSize: 11, color: _wt.secondaryText), textAlign: TextAlign.right))
+          else
+            SizedBox(width: 50,
+                child: Text('${pct.toStringAsFixed(1)}%',
+                    style: TextStyle(fontSize: 11, color: _wt.secondaryText), textAlign: TextAlign.right)),
+          if (showCount)
+            SizedBox(width: 120,
+                child: Text(
+                  valueStr,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _palette[dataIdx % _palette.length]),
+                  textAlign: TextAlign.right))
+          else
+            Expanded(flex: 2,
+                child: Text(
+                  valueStr,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _palette[dataIdx % _palette.length]),
+                  textAlign: TextAlign.right)),
         ],
       ),
     );

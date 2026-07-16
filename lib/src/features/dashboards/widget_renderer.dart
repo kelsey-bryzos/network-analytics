@@ -1888,9 +1888,6 @@ class _WidgetRendererCore extends StatelessWidget {
       'purchased_weight':  4,
       // Abandoned Quotes line detail columns
       'date':           5,
-      'company':        5,
-      'user':           4,
-      'job_number':     4,
       'line_num':       2,
       'description':    7,
       'shape':          4,

@@ -1797,6 +1797,8 @@ class _WidgetRendererCore extends StatelessWidget {
       'purchased_weight':  'Purchased Weight',
       // Search - No Selection columns
       'search_date':    'Search Date',
+      'search_user':    'User',
+      'search_company': 'Company',
       'screen':         'Screen',
       'keyword':        'Keyword',
       // Abandoned Quotes (quote line detail) columns
@@ -1892,7 +1894,9 @@ class _WidgetRendererCore extends StatelessWidget {
       'purchased_value':   4,
       'purchased_weight':  4,
       // Search - No Selection columns
-      'search_date':    3,
+      'search_date':    2,
+      'search_user':    3,
+      'search_company': 5,
       'screen':         3,
       'keyword':        5,
       // Abandoned Quotes line detail columns

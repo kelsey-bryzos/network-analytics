@@ -1794,6 +1794,14 @@ class _WidgetRendererCore extends StatelessWidget {
       'purchased_items':   'Purchased Items',
       'purchased_value':   'Purchased Value',
       'purchased_weight':  'Purchased Weight',
+      // Abandoned Quotes (quote line detail) columns
+      'date':           'Date',
+      'line_num':       'Line#',
+      'qty_uom':        'Qty UOM',
+      'price_per_unit': 'Price/Unit',
+      'price_uom':      'Price UOM',
+      'line_total':     'Line Total',
+      'weight_lbs':     'Weight (lbs)',
     };
     if (overrides.containsKey(key)) return overrides[key]!;
     if (key.length <= 3 && key == key.toLowerCase()) return key.toUpperCase();
@@ -1878,6 +1886,20 @@ class _WidgetRendererCore extends StatelessWidget {
       'purchased_items':   3,
       'purchased_value':   4,
       'purchased_weight':  4,
+      // Abandoned Quotes line detail columns
+      'date':           5,
+      'company':        5,
+      'user':           4,
+      'job_number':     4,
+      'line_num':       2,
+      'description':    7,
+      'shape':          4,
+      'qty':            2,
+      'qty_uom':        3,
+      'price_per_unit': 3,
+      'price_uom':      3,
+      'line_total':     4,
+      'weight_lbs':     4,
     };
     return m[key] ?? 5;
   }

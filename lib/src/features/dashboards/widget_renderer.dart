@@ -1702,31 +1702,32 @@ class _WidgetRendererCore extends StatelessWidget {
                             style: TextStyle(fontSize: 11, color: _wt.mutedText)),
                       ),
                       for (int c = 0; c < cols.length; c++)
-                        needsScroll
-                            ? SizedBox(
-                                width: minColWidths[c],
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                                  child: Text(
-                                    _formatCell(cols[c], rows[i][cols[c]]),
-                                    style: TextStyle(fontSize: 11, color: _wt.bodyText),
-                                    textAlign: aligns[c],
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              )
-                            : Expanded(
-                                flex: _flexForCol(cols[c]),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                                  child: Text(
-                                    _formatCell(cols[c], rows[i][cols[c]]),
-                                    style: TextStyle(fontSize: 11, color: _wt.bodyText),
-                                    textAlign: aligns[c],
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ),
+                        Builder(builder: (context) {
+                          final colKey = cols[c];
+                          final cellText = _formatCell(colKey, rows[i][colKey]);
+                          final isDesc = colKey == 'description';
+                          final rawVal = isDesc ? (rows[i][colKey]?.toString() ?? '') : '';
+                          Widget cellWidget = Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: Text(
+                              cellText,
+                              style: TextStyle(fontSize: 11, color: _wt.bodyText),
+                              textAlign: aligns[c],
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          );
+                          if (isDesc && rawVal.isNotEmpty) {
+                            cellWidget = Tooltip(
+                              message: rawVal,
+                              waitDuration: const Duration(milliseconds: 400),
+                              child: cellWidget,
+                            );
+                          }
+                          return needsScroll
+                              ? SizedBox(width: minColWidths[c], child: cellWidget)
+                              : Expanded(flex: _flexForCol(colKey), child: cellWidget);
+                        }),
                     ],
                   ),
                 );
@@ -1801,7 +1802,6 @@ class _WidgetRendererCore extends StatelessWidget {
       'price_per_unit': 'Price/Unit',
       'price_uom':      'Price UOM',
       'line_total':     'Line Total',
-      'weight_lbs':     'Weight (lbs)',
     };
     if (overrides.containsKey(key)) return overrides[key]!;
     if (key.length <= 3 && key == key.toLowerCase()) return key.toUpperCase();
@@ -1889,14 +1889,12 @@ class _WidgetRendererCore extends StatelessWidget {
       // Abandoned Quotes line detail columns
       'date':           5,
       'line_num':       2,
-      'description':    7,
-      'shape':          4,
+      'description':    9,
       'qty':            2,
       'qty_uom':        3,
       'price_per_unit': 3,
       'price_uom':      3,
       'line_total':     4,
-      'weight_lbs':     4,
     };
     return m[key] ?? 5;
   }

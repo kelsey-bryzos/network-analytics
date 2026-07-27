@@ -1925,6 +1925,7 @@ class _AddWidgetDialogState extends State<_AddWidgetDialog> {
               const SizedBox(height: 12),
               // Search bar
               TextField(
+                autofocus: true,
                 onChanged: (v) => setState(() => _search = v),
                 style: const TextStyle(
                     fontSize: 13, color: OpticsColors.textPrimary),

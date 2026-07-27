@@ -49,6 +49,10 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
   List<WidgetModel> _widgets = [];
   String? _loadedDashId;
 
+  /// ScrollController for the widget grid — used to auto-scroll to a newly
+  /// added widget so it's immediately visible.
+  final ScrollController _gridScrollController = ScrollController();
+
   /// Per-widget debounce timers so high-frequency drag/resize events coalesce
   /// into a single DB write at the end of the gesture.
   final Map<String, Timer> _persistTimers = {};
@@ -73,6 +77,7 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
     _progressTimer?.cancel();
     _autoRefreshTimer?.cancel();
     _lastRefreshedTicker?.cancel();
+    _gridScrollController.dispose();
     super.dispose();
   }
 
@@ -1383,6 +1388,7 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
                                 child: WidgetGrid(
                                   canEdit: canEdit,
                                   widgets: _widgets,
+                                  scrollController: _gridScrollController,
                                   selectedId: _selected,
                                   onSelect: (w) =>
                                       setState(() {

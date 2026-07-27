@@ -49,6 +49,10 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
   List<WidgetModel> _widgets = [];
   String? _loadedDashId;
 
+  /// ScrollController for the widget grid — used to auto-scroll to a newly
+  /// added widget so it's immediately visible.
+  final ScrollController _gridScrollController = ScrollController();
+
   /// Per-widget debounce timers so high-frequency drag/resize events coalesce
   /// into a single DB write at the end of the gesture.
   final Map<String, Timer> _persistTimers = {};
@@ -73,6 +77,7 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
     _progressTimer?.cancel();
     _autoRefreshTimer?.cancel();
     _lastRefreshedTicker?.cancel();
+    _gridScrollController.dispose();
     super.dispose();
   }
 
@@ -325,6 +330,25 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
       });
       debugPrint(
           '[Optics] Added widget "${item.name}" (${kind.name})');
+      // Auto-scroll to the new widget after the frame renders
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_gridScrollController.hasClients) return;
+        const double cellH = 24.0;
+        final double targetY = saved.y * cellH;
+        final double maxScroll = _gridScrollController.position.maxScrollExtent;
+        final double scrollTo = targetY.clamp(0.0, maxScroll);
+        // Only scroll if the widget is below the current visible area
+        final double currentBottom = _gridScrollController.offset +
+            _gridScrollController.position.viewportDimension;
+        final double widgetBottom = (saved.y + saved.h) * cellH;
+        if (widgetBottom > currentBottom || targetY < _gridScrollController.offset) {
+          _gridScrollController.animateTo(
+            scrollTo,
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.easeOutCubic,
+          );
+        }
+      });
     } catch (e) {
       debugPrint('[Optics] Error creating widget: $e');
     }
@@ -1383,6 +1407,7 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
                                 child: WidgetGrid(
                                   canEdit: canEdit,
                                   widgets: _widgets,
+                                  scrollController: _gridScrollController,
                                   selectedId: _selected,
                                   onSelect: (w) =>
                                       setState(() {

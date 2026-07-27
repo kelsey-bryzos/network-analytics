@@ -31,7 +31,6 @@ class WidgetGrid extends StatefulWidget {
   final int columns;
   final double cellHeight;
   final bool canEdit;
-  final ScrollController? scrollController;
 
   const WidgetGrid({
     super.key,
@@ -44,7 +43,6 @@ class WidgetGrid extends StatefulWidget {
     this.columns = 48,
     this.cellHeight = 24,
     this.canEdit = true,
-    this.scrollController,
   });
 
   @override
@@ -113,7 +111,6 @@ class _WidgetGridState extends State<WidgetGrid> {
         final safeCellW = canvasWidth / widget.columns;
 
         return SingleChildScrollView(
-          controller: widget.scrollController,
           child: SizedBox(
             width: constraints.maxWidth,
             height: canvasHeight,

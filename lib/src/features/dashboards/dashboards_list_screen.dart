@@ -330,6 +330,25 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
       });
       debugPrint(
           '[Optics] Added widget "${item.name}" (${kind.name})');
+      // Auto-scroll to the new widget after the frame renders
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_gridScrollController.hasClients) return;
+        const double cellH = 24.0;
+        final double targetY = saved.y * cellH;
+        final double maxScroll = _gridScrollController.position.maxScrollExtent;
+        final double scrollTo = targetY.clamp(0.0, maxScroll);
+        // Only scroll if the widget is below the current visible area
+        final double currentBottom = _gridScrollController.offset +
+            _gridScrollController.position.viewportDimension;
+        final double widgetBottom = (saved.y + saved.h) * cellH;
+        if (widgetBottom > currentBottom || targetY < _gridScrollController.offset) {
+          _gridScrollController.animateTo(
+            scrollTo,
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.easeOutCubic,
+          );
+        }
+      });
     } catch (e) {
       debugPrint('[Optics] Error creating widget: $e');
     }

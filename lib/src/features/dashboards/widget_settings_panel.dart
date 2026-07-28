@@ -67,6 +67,7 @@ class _WidgetSettingsPanelState extends ConsumerState<WidgetSettingsPanel> {
     'orders_cancelled_summary',
     'orders_accepted_summary',
     'bom_upload_monthly_summary',
+    'orders_by_bracket_summary',
   };
 
   bool get _showPeriodToggle =>

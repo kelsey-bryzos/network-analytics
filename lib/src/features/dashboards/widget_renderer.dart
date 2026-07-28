@@ -1786,6 +1786,7 @@ class _WidgetRendererCore extends StatelessWidget {
       // Period-summary columns
       'period':            'Period',
       'bracket':           'Bracket',
+      'shape':             'Shape',
       'companies':         'Companies',
       'sales':             'Sales \$',
       'items':             'Items',
@@ -1882,9 +1883,10 @@ class _WidgetRendererCore extends StatelessWidget {
       'line_cancelled': 5,
       'order_ln':       3,
       'line_value':     4,
-      // Period-summary (quotes_saved_summary, orders_*_summary, orders_by_bracket_summary)
+      // Period-summary (quotes_saved_summary, orders_*_summary, orders_by_bracket_summary, *_shape_summary)
       'period':            3,
       'bracket':           2,
+      'shape':             3,
       'companies':         3,
       'sales':             4,
       'items':             3,

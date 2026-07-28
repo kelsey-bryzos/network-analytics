@@ -457,8 +457,14 @@ class _WidgetRendererCore extends StatelessWidget {
 
   // ── Settings accessors ─────────────────────────────────────────
 
-  String get _timeRange =>
-      migrateTimeRange(model.settings['timeRange'] as String?);
+  String get _timeRange {
+    final s = model.settings['timeRange'] as String?;
+    if (s != null && s.isNotEmpty) return migrateTimeRange(s);
+    final brz = model.binding['brz'];
+    final b = (brz is Map) ? brz['time_range'] as String? : null;
+    if (b != null && b.isNotEmpty) return migrateTimeRange(b);
+    return kDefaultTimeRange;
+  }
   String get _sortBy {
     final metric = ((model.binding['brz'] as Map?)?['metric'] as String?) ?? '';
     // Time-series metrics produce chronologically ordered labels — never re-sort them.

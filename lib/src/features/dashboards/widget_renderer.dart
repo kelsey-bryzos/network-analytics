@@ -1785,6 +1785,7 @@ class _WidgetRendererCore extends StatelessWidget {
       'last_failed_login_at':'Last Failed Login',
       // Period-summary columns
       'period':            'Period',
+      'bracket':           'Bracket',
       'companies':         'Companies',
       'sales':             'Sales \$',
       'items':             'Items',
@@ -1881,8 +1882,9 @@ class _WidgetRendererCore extends StatelessWidget {
       'line_cancelled': 5,
       'order_ln':       3,
       'line_value':     4,
-      // Period-summary (quotes_saved_summary, orders_*_summary)
+      // Period-summary (quotes_saved_summary, orders_*_summary, orders_by_bracket_summary)
       'period':            3,
+      'bracket':           2,
       'companies':         3,
       'sales':             4,
       'items':             3,

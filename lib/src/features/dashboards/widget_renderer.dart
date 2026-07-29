@@ -457,8 +457,14 @@ class _WidgetRendererCore extends StatelessWidget {
 
   // ── Settings accessors ─────────────────────────────────────────
 
-  String get _timeRange =>
-      migrateTimeRange(model.settings['timeRange'] as String?);
+  String get _timeRange {
+    final s = model.settings['timeRange'] as String?;
+    if (s != null && s.isNotEmpty) return migrateTimeRange(s);
+    final brz = model.binding['brz'];
+    final b = (brz is Map) ? brz['time_range'] as String? : null;
+    if (b != null && b.isNotEmpty) return migrateTimeRange(b);
+    return kDefaultTimeRange;
+  }
   String get _sortBy {
     final metric = ((model.binding['brz'] as Map?)?['metric'] as String?) ?? '';
     // Time-series metrics produce chronologically ordered labels — never re-sort them.
@@ -1706,8 +1712,8 @@ class _WidgetRendererCore extends StatelessWidget {
                         Builder(builder: (context) {
                           final colKey = cols[c];
                           final cellText = _formatCell(colKey, rows[i][colKey]);
-                          final isDesc = colKey == 'description';
-                          final rawVal = isDesc ? (rows[i][colKey]?.toString() ?? '') : '';
+                          final isTextCol = colKey == 'description' || colKey == 'keyword';
+                          final rawVal = isTextCol ? (rows[i][colKey]?.toString() ?? '') : '';
                           Widget cellWidget = Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 4),
                             child: Text(
@@ -1718,7 +1724,7 @@ class _WidgetRendererCore extends StatelessWidget {
                               maxLines: 1,
                             ),
                           );
-                          if (isDesc && rawVal.isNotEmpty) {
+                          if (isTextCol && rawVal.isNotEmpty) {
                             cellWidget = Tooltip(
                               message: rawVal,
                               waitDuration: const Duration(milliseconds: 400),
@@ -1786,6 +1792,8 @@ class _WidgetRendererCore extends StatelessWidget {
       // Period-summary columns
       'period':            'Period',
       'bracket':           'Bracket',
+      'shape':             'Shape',
+      'grade':             'Grade',
       'companies':         'Companies',
       'sales':             'Sales \$',
       'items':             'Items',
@@ -1803,6 +1811,13 @@ class _WidgetRendererCore extends StatelessWidget {
       'search_company': 'Company',
       'screen':         'Screen',
       'keyword':        'Keyword',
+      // Item Summary columns (orders/quotes/searches)
+      'description':    'Product Description',
+      'line_count':     'Line Count',
+      'searches':       'Searches',
+      'selected':       'Selected',
+      'abandoned':      'Abandoned',
+      'unique_users':   'Unique Users',
       // Abandoned Quotes (quote line detail) columns
       'date':           'Quote Date',
       'line_num':       'Line#',
@@ -1882,9 +1897,11 @@ class _WidgetRendererCore extends StatelessWidget {
       'line_cancelled': 5,
       'order_ln':       3,
       'line_value':     4,
-      // Period-summary (quotes_saved_summary, orders_*_summary, orders_by_bracket_summary)
+      // Period-summary (quotes_saved_summary, orders_*_summary, orders_by_bracket_summary, *_shape_summary)
       'period':            3,
       'bracket':           2,
+      'shape':             3,
+      'grade':             3,
       'companies':         3,
       'sales':             4,
       'items':             3,
@@ -1902,6 +1919,12 @@ class _WidgetRendererCore extends StatelessWidget {
       'search_company': 5,
       'screen':         3,
       'keyword':        5,
+      // Item Summary columns (orders/quotes/searches)
+      'line_count':     3,
+      'searches':       3,
+      'selected':       3,
+      'abandoned':      3,
+      'unique_users':   3,
       // Abandoned Quotes line detail columns
       'date':           5,
       'line_num':       2,

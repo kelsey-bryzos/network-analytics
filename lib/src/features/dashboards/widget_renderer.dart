@@ -1712,8 +1712,8 @@ class _WidgetRendererCore extends StatelessWidget {
                         Builder(builder: (context) {
                           final colKey = cols[c];
                           final cellText = _formatCell(colKey, rows[i][colKey]);
-                          final isDesc = colKey == 'description';
-                          final rawVal = isDesc ? (rows[i][colKey]?.toString() ?? '') : '';
+                          final isTextCol = colKey == 'description' || colKey == 'keyword';
+                          final rawVal = isTextCol ? (rows[i][colKey]?.toString() ?? '') : '';
                           Widget cellWidget = Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 4),
                             child: Text(
@@ -1724,7 +1724,7 @@ class _WidgetRendererCore extends StatelessWidget {
                               maxLines: 1,
                             ),
                           );
-                          if (isDesc && rawVal.isNotEmpty) {
+                          if (isTextCol && rawVal.isNotEmpty) {
                             cellWidget = Tooltip(
                               message: rawVal,
                               waitDuration: const Duration(milliseconds: 400),
@@ -1811,6 +1811,13 @@ class _WidgetRendererCore extends StatelessWidget {
       'search_company': 'Company',
       'screen':         'Screen',
       'keyword':        'Keyword',
+      // Item Summary columns (orders/quotes/searches)
+      'description':    'Product Description',
+      'line_count':     'Line Count',
+      'searches':       'Searches',
+      'selected':       'Selected',
+      'abandoned':      'Abandoned',
+      'unique_users':   'Unique Users',
       // Abandoned Quotes (quote line detail) columns
       'date':           'Quote Date',
       'line_num':       'Line#',
@@ -1912,6 +1919,12 @@ class _WidgetRendererCore extends StatelessWidget {
       'search_company': 5,
       'screen':         3,
       'keyword':        5,
+      // Item Summary columns (orders/quotes/searches)
+      'line_count':     3,
+      'searches':       3,
+      'selected':       3,
+      'abandoned':      3,
+      'unique_users':   3,
       // Abandoned Quotes line detail columns
       'date':           5,
       'line_num':       2,

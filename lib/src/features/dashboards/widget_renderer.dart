@@ -1712,7 +1712,7 @@ class _WidgetRendererCore extends StatelessWidget {
                         Builder(builder: (context) {
                           final colKey = cols[c];
                           final cellText = _formatCell(colKey, rows[i][colKey]);
-                          final isTextCol = colKey == 'description' || colKey == 'keyword';
+                          final isTextCol = colKey == 'description' || colKey == 'keyword' || colKey == 'message';
                           final rawVal = isTextCol ? (rows[i][colKey]?.toString() ?? '') : '';
                           Widget cellWidget = Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -1826,6 +1826,13 @@ class _WidgetRendererCore extends StatelessWidget {
       'price_per_unit': 'Price/Unit',
       'price_uom':      'Price UOM',
       'line_total':     'Line Total',
+      // Chat Messages log columns
+      'time_stamp':     'Date/Time',
+      'po_number':      'Order#',
+      'role':           'Role',
+      'user':           'User',
+      'company':        'Company',
+      'message':        'Message',
     };
     if (overrides.containsKey(key)) return overrides[key]!;
     if (key.length <= 3 && key == key.toLowerCase()) return key.toUpperCase();
@@ -1935,6 +1942,12 @@ class _WidgetRendererCore extends StatelessWidget {
       'price_per_unit': 3,
       'price_uom':      3,
       'line_total':     4,
+      // Chat Messages log columns
+      'time_stamp':     3,
+      'po_number':      3,
+      'role':           3,
+      'company':        5,
+      'message':        22,
     };
     return m[key] ?? 5;
   }
@@ -1955,6 +1968,12 @@ class _WidgetRendererCore extends StatelessWidget {
       return labels[v?.toString()] ?? v?.toString() ?? '';
     }
     if (v is bool) return v ? 'Yes' : 'No';
+    // Role: Title Case (buyer → Buyer, seller → Seller, moderator → Moderator)
+    if (key == 'role') {
+      final s = v.toString();
+      if (s.isEmpty) return s;
+      return s[0].toUpperCase() + s.substring(1).toLowerCase();
+    }
     // GP (%) → show as percentage
     if (key == 'GP (%)') {
       final n = v is num ? v.toDouble() : double.tryParse(v.toString());
@@ -1967,7 +1986,8 @@ class _WidgetRendererCore extends StatelessWidget {
       if (d != null) {
         final local = d.toLocal();
         if (key == 'created' || key == 'last_login' || key == 'last_failed_login_at' ||
-            key == 'claimed' || key == 'cancelled' || key == 'line_cancelled') {
+            key == 'claimed' || key == 'cancelled' || key == 'line_cancelled' ||
+            key == 'time_stamp') {
           return DateFormat('M-d-yy h:mm a').format(local);
         }
         return DateFormat('M-d-yy').format(local);

@@ -40,6 +40,11 @@ String _fmtExactMoney(double v) {
   return NumberFormat('\$#,##0.00').format(v);
 }
 
+/// Whole-dollar format with commas, no cents ($400,000).
+String _fmtWholeMoney(double v) {
+  return NumberFormat('\$#,##0').format(v.round());
+}
+
 /// Smart value formatter: dollar-prefixed with correct scale if unit contains $, else compact number.
 /// Applies unit multiplier ($K → ×1000, $M → ×1e6) so axis labels show correct scale.
 String _fmtSmartValue(double v, String unit) {
@@ -2005,11 +2010,14 @@ class _WidgetRendererCore extends StatelessWidget {
     }
     // Numeric (num or parseable string) — apply money or plain formatting
     final isMoney = _looksLikeMoneyKey(key);
+    final isWholeMoney = key == 'credit_limit';
     if (v is num) {
+      if (isWholeMoney) return _fmtWholeMoney(v.toDouble());
       if (isMoney) return _fmtExactMoney(v.toDouble());
       return _fmtFull(v.toDouble());
     }
     final parsed = double.tryParse(s);
+    if (parsed != null && isWholeMoney) return _fmtWholeMoney(parsed);
     if (parsed != null && isMoney) return _fmtExactMoney(parsed);
     return s;
   }

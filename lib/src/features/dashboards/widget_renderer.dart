@@ -153,6 +153,7 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
     'orders_in_dispute_table',
     'all_buyers_table',
     'all_sellers_table',
+    'credit_utilization_log',
   };
 
 
@@ -1833,6 +1834,11 @@ class _WidgetRendererCore extends StatelessWidget {
       'user':           'User',
       'company':        'Company',
       'message':        'Message',
+      // Credit Utilization columns
+      'credit_limit':   'Credit Limit',
+      'outstanding':    'Outstanding',
+      'available':      'Available',
+      'utilization':    'Utilization',
     };
     if (overrides.containsKey(key)) return overrides[key]!;
     if (key.length <= 3 && key == key.toLowerCase()) return key.toUpperCase();
@@ -1947,6 +1953,11 @@ class _WidgetRendererCore extends StatelessWidget {
       'po_number':      3,
       'role':           3,
       'message':        20,
+      // Credit Utilization columns ('company'/'user' share entries above)
+      'credit_limit':   4,
+      'outstanding':    4,
+      'available':      4,
+      'utilization':    3,
     };
     return m[key] ?? 5;
   }
@@ -2010,6 +2021,9 @@ class _WidgetRendererCore extends StatelessWidget {
         k == 'cogs' ||
         k == 'gp (\$)' ||
         k == 'sales' ||
+        k == 'credit_limit' ||
+        k == 'outstanding' ||
+        k == 'available' ||
         k.contains('price') ||
         k.contains('revenue') ||
         k.contains('total') ||

@@ -40,6 +40,11 @@ String _fmtExactMoney(double v) {
   return NumberFormat('\$#,##0.00').format(v);
 }
 
+/// Whole-dollar format with commas, no cents ($400,000).
+String _fmtWholeMoney(double v) {
+  return NumberFormat('\$#,##0').format(v.round());
+}
+
 /// Smart value formatter: dollar-prefixed with correct scale if unit contains $, else compact number.
 /// Applies unit multiplier ($K → ×1000, $M → ×1e6) so axis labels show correct scale.
 String _fmtSmartValue(double v, String unit) {
@@ -153,6 +158,7 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
     'orders_in_dispute_table',
     'all_buyers_table',
     'all_sellers_table',
+    'credit_utilization_log',
   };
 
 
@@ -1833,6 +1839,11 @@ class _WidgetRendererCore extends StatelessWidget {
       'user':           'User',
       'company':        'Company',
       'message':        'Message',
+      // Credit Utilization columns
+      'credit_limit':   'Credit Limit',
+      'outstanding':    'Outstanding',
+      'available':      'Available',
+      'utilization':    'Utilization',
     };
     if (overrides.containsKey(key)) return overrides[key]!;
     if (key.length <= 3 && key == key.toLowerCase()) return key.toUpperCase();
@@ -1947,6 +1958,11 @@ class _WidgetRendererCore extends StatelessWidget {
       'po_number':      3,
       'role':           3,
       'message':        20,
+      // Credit Utilization columns ('company'/'user' share entries above)
+      'credit_limit':   4,
+      'outstanding':    4,
+      'available':      4,
+      'utilization':    3,
     };
     return m[key] ?? 5;
   }
@@ -1994,11 +2010,14 @@ class _WidgetRendererCore extends StatelessWidget {
     }
     // Numeric (num or parseable string) — apply money or plain formatting
     final isMoney = _looksLikeMoneyKey(key);
+    final isWholeMoney = key == 'credit_limit';
     if (v is num) {
+      if (isWholeMoney) return _fmtWholeMoney(v.toDouble());
       if (isMoney) return _fmtExactMoney(v.toDouble());
       return _fmtFull(v.toDouble());
     }
     final parsed = double.tryParse(s);
+    if (parsed != null && isWholeMoney) return _fmtWholeMoney(parsed);
     if (parsed != null && isMoney) return _fmtExactMoney(parsed);
     return s;
   }
@@ -2010,6 +2029,9 @@ class _WidgetRendererCore extends StatelessWidget {
         k == 'cogs' ||
         k == 'gp (\$)' ||
         k == 'sales' ||
+        k == 'credit_limit' ||
+        k == 'outstanding' ||
+        k == 'available' ||
         k.contains('price') ||
         k.contains('revenue') ||
         k.contains('total') ||

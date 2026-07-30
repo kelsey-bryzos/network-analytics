@@ -1872,8 +1872,8 @@ class _WidgetRendererCore extends StatelessWidget {
       'Total Purchases': 5,
       'Sales':           3,
       'Total Sales':     5,
-      // Quotes by Company / Quotes by User (summary _rows)
-      'company':         4,
+      // Quotes by Company / Quotes by User (summary _rows) — also used by Chat Messages
+      'company':         5,
       'user':            5,
       'quotes':          3,
       'orders':          3,
@@ -1942,12 +1942,11 @@ class _WidgetRendererCore extends StatelessWidget {
       'price_per_unit': 3,
       'price_uom':      3,
       'line_total':     4,
-      // Chat Messages log columns
-      'time_stamp':     3,
+      // Chat Messages log columns ('company' shares the entry above; 'user' shares w/ Quotes-by-User)
+      'time_stamp':     5,
       'po_number':      3,
       'role':           3,
-      'company':        5,
-      'message':        22,
+      'message':        20,
     };
     return m[key] ?? 5;
   }

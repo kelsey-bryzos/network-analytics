@@ -1839,6 +1839,8 @@ class _WidgetRendererCore extends StatelessWidget {
       'user':           'User',
       'company':        'Company',
       'message':        'Message',
+      // Part Numbers Full List columns
+      'product_id':     'Product ID',
       // Credit Utilization columns
       'credit_limit':   'Credit Limit',
       'outstanding':    'Outstanding',
@@ -1958,6 +1960,8 @@ class _WidgetRendererCore extends StatelessWidget {
       'po_number':      3,
       'role':           3,
       'message':        20,
+      // Part Numbers Full List columns
+      'product_id':     3,
       // Credit Utilization columns ('company'/'user' share entries above)
       'credit_limit':   4,
       'outstanding':    4,
@@ -2008,6 +2012,8 @@ class _WidgetRendererCore extends StatelessWidget {
         return DateFormat('M-d-yy').format(local);
       }
     }
+    // Identifier-style numeric keys — render as bare digits, no commas.
+    if (key == 'product_id') return s;
     // Numeric (num or parseable string) — apply money or plain formatting
     final isMoney = _looksLikeMoneyKey(key);
     final isWholeMoney = key == 'credit_limit';

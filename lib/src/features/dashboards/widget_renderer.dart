@@ -1943,10 +1943,10 @@ class _WidgetRendererCore extends StatelessWidget {
       'price_uom':      3,
       'line_total':     4,
       // Chat Messages log columns ('company' shares the entry above; 'user' shares w/ Quotes-by-User)
-      'time_stamp':     3,
+      'time_stamp':     5,
       'po_number':      3,
       'role':           3,
-      'message':        22,
+      'message':        20,
     };
     return m[key] ?? 5;
   }

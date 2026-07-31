@@ -154,10 +154,32 @@ class SupabaseRepo {
   }
 
   Future<Dashboard> createDashboard(String name) async {
+    // New dashboards land at the top of the switcher list (sort_order = 0)
+    // — preserving the historical behavior where the most recently created
+    // dashboard is the default landing page. Existing rows are not shifted
+    // (they may share ordinals with each other; the ORDER BY is
+    // sort_order.asc.nullslast, updated_at.desc, so ties resolve sensibly).
     final row = await client
         .from('dashboards')
-        .insert({'name': name, 'global_settings': {}}).select().single();
+        .insert({'name': name, 'global_settings': {}, 'sort_order': 0})
+        .select()
+        .single();
     return Dashboard.fromMap(row);
+  }
+
+  /// Persist a user-defined dashboard ordering. The list is the desired
+  /// on-screen order (top → bottom); each id is written with a sort_order
+  /// equal to its index. Callers should pass the full list of dashboards
+  /// the user is currently seeing.
+  Future<void> reorderDashboards(List<String> orderedIds) async {
+    // Batch each row individually — Supabase upsert can't operate on a
+    // subset of columns without knowing the full row. A short loop is fine
+    // here (dashboards per tenant are ≤ ~20 in practice).
+    for (var i = 0; i < orderedIds.length; i++) {
+      await client
+          .from('dashboards')
+          .update({'sort_order': i}).eq('id', orderedIds[i]);
+    }
   }
 
   // ------------------ Dashboard Template Gallery ------------------

@@ -1399,7 +1399,27 @@ class _WidgetRendererCore extends StatelessWidget {
                   ),
                   titlesData: _titlesData(interval, labels),
                   borderData: _borderData(),
-                  barTouchData: BarTouchData(enabled: false),
+                  barTouchData: BarTouchData(
+                    handleBuiltInTouches: true,
+                    touchTooltipData: BarTouchTooltipData(
+                      getTooltipColor: (_) => _wt.tooltipBg,
+                      tooltipRoundedRadius: 6,
+                      tooltipPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      fitInsideHorizontally: true,
+                      fitInsideVertically: true,
+                      getTooltipItem: (group, groupIdx, rod, rodIdx) {
+                        final lbl = groupIdx < labels.length ? labels[groupIdx] : '';
+                        final barVal = _fmtSmartValue(rod.toY, _unit);
+                        final lineVal = groupIdx < lineData.length
+                            ? _fmtSmartValue(lineData[groupIdx], _unit)
+                            : '—';
+                        return BarTooltipItem(
+                          '$lbl\n$barLabel: $barVal\n$lineLabel: $lineVal',
+                          TextStyle(fontSize: 10, color: _wt.bodyText, fontWeight: FontWeight.w500),
+                        );
+                      },
+                    ),
+                  ),
                   barGroups: [
                     for (int i = 0; i < barData.length; i++)
                       BarChartGroupData(x: i, barRods: [
@@ -1413,7 +1433,11 @@ class _WidgetRendererCore extends StatelessWidget {
                   ],
                 ),
               ),
-              Padding(
+              // LineChart is drawn on top but must NOT swallow pointer events,
+              // otherwise the BarChart underneath never receives hover.
+              // The BarChart tooltip already shows both bar + line values.
+              IgnorePointer(
+                child: Padding(
                 padding: const EdgeInsets.only(left: 40, bottom: 24),
                 child: LineChart(
                   LineChartData(
@@ -1421,7 +1445,20 @@ class _WidgetRendererCore extends StatelessWidget {
                     gridData: const FlGridData(show: false),
                     titlesData: const FlTitlesData(show: false),
                     borderData: FlBorderData(show: false),
-                    lineTouchData: const LineTouchData(enabled: false),
+                    lineTouchData: LineTouchData(
+                      touchTooltipData: LineTouchTooltipData(
+                        getTooltipColor: (_) => _wt.tooltipBg,
+                        tooltipRoundedRadius: 6,
+                        getTooltipItems: (spots) => spots.map((s) {
+                          final idx = s.x.toInt();
+                          final lbl = idx < labels.length ? labels[idx] : '';
+                          return LineTooltipItem(
+                            '$lbl — $lineLabel\n${_fmtSmartValue(s.y, _unit)}',
+                            TextStyle(fontSize: 10, color: _wt.bodyText, fontWeight: FontWeight.w500),
+                          );
+                        }).toList(),
+                      ),
+                    ),
                     lineBarsData: [
                       LineChartBarData(
                         spots: [for (int i = 0; i < lineData.length; i++) FlSpot(i.toDouble(), lineData[i])],
@@ -1433,6 +1470,7 @@ class _WidgetRendererCore extends StatelessWidget {
                       ),
                     ],
                   ),
+                ),
                 ),
               ),
             ],
@@ -1890,6 +1928,7 @@ class _WidgetRendererCore extends StatelessWidget {
       'user':            5,
       'quotes':          3,
       'orders':          3,
+      'lines':           3,
       'total_value':     4,
       // Quotes / Orders detail list — unique raw keys
       'created':         6,

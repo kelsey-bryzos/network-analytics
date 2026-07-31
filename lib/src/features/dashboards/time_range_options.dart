@@ -29,6 +29,7 @@ const kTimeRangeLast30Days       = 'Last 30 days';
 const kTimeRangeThisMonth        = 'This month';
 const kTimeRangeLastMonth        = 'Last month';
 const kTimeRangeMonthToDate      = 'Month to date';
+const kTimeRangeLast3Months      = 'Last 3 months';
 const kTimeRangeLast6Months      = 'Last 6 months';
 const kTimeRangeLast12Months     = 'Last 12 months';
 const kTimeRangeThisYear         = 'This year';
@@ -60,6 +61,7 @@ const List<TimeRangeGroup> kTimeRangeGroups = [
     TimeRangeOption(kTimeRangeMonthToDate, 'Month to date'),
   ]),
   TimeRangeGroup([
+    TimeRangeOption(kTimeRangeLast3Months, 'Last 3 months'),
     TimeRangeOption(kTimeRangeLast6Months, 'Last 6 months'),
     TimeRangeOption(kTimeRangeLast12Months, 'Last 12 months'),
     TimeRangeOption(kTimeRangeThisYear, 'This year'),
@@ -84,7 +86,7 @@ String migrateTimeRange(String? raw) {
   if (raw == null || raw.isEmpty) return kDefaultTimeRange;
   switch (raw) {
     case '1 Mo':  return kTimeRangeThisMonth;
-    case '3 Mo':  return kTimeRangeLast30Days;
+    case '3 Mo':  return kTimeRangeLast3Months;
     case '6 Mo':  return kTimeRangeLast6Months;
     case '1 Yr':  return kTimeRangeLast12Months;
     case 'YTD':   return kTimeRangeYearToDate;
@@ -107,6 +109,7 @@ String timeRangeLongLabel(String code) {
     case kTimeRangeThisMonth:      return 'This month';
     case kTimeRangeLastMonth:      return 'Last month';
     case kTimeRangeMonthToDate:    return 'Month to date';
+    case kTimeRangeLast3Months:    return 'Last 3 months';
     case kTimeRangeLast6Months:    return 'Last 6 months';
     case kTimeRangeLast12Months:   return 'Last 12 months';
     case kTimeRangeThisYear:       return 'This year';
@@ -132,6 +135,7 @@ String? priorPeriodPhrase(String code) {
     case kTimeRangeThisMonth:      return 'last month';
     case kTimeRangeLastMonth:      return 'prior month';
     case kTimeRangeMonthToDate:    return 'prior month-to-date';
+    case kTimeRangeLast3Months:    return 'prior 3 months';
     case kTimeRangeLast6Months:    return 'prior 6 months';
     case kTimeRangeLast12Months:   return 'prior 12 months';
     case kTimeRangeThisYear:       return 'last year';

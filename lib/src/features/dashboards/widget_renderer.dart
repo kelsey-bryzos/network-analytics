@@ -1928,6 +1928,7 @@ class _WidgetRendererCore extends StatelessWidget {
       'user':            5,
       'quotes':          3,
       'orders':          3,
+      'lines':           3,
       'total_value':     4,
       // Quotes / Orders detail list — unique raw keys
       'created':         6,

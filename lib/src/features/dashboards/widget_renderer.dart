@@ -1399,7 +1399,19 @@ class _WidgetRendererCore extends StatelessWidget {
                   ),
                   titlesData: _titlesData(interval, labels),
                   borderData: _borderData(),
-                  barTouchData: BarTouchData(enabled: false),
+                  barTouchData: BarTouchData(
+                    touchTooltipData: BarTouchTooltipData(
+                      getTooltipColor: (_) => _wt.tooltipBg,
+                      tooltipRoundedRadius: 6,
+                      getTooltipItem: (group, groupIdx, rod, rodIdx) {
+                        final lbl = groupIdx < labels.length ? labels[groupIdx] : '';
+                        return BarTooltipItem(
+                          '$lbl — $barLabel\n${_fmtSmartValue(rod.toY, _unit)}',
+                          TextStyle(fontSize: 10, color: _wt.bodyText, fontWeight: FontWeight.w500),
+                        );
+                      },
+                    ),
+                  ),
                   barGroups: [
                     for (int i = 0; i < barData.length; i++)
                       BarChartGroupData(x: i, barRods: [
@@ -1421,7 +1433,20 @@ class _WidgetRendererCore extends StatelessWidget {
                     gridData: const FlGridData(show: false),
                     titlesData: const FlTitlesData(show: false),
                     borderData: FlBorderData(show: false),
-                    lineTouchData: const LineTouchData(enabled: false),
+                    lineTouchData: LineTouchData(
+                      touchTooltipData: LineTouchTooltipData(
+                        getTooltipColor: (_) => _wt.tooltipBg,
+                        tooltipRoundedRadius: 6,
+                        getTooltipItems: (spots) => spots.map((s) {
+                          final idx = s.x.toInt();
+                          final lbl = idx < labels.length ? labels[idx] : '';
+                          return LineTooltipItem(
+                            '$lbl — $lineLabel\n${_fmtSmartValue(s.y, _unit)}',
+                            TextStyle(fontSize: 10, color: _wt.bodyText, fontWeight: FontWeight.w500),
+                          );
+                        }).toList(),
+                      ),
+                    ),
                     lineBarsData: [
                       LineChartBarData(
                         spots: [for (int i = 0; i < lineData.length; i++) FlSpot(i.toDouble(), lineData[i])],

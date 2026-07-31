@@ -1548,6 +1548,11 @@ class _HeaderBar extends ConsumerWidget {
           onSelect: onSelect,
           onCreate: onCreate,
           onDelete: onDelete,
+          onReorder: (orderedIds) async {
+            await ref.read(repoProvider).reorderDashboards(orderedIds);
+            // Refresh the dashboards list provider so the new order sticks.
+            ref.invalidate(dashboardsListProvider);
+          },
           canEdit: canEdit,
           isLightTheme: isLightTheme,
         ),
@@ -1581,15 +1586,22 @@ class _HeaderBar extends ConsumerWidget {
 }
 
 // ─── Dashboard Switcher (dropdown) ────────────────────────────────
+//
+// Custom overlay-based dropdown (not PopupMenuButton) so we can host a
+// ReorderableListView inside — long-press-drag a row to reorder the
+// dashboard list. Order is persisted via `onReorder`. The dropdown behaves
+// like a menu: click a row to select, click the trash icon to delete,
+// click "New dashboard" to create.
 
-class _DashboardSwitcher extends StatelessWidget {
+class _DashboardSwitcher extends StatefulWidget {
   final List<Dashboard> dashboards;
   final Dashboard current;
   final ValueChanged<Dashboard> onSelect;
   final VoidCallback onCreate;
   final ValueChanged<Dashboard> onDelete;
+  /// Called with the new full ordering of dashboard ids after a drag.
+  final ValueChanged<List<String>> onReorder;
   final bool canEdit;
-
   final bool isLightTheme;
 
   const _DashboardSwitcher({
@@ -1598,105 +1610,225 @@ class _DashboardSwitcher extends StatelessWidget {
     required this.onSelect,
     required this.onCreate,
     required this.onDelete,
+    required this.onReorder,
     this.canEdit = true,
     this.isLightTheme = false,
   });
 
   @override
-  Widget build(BuildContext context) {
-    return PopupMenuButton<String>(
-      onSelected: (id) {
-        if (id == '__new__') {
-          onCreate();
-        } else if (id.startsWith('__del__:')) {
-          final delId = id.substring('__del__:'.length);
-          final d = dashboards.firstWhere((d) => d.id == delId);
-          onDelete(d);
-        } else {
-          final d = dashboards.firstWhere((d) => d.id == id);
-          onSelect(d);
-        }
-      },
-      color: OpticsColors.surface,
-      offset: const Offset(0, 36),
-      itemBuilder: (_) => [
-        for (final d in dashboards)
-          PopupMenuItem(
-            value: d.id,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-            child: Row(
+  State<_DashboardSwitcher> createState() => _DashboardSwitcherState();
+}
+
+class _DashboardSwitcherState extends State<_DashboardSwitcher> {
+  final GlobalKey _triggerKey = GlobalKey();
+
+  Future<void> _openMenu() async {
+    // Compute position under the trigger.
+    final ctx = _triggerKey.currentContext;
+    if (ctx == null) return;
+    final box = ctx.findRenderObject() as RenderBox;
+    final overlay = Overlay.of(ctx).context.findRenderObject() as RenderBox;
+    final topLeft = box.localToGlobal(Offset(0, box.size.height + 6),
+        ancestor: overlay);
+
+    // Working copy — user can drag within this list without committing until
+    // they release. We commit each release via widget.onReorder so refreshes
+    // land the new order too.
+    final working = List<Dashboard>.from(widget.dashboards);
+
+    await showDialog<void>(
+      context: context,
+      barrierColor: Colors.transparent,
+      barrierDismissible: true,
+      builder: (dctx) {
+        return StatefulBuilder(
+          builder: (dctx, setInner) {
+            final rowH = 36.0;
+            final maxRows = working.length + (widget.canEdit ? 1 : 0);
+            final menuHeight =
+                (maxRows.clamp(1, 12)) * rowH + 8; // clamp for very long lists
+            return Stack(
               children: [
-                if (d.id == current.id)
-                  const Icon(Icons.check,
-                      size: 14, color: OpticsColors.accentCyan)
-                else
-                  const SizedBox(width: 14),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    d.name,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: d.id == current.id
-                          ? FontWeight.w600
-                          : FontWeight.w400,
-                      color: d.id == current.id
-                          ? OpticsColors.accentCyan
-                          : OpticsColors.textPrimary,
-                    ),
+                // Tap-outside dismisses.
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => Navigator.of(dctx).pop(),
                   ),
                 ),
-                // Inline delete affordance — pops the menu first, then
-                // dispatches a "__del__:<id>" selection so the parent
-                // surface can confirm + delete. Hidden for viewers.
-                if (canEdit)
-                  Tooltip(
-                    message: 'Delete dashboard',
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(4),
-                      onTap: () {
-                        Navigator.of(context).pop('__del__:${d.id}');
-                      },
-                      child: const Padding(
-                        padding: EdgeInsets.all(6),
-                        child: Icon(Icons.delete_outline,
-                            size: 14, color: OpticsColors.textMuted),
+                Positioned(
+                  left: topLeft.dx,
+                  top: topLeft.dy,
+                  child: Material(
+                    color: OpticsColors.surface,
+                    elevation: 8,
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      width: 300,
+                      constraints: BoxConstraints(maxHeight: menuHeight + 40),
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: ReorderableListView.builder(
+                              shrinkWrap: true,
+                              buildDefaultDragHandles: false,
+                              itemCount: working.length,
+                              onReorder: (oldIdx, newIdx) {
+                                setInner(() {
+                                  if (newIdx > oldIdx) newIdx -= 1;
+                                  final item = working.removeAt(oldIdx);
+                                  working.insert(newIdx, item);
+                                });
+                                widget.onReorder(
+                                    working.map((d) => d.id).toList());
+                              },
+                              itemBuilder: (_, i) {
+                                final d = working[i];
+                                final isCurrent = d.id == widget.current.id;
+                                return SizedBox(
+                                  key: ValueKey(d.id),
+                                  height: rowH,
+                                  child: InkWell(
+                                    onTap: () {
+                                      Navigator.of(dctx).pop();
+                                      widget.onSelect(d);
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8),
+                                      child: Row(
+                                        children: [
+                                          // Drag handle — only editors can reorder.
+                                          if (widget.canEdit)
+                                            ReorderableDragStartListener(
+                                              index: i,
+                                              child: const Padding(
+                                                padding: EdgeInsets.only(right: 4),
+                                                child: Icon(Icons.drag_indicator,
+                                                    size: 14,
+                                                    color: OpticsColors.textMuted),
+                                              ),
+                                            ),
+                                          if (isCurrent)
+                                            const Icon(Icons.check,
+                                                size: 14,
+                                                color: OpticsColors.accentCyan)
+                                          else
+                                            const SizedBox(width: 14),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              d.name,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: isCurrent
+                                                    ? FontWeight.w600
+                                                    : FontWeight.w400,
+                                                color: isCurrent
+                                                    ? OpticsColors.accentCyan
+                                                    : OpticsColors.textPrimary,
+                                              ),
+                                            ),
+                                          ),
+                                          if (widget.canEdit)
+                                            Tooltip(
+                                              message: 'Delete dashboard',
+                                              child: InkWell(
+                                                borderRadius:
+                                                    BorderRadius.circular(4),
+                                                onTap: () {
+                                                  Navigator.of(dctx).pop();
+                                                  widget.onDelete(d);
+                                                },
+                                                child: const Padding(
+                                                  padding: EdgeInsets.all(6),
+                                                  child: Icon(
+                                                      Icons.delete_outline,
+                                                      size: 14,
+                                                      color: OpticsColors
+                                                          .textMuted),
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          if (widget.canEdit) ...[
+                            const Divider(
+                                height: 1, color: OpticsColors.border),
+                            InkWell(
+                              onTap: () {
+                                Navigator.of(dctx).pop();
+                                widget.onCreate();
+                              },
+                              child: const Padding(
+                                padding: EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 10),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.add,
+                                        size: 14,
+                                        color: OpticsColors.accentCyan),
+                                    SizedBox(width: 8),
+                                    Text('New dashboard',
+                                        style: TextStyle(
+                                            fontSize: 13,
+                                            color: OpticsColors.accentCyan)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                   ),
+                ),
               ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      key: _triggerKey,
+      onTap: _openMenu,
+      borderRadius: BorderRadius.circular(4),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              widget.current.name,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: widget.isLightTheme
+                    ? const Color(0xFF111111)
+                    : OpticsColors.textPrimary,
+              ),
             ),
-          ),
-        if (canEdit) const PopupMenuDivider(),
-        if (canEdit)
-          const PopupMenuItem(
-            value: '__new__',
-            child: Row(
-              children: [
-                Icon(Icons.add, size: 14, color: OpticsColors.accentCyan),
-                SizedBox(width: 8),
-                Text('New dashboard',
-                    style: TextStyle(
-                        fontSize: 13, color: OpticsColors.accentCyan)),
-              ],
-            ),
-          ),
-      ],
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            current.name,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: isLightTheme ? const Color(0xFF111111) : OpticsColors.textPrimary,
-            ),
-          ),
-          const SizedBox(width: 6),
-          Icon(Icons.keyboard_arrow_down,
-              size: 18, color: isLightTheme ? const Color(0xFF111111) : OpticsColors.textSecondary),
-        ],
+            const SizedBox(width: 6),
+            Icon(Icons.keyboard_arrow_down,
+                size: 18,
+                color: widget.isLightTheme
+                    ? const Color(0xFF111111)
+                    : OpticsColors.textSecondary),
+          ],
+        ),
       ),
     );
   }

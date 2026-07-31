@@ -42,6 +42,10 @@ class Dashboard {
   /// The user who created (owns) this dashboard. Null for legacy dashboards.
   final String? createdBy;
 
+  /// User-controlled display order within the dashboard switcher dropdown.
+  /// Lower numbers appear first. Null → sort after ordered items.
+  final int? sortOrder;
+
   Dashboard({
     required this.id,
     required this.tenantId,
@@ -50,6 +54,7 @@ class Dashboard {
     required this.settings,
     required this.updatedAt,
     this.createdBy,
+    this.sortOrder,
   });
 
   factory Dashboard.fromMap(Map<String, dynamic> m) => Dashboard(
@@ -65,6 +70,7 @@ class Dashboard {
             {},
         updatedAt: DateTime.parse(m['updated_at'] as String),
         createdBy: m['created_by'] as String?,
+        sortOrder: m['sort_order'] as int?,
       );
 
   /// Returns true if the given [userId] is the owner of this dashboard.

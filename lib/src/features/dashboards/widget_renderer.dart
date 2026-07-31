@@ -1400,13 +1400,21 @@ class _WidgetRendererCore extends StatelessWidget {
                   titlesData: _titlesData(interval, labels),
                   borderData: _borderData(),
                   barTouchData: BarTouchData(
+                    handleBuiltInTouches: true,
                     touchTooltipData: BarTouchTooltipData(
                       getTooltipColor: (_) => _wt.tooltipBg,
                       tooltipRoundedRadius: 6,
+                      tooltipPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      fitInsideHorizontally: true,
+                      fitInsideVertically: true,
                       getTooltipItem: (group, groupIdx, rod, rodIdx) {
                         final lbl = groupIdx < labels.length ? labels[groupIdx] : '';
+                        final barVal = _fmtSmartValue(rod.toY, _unit);
+                        final lineVal = groupIdx < lineData.length
+                            ? _fmtSmartValue(lineData[groupIdx], _unit)
+                            : '—';
                         return BarTooltipItem(
-                          '$lbl — $barLabel\n${_fmtSmartValue(rod.toY, _unit)}',
+                          '$lbl\n$barLabel: $barVal\n$lineLabel: $lineVal',
                           TextStyle(fontSize: 10, color: _wt.bodyText, fontWeight: FontWeight.w500),
                         );
                       },
@@ -1425,7 +1433,11 @@ class _WidgetRendererCore extends StatelessWidget {
                   ],
                 ),
               ),
-              Padding(
+              // LineChart is drawn on top but must NOT swallow pointer events,
+              // otherwise the BarChart underneath never receives hover.
+              // The BarChart tooltip already shows both bar + line values.
+              IgnorePointer(
+                child: Padding(
                 padding: const EdgeInsets.only(left: 40, bottom: 24),
                 child: LineChart(
                   LineChartData(
@@ -1458,6 +1470,7 @@ class _WidgetRendererCore extends StatelessWidget {
                       ),
                     ],
                   ),
+                ),
                 ),
               ),
             ],

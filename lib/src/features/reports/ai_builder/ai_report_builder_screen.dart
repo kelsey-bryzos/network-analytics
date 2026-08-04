@@ -80,59 +80,76 @@ class _AiReportBuilderScreenState
   // ── HERO ──────────────────────────────────────────────────────────────────
 
   Widget _hero() {
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(
-          horizontal: OpticsSpacing.xl,
-          vertical: OpticsSpacing.xxl,
-        ),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: OpticsSpacing.xxl),
-              Text(
-                'REPORT BUILDER',
-                textAlign: TextAlign.center,
-                style: OpticsTextStyles.headingXl.copyWith(fontSize: 22),
-              ),
-              const SizedBox(height: OpticsSpacing.xxl),
-              _heroPromptCard(),
-              const SizedBox(height: OpticsSpacing.md),
-              Text(
-                'The more detail you provide, the better the result.',
-                textAlign: TextAlign.center,
-                style: OpticsTextStyles.bodyLight,
-              ),
-              const SizedBox(height: OpticsSpacing.xxl),
-              _dividerOr(),
-              const SizedBox(height: OpticsSpacing.lg),
-              Center(
-                child: OutlinedButton(
-                  onPressed: () => context.go('/reports/new/manual'),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: OpticsSpacing.xl,
-                      vertical: OpticsSpacing.md,
-                    ),
-                    side: const BorderSide(color: OpticsColors.border),
-                    shape: RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(OpticsRadii.sm),
-                    ),
-                  ),
-                  child: Text(
-                    'BUILD MANUALLY FROM TABLE SELECTION',
-                    style: OpticsTextStyles.sectionLabel.copyWith(
-                      color: OpticsColors.textPrimary,
-                    ),
+    return Padding(
+      padding: const EdgeInsets.all(OpticsSpacing.xl),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Top-left page title — matches Reports Library / Organization
+          // Settings so navigation feels consistent across screens.
+          const Text('REPORT BUILDER', style: OpticsTextStyles.headingXl),
+          Expanded(
+            child: Center(
+              child: SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 720),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'WHAT REPORT WOULD YOU LIKE TO BUILD?',
+                        textAlign: TextAlign.center,
+                        style: OpticsTextStyles.headingXl
+                            .copyWith(fontSize: 22),
+                      ),
+                      const SizedBox(height: OpticsSpacing.xl),
+                      _heroPromptCard(),
+                      const SizedBox(height: OpticsSpacing.md),
+                      Text(
+                        'Helpful Tip: Describe your desired report in '
+                        'specific details. The more detail you provide, '
+                        'the better the result.',
+                        textAlign: TextAlign.center,
+                        style: OpticsTextStyles.bodyLight,
+                      ),
+                      const SizedBox(height: OpticsSpacing.xxl),
+                      _dividerOr(),
+                      const SizedBox(height: OpticsSpacing.xl),
+                      Center(
+                        child: FilledButton(
+                          onPressed: () =>
+                              context.go('/reports/new/manual'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor:
+                                OpticsColors.surfaceElevated,
+                            foregroundColor: OpticsColors.textPrimary,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: OpticsSpacing.xxl,
+                              vertical: OpticsSpacing.md + 4,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              side: const BorderSide(
+                                  color: OpticsColors.border),
+                              borderRadius: BorderRadius.circular(
+                                  OpticsRadii.sm),
+                            ),
+                          ),
+                          child: Text(
+                            'BUILD FROM MANUAL DATA SELECTION',
+                            style: OpticsTextStyles.sectionLabel
+                                .copyWith(
+                                    color: OpticsColors.textPrimary),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: OpticsSpacing.xl),
+                    ],
                   ),
                 ),
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -148,11 +165,6 @@ class _AiReportBuilderScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'WHAT REPORT WOULD YOU LIKE TO BUILD?',
-            style: OpticsTextStyles.sectionLabel,
-          ),
-          const SizedBox(height: OpticsSpacing.md),
           TextField(
             controller: _heroCtrl,
             minLines: 3,
@@ -160,7 +172,9 @@ class _AiReportBuilderScreenState
             style: OpticsTextStyles.body,
             decoration: InputDecoration(
               hintText:
-                  'e.g. Show me the top 10 grades by gross sales in the last 30 days.',
+                  'e.g. Show me the top 10 grades by gross sales in the '
+                  'last 30 days, or list quotes created per week over the '
+                  'last 3 months.',
               hintStyle: OpticsTextStyles.bodyLight.copyWith(
                 color: OpticsColors.textMuted,
               ),

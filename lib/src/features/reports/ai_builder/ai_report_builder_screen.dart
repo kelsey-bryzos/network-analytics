@@ -193,42 +193,40 @@ class _AiReportBuilderScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Multiline field with Enter=submit, Shift+Enter=newline.
-          Shortcuts(
-            shortcuts: <LogicalKeySet, Intent>{
-              LogicalKeySet(LogicalKeyboardKey.enter):
-                  const _SubmitIntent(),
-              LogicalKeySet(LogicalKeyboardKey.numpadEnter):
-                  const _SubmitIntent(),
+          // Multiline field. Enter submits; Shift+Enter inserts newline.
+          // Uses Focus.onKeyEvent because Shortcuts is beaten by EditableText's
+          // internal multiline handling on desktop/web.
+          Focus(
+            onKeyEvent: (node, event) {
+              if (event is! KeyDownEvent) return KeyEventResult.ignored;
+              final isEnter =
+                  event.logicalKey == LogicalKeyboardKey.enter ||
+                      event.logicalKey == LogicalKeyboardKey.numpadEnter;
+              if (!isEnter) return KeyEventResult.ignored;
+              final shift = HardwareKeyboard.instance.isShiftPressed;
+              if (shift) return KeyEventResult.ignored; // allow newline
+              _submitHero();
+              return KeyEventResult.handled;
             },
-            child: Actions(
-              actions: <Type, Action<Intent>>{
-                _SubmitIntent: CallbackAction<_SubmitIntent>(
-                  onInvoke: (_) {
-                    _submitHero();
-                    return null;
-                  },
+            child: TextField(
+              controller: _heroCtrl,
+              minLines: 3,
+              maxLines: 8,
+              textInputAction: TextInputAction.send,
+              style: OpticsTextStyles.body,
+              decoration: InputDecoration(
+                hintText:
+                    'e.g. Show me the top 10 grades by gross sales in the '
+                    'last 30 days, or list quotes created per week over the '
+                    'last 3 months.',
+                hintStyle: OpticsTextStyles.bodyLight.copyWith(
+                  color: OpticsColors.textMuted,
                 ),
-              },
-              child: TextField(
-                controller: _heroCtrl,
-                minLines: 3,
-                maxLines: 8,
-                style: OpticsTextStyles.body,
-                decoration: InputDecoration(
-                  hintText:
-                      'e.g. Show me the top 10 grades by gross sales in the '
-                      'last 30 days, or list quotes created per week over the '
-                      'last 3 months.',
-                  hintStyle: OpticsTextStyles.bodyLight.copyWith(
-                    color: OpticsColors.textMuted,
-                  ),
-                  border: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  filled: false,
-                  contentPadding: EdgeInsets.zero,
-                ),
+                border: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                filled: false,
+                contentPadding: EdgeInsets.zero,
               ),
             ),
           ),
@@ -594,7 +592,20 @@ class _AiReportBuilderScreenState
           Expanded(
             child: SizedBox(
               height: inputHeight,
-              child: TextField(
+              child: Focus(
+                onKeyEvent: (node, event) {
+                  if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                  final isEnter =
+                      event.logicalKey == LogicalKeyboardKey.enter ||
+                          event.logicalKey == LogicalKeyboardKey.numpadEnter;
+                  if (!isEnter) return KeyEventResult.ignored;
+                  if (HardwareKeyboard.instance.isShiftPressed) {
+                    return KeyEventResult.ignored;
+                  }
+                  _submitFollowup();
+                  return KeyEventResult.handled;
+                },
+                child: TextField(
                 controller: _followupCtrl,
                 maxLines: 1,
                 style: OpticsTextStyles.body,
@@ -628,6 +639,7 @@ class _AiReportBuilderScreenState
                     vertical: 12,
                   ),
                 ),
+              ),
               ),
             ),
           ),

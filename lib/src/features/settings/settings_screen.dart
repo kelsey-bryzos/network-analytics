@@ -368,21 +368,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('ORGANIZATION SETTINGS', style: OpticsTextStyles.headingXl),
-              // Only Bryzos Owners can create new organizations.
-              Consumer(builder: (context, ref, _) {
-                final isOwner = ref.watch(isBryzosOwnerProvider).value ?? false;
-                if (!isOwner) return const SizedBox.shrink();
-                return ElevatedButton.icon(
-                  onPressed: _showAddOrgDialog,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Add New Organization'),
-                );
-              }),
-            ],
+          // Header row height locked to 36px so the title's vertical position
+          // matches Reports Library and Report Builder exactly.
+          SizedBox(
+            height: 36,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Text('ORGANIZATION SETTINGS',
+                    style: OpticsTextStyles.headingXl),
+                // Only Bryzos Owners can create new organizations.
+                Consumer(builder: (context, ref, _) {
+                  final isOwner =
+                      ref.watch(isBryzosOwnerProvider).value ?? false;
+                  if (!isOwner) return const SizedBox.shrink();
+                  return ElevatedButton.icon(
+                    onPressed: _showAddOrgDialog,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add New Organization'),
+                  );
+                }),
+              ],
+            ),
           ),
           const SizedBox(height: OpticsSpacing.xl),
           if (_loading)

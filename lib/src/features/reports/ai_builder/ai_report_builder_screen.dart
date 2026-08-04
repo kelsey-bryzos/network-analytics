@@ -85,9 +85,18 @@ class _AiReportBuilderScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Top-left page title — matches Reports Library / Organization
-          // Settings so navigation feels consistent across screens.
-          const Text('REPORT BUILDER', style: OpticsTextStyles.headingXl),
+          // Top-left page title — wrapped in a 36px-tall row so the title's
+          // vertical position is identical to Reports Library (whose title
+          // sits inside a row dominated by a 36px-tall search field).
+          SizedBox(
+            height: 36,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: const Text('REPORT BUILDER',
+                  style: OpticsTextStyles.headingXl),
+            ),
+          ),
+          const SizedBox(height: OpticsSpacing.md),
           Expanded(
             child: Center(
               child: SingleChildScrollView(
@@ -125,15 +134,8 @@ class _AiReportBuilderScreenState
                       ),
                       const SizedBox(height: OpticsSpacing.xxl),
                       _dividerOr(),
-                      const SizedBox(height: OpticsSpacing.lg),
-                      Center(
-                        child: OutlinedButton(
-                          onPressed: () =>
-                              context.go('/reports/new/manual'),
-                          child: const Text(
-                              'Build from Manual Data Selection'),
-                        ),
-                      ),
+                      const SizedBox(height: OpticsSpacing.xl),
+                      Center(child: _manualBuildButton()),
                       const SizedBox(height: OpticsSpacing.xl),
                     ],
                   ),
@@ -142,6 +144,51 @@ class _AiReportBuilderScreenState
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // Manual-build escape hatch. Styled like a scaled-up filter chip
+  // (rounded rect, dark elevated surface, thin border) — same visual
+  // language as the "My Reports / Shared with Me / Canned" chips on
+  // the Reports Library screen, sized up with more padding and a
+  // larger font per Kelsey feedback.
+  Widget _manualBuildButton() {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => context.go('/reports/new/manual'),
+        borderRadius: BorderRadius.circular(OpticsRadii.md),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 28,
+            vertical: 16,
+          ),
+          decoration: BoxDecoration(
+            color: OpticsColors.surfaceElevated,
+            borderRadius: BorderRadius.circular(OpticsRadii.md),
+            border: Border.all(color: OpticsColors.border),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.tune,
+                size: 18,
+                color: OpticsColors.textPrimary,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Build from Manual Data Selection',
+                style: OpticsTextStyles.body.copyWith(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: OpticsColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

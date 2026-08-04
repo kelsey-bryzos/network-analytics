@@ -14,6 +14,7 @@ import '../dashboards/dashboards_list_screen.dart' show activeDashboardIdProvide
 import '../../design/optics_card.dart';
 import '../../design/theme.dart';
 import 'role_info_tooltip.dart';
+import 'ai_context_objective_section.dart';
 
 // ---------------------------------------------------------------------------
 // Secure error display helpers.
@@ -435,6 +436,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               );
             }),
 
+          // ─────────────────────────────────────────────────────────────
+          // AI Context Objective — Bryzos-only, global (not tenant-scoped).
+          // Silently injected into every AI Report Builder request so every
+          // LLM understands the Bryzos "Gone In 60 Seconds" domain.
+          // The section itself renders nothing for non-Bryzos users.
+          // ─────────────────────────────────────────────────────────────
+          const SizedBox(height: OpticsSpacing.xl),
+          const AiContextObjectiveSection(),
         ],
       ),
     );

@@ -242,8 +242,8 @@ class AiBuilderNotifier extends StateNotifier<AiBuilderState> {
         final res = await _api.checkLibrary(
           prompt: prompt,
           tenantId: tenantId,
-          limit: 3,
-          threshold: 0.7,
+          limit: 5,
+          threshold: 0.55,
         );
         if (res.matches.isNotEmpty) {
           final assistantMsg = ChatMessage(

@@ -12,7 +12,6 @@
 // legacy manual builder directly.
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -559,8 +558,9 @@ class _AiReportBuilderScreenState
   }
 
   Widget _chatInput(AiBuilderState st) {
-    // Fixed height so the send button and the text field are exactly the
-    // same visual height (single-line input).
+    // Fixed height so the send button and the text field are visually
+    // identical. Plain Enter submits; Shift+Enter inserts a newline
+    // (via TextInputAction.newline on the shortcut).
     const double inputHeight = 44;
     final busy = st.isGenerating || st.isCheckingLibrary;
     return Container(
@@ -575,52 +575,38 @@ class _AiReportBuilderScreenState
           Expanded(
             child: SizedBox(
               height: inputHeight,
-              child: Shortcuts(
-                shortcuts: <LogicalKeySet, Intent>{
-                  LogicalKeySet(LogicalKeyboardKey.meta,
-                      LogicalKeyboardKey.enter): const _SubmitIntent(),
-                  LogicalKeySet(LogicalKeyboardKey.control,
-                      LogicalKeyboardKey.enter): const _SubmitIntent(),
-                },
-                child: Actions(
-                  actions: <Type, Action<Intent>>{
-                    _SubmitIntent: CallbackAction<_SubmitIntent>(
-                      onInvoke: (_) {
-                        _submitFollowup();
-                        return null;
-                      },
-                    ),
-                  },
-                  child: TextField(
-                    controller: _followupCtrl,
-                    maxLines: 1,
-                    style: OpticsTextStyles.body,
-                    textAlignVertical: TextAlignVertical.center,
-                    decoration: InputDecoration(
-                      hintText: 'Refine the report…',
-                      hintStyle: OpticsTextStyles.bodyLight.copyWith(
-                        color: OpticsColors.textMuted,
-                      ),
-                      isDense: true,
-                      filled: true,
-                      fillColor: OpticsColors.surface,
-                      border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(OpticsRadii.sm),
-                        borderSide: const BorderSide(
-                            color: OpticsColors.border),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(OpticsRadii.sm),
-                        borderSide: const BorderSide(
-                            color: OpticsColors.border),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: OpticsSpacing.md,
-                        vertical: 0,
-                      ),
-                    ),
+              child: TextField(
+                controller: _followupCtrl,
+                maxLines: 1,
+                style: OpticsTextStyles.body,
+                textAlignVertical: TextAlignVertical.center,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _submitFollowup(),
+                decoration: InputDecoration(
+                  hintText: 'Refine the report…',
+                  hintStyle: OpticsTextStyles.bodyLight.copyWith(
+                    color: OpticsColors.textMuted,
+                  ),
+                  filled: true,
+                  fillColor: OpticsColors.surface,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(OpticsRadii.sm),
+                    borderSide: const BorderSide(color: OpticsColors.border),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(OpticsRadii.sm),
+                    borderSide: const BorderSide(color: OpticsColors.border),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(OpticsRadii.sm),
+                    borderSide: const BorderSide(
+                        color: OpticsColors.accentCyan, width: 1.2),
+                  ),
+                  // Vertically centered inside the 44px box:
+                  // (44 - 20 line-height) / 2 = 12
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: OpticsSpacing.md,
+                    vertical: 12,
                   ),
                 ),
               ),
@@ -635,13 +621,12 @@ class _AiReportBuilderScreenState
                 backgroundColor: OpticsColors.accentCyan,
                 foregroundColor: Colors.black,
                 shape: RoundedRectangleBorder(
-                  borderRadius:
-                      BorderRadius.circular(OpticsRadii.sm),
+                  borderRadius: BorderRadius.circular(OpticsRadii.sm),
                 ),
                 padding: const EdgeInsets.symmetric(
                   horizontal: OpticsSpacing.lg,
                 ),
-                minimumSize: Size(inputHeight, inputHeight),
+                minimumSize: const Size(inputHeight, inputHeight),
               ),
               child: const Icon(Icons.arrow_forward, size: 18),
             ),
@@ -1029,10 +1014,6 @@ class _AiReportBuilderScreenState
     }
     return '';
   }
-}
-
-class _SubmitIntent extends Intent {
-  const _SubmitIntent();
 }
 
 /// One-shot handoff so the manual builder can pick up an AI-generated

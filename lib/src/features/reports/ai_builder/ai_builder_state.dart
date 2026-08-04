@@ -260,8 +260,16 @@ class AiBuilderNotifier extends StateNotifier<AiBuilderState> {
           _persist();
           return;
         }
-      } catch (_) {
-        // Silent fall-through: library check is best-effort.
+      } catch (e) {
+        // Best-effort — surface diagnostic for Bryzos-only visibility.
+        final diag = ChatMessage(
+          role: ChatRole.system,
+          content: '[library-check failed: $e]',
+          at: DateTime.now(),
+        );
+        state = state.copyWith(
+          messages: [...state.messages, diag],
+        );
       }
       state = state.copyWith(isCheckingLibrary: false);
     }

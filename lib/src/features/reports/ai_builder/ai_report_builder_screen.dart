@@ -12,6 +12,7 @@
 // legacy manual builder directly.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -192,26 +193,44 @@ class _AiReportBuilderScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TextField(
-            controller: _heroCtrl,
-            minLines: 3,
-            maxLines: 8,
-            style: OpticsTextStyles.body,
-            decoration: InputDecoration(
-              hintText:
-                  'e.g. Show me the top 10 grades by gross sales in the '
-                  'last 30 days, or list quotes created per week over the '
-                  'last 3 months.',
-              hintStyle: OpticsTextStyles.bodyLight.copyWith(
-                color: OpticsColors.textMuted,
+          // Multiline field with Enter=submit, Shift+Enter=newline.
+          Shortcuts(
+            shortcuts: <LogicalKeySet, Intent>{
+              LogicalKeySet(LogicalKeyboardKey.enter):
+                  const _SubmitIntent(),
+              LogicalKeySet(LogicalKeyboardKey.numpadEnter):
+                  const _SubmitIntent(),
+            },
+            child: Actions(
+              actions: <Type, Action<Intent>>{
+                _SubmitIntent: CallbackAction<_SubmitIntent>(
+                  onInvoke: (_) {
+                    _submitHero();
+                    return null;
+                  },
+                ),
+              },
+              child: TextField(
+                controller: _heroCtrl,
+                minLines: 3,
+                maxLines: 8,
+                style: OpticsTextStyles.body,
+                decoration: InputDecoration(
+                  hintText:
+                      'e.g. Show me the top 10 grades by gross sales in the '
+                      'last 30 days, or list quotes created per week over the '
+                      'last 3 months.',
+                  hintStyle: OpticsTextStyles.bodyLight.copyWith(
+                    color: OpticsColors.textMuted,
+                  ),
+                  border: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  filled: false,
+                  contentPadding: EdgeInsets.zero,
+                ),
               ),
-              border: InputBorder.none,
-              focusedBorder: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              filled: false,
-              contentPadding: EdgeInsets.zero,
             ),
-            onSubmitted: (_) => _submitHero(),
           ),
           const SizedBox(height: OpticsSpacing.md),
           Align(
@@ -1020,3 +1039,8 @@ class _AiReportBuilderScreenState
 /// query when the user chooses "Open in Manual Builder". Consumed on
 /// the manual builder's first hydrate, then cleared.
 Map<String, dynamic>? aiHandoffQuery;
+
+/// Intent used to bind Enter-to-submit on multiline text fields.
+class _SubmitIntent extends Intent {
+  const _SubmitIntent();
+}

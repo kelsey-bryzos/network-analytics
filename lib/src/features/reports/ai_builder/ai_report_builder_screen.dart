@@ -92,54 +92,46 @@ class _AiReportBuilderScreenState
             child: Center(
               child: SingleChildScrollView(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 720),
+                  constraints: const BoxConstraints(maxWidth: 900),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(
                         'WHAT REPORT WOULD YOU LIKE TO BUILD?',
                         textAlign: TextAlign.center,
-                        style: OpticsTextStyles.headingXl
-                            .copyWith(fontSize: 22),
+                        style: OpticsTextStyles.headingLg,
                       ),
-                      const SizedBox(height: OpticsSpacing.xl),
+                      const SizedBox(height: OpticsSpacing.lg),
                       _heroPromptCard(),
                       const SizedBox(height: OpticsSpacing.md),
-                      Text(
-                        'Helpful Tip: Describe your desired report in '
-                        'specific details. The more detail you provide, '
-                        'the better the result.',
+                      RichText(
                         textAlign: TextAlign.center,
-                        style: OpticsTextStyles.bodyLight,
+                        text: TextSpan(
+                          style: OpticsTextStyles.bodyLight,
+                          children: const [
+                            TextSpan(
+                              text: 'Helpful Tip: ',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: OpticsColors.textPrimary,
+                              ),
+                            ),
+                            TextSpan(
+                              text:
+                                  'Describe your desired report in specific details. The more detail you provide, the better the result.',
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: OpticsSpacing.xxl),
                       _dividerOr(),
-                      const SizedBox(height: OpticsSpacing.xl),
+                      const SizedBox(height: OpticsSpacing.lg),
                       Center(
-                        child: FilledButton(
+                        child: OutlinedButton(
                           onPressed: () =>
                               context.go('/reports/new/manual'),
-                          style: FilledButton.styleFrom(
-                            backgroundColor:
-                                OpticsColors.surfaceElevated,
-                            foregroundColor: OpticsColors.textPrimary,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: OpticsSpacing.xxl,
-                              vertical: OpticsSpacing.md + 4,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              side: const BorderSide(
-                                  color: OpticsColors.border),
-                              borderRadius: BorderRadius.circular(
-                                  OpticsRadii.sm),
-                            ),
-                          ),
-                          child: Text(
-                            'BUILD FROM MANUAL DATA SELECTION',
-                            style: OpticsTextStyles.sectionLabel
-                                .copyWith(
-                                    color: OpticsColors.textPrimary),
-                          ),
+                          child: const Text(
+                              'Build from Manual Data Selection'),
                         ),
                       ),
                       const SizedBox(height: OpticsSpacing.xl),
@@ -189,20 +181,10 @@ class _AiReportBuilderScreenState
           const SizedBox(height: OpticsSpacing.md),
           Align(
             alignment: Alignment.centerRight,
-            child: FilledButton(
+            child: ElevatedButton.icon(
               onPressed: _submitHero,
-              style: FilledButton.styleFrom(
-                backgroundColor: OpticsColors.accentCyan,
-                foregroundColor: Colors.black,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(OpticsRadii.sm),
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: OpticsSpacing.lg,
-                  vertical: OpticsSpacing.md,
-                ),
-              ),
-              child: const Icon(Icons.arrow_forward, size: 18),
+              icon: const Text('Generate'),
+              label: const Icon(Icons.arrow_forward, size: 16),
             ),
           ),
         ],

@@ -98,6 +98,19 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
                             style: OpticsTextStyles.headingXl),
                         const SizedBox(width: 12),
                         _countBadge(reportsAsync),
+                      ],
+                    ),
+                    const SizedBox(height: OpticsSpacing.md),
+                    // ── Filter chips + search ───────────────────────
+                    Row(
+                      children: [
+                        _chip(_Filter.all, 'All'),
+                        const SizedBox(width: 8),
+                        _chip(_Filter.mine, 'My Reports'),
+                        const SizedBox(width: 8),
+                        _chip(_Filter.shared, 'Shared with Me'),
+                        const SizedBox(width: 8),
+                        _chip(_Filter.canned, 'Canned'),
                         const Spacer(),
                         SizedBox(
                           width: 280,
@@ -112,19 +125,6 @@ class _ReportsListScreenState extends ConsumerState<ReportsListScreen> {
                                 setState(() => _q = v.toLowerCase()),
                           ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: OpticsSpacing.md),
-                    // ── Filter chips ────────────────────────────────
-                    Row(
-                      children: [
-                        _chip(_Filter.all, 'All'),
-                        const SizedBox(width: 8),
-                        _chip(_Filter.mine, 'My Reports'),
-                        const SizedBox(width: 8),
-                        _chip(_Filter.shared, 'Shared with Me'),
-                        const SizedBox(width: 8),
-                        _chip(_Filter.canned, 'Canned'),
                       ],
                     ),
                   ],

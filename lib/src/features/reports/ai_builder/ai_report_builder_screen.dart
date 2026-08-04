@@ -132,9 +132,9 @@ class _AiReportBuilderScreenState
                           ],
                         ),
                       ),
-                      const SizedBox(height: OpticsSpacing.xxl),
+                      const SizedBox(height: 56),
                       _dividerOr(),
-                      const SizedBox(height: OpticsSpacing.xl),
+                      const SizedBox(height: 56),
                       Center(child: _manualBuildButton()),
                       const SizedBox(height: OpticsSpacing.xl),
                     ],
@@ -169,24 +169,13 @@ class _AiReportBuilderScreenState
             borderRadius: BorderRadius.circular(OpticsRadii.md),
             border: Border.all(color: OpticsColors.border),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.tune,
-                size: 18,
-                color: OpticsColors.textPrimary,
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'Build from Manual Data Selection',
-                style: OpticsTextStyles.body.copyWith(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: OpticsColors.textPrimary,
-                ),
-              ),
-            ],
+          child: Text(
+            'Build from Manual Data Selection',
+            style: OpticsTextStyles.body.copyWith(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: OpticsColors.textPrimary,
+            ),
           ),
         ),
       ),
@@ -293,39 +282,43 @@ class _AiReportBuilderScreenState
     );
   }
 
+  // Fixed header height shared by chat panel and preview panel so the
+  // two header bars are pixel-aligned across the divider.
+  static const double _panelHeaderHeight = 56;
+
   Widget _chatHeader(AiBuilderState st) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: OpticsSpacing.lg,
-        vertical: OpticsSpacing.md,
-      ),
-      child: Row(
-        children: [
-          Text('CONVERSATION', style: OpticsTextStyles.sectionLabel),
-          const Spacer(),
-          _iconBtn(
-            icon: Icons.undo,
-            enabled: st.canUndo,
-            tooltip: 'Undo',
-            onTap: () => ref.read(aiBuilderProvider.notifier).undo(),
-          ),
-          const SizedBox(width: OpticsSpacing.xs),
-          _iconBtn(
-            icon: Icons.redo,
-            enabled: st.canRedo,
-            tooltip: 'Redo',
-            onTap: () => ref.read(aiBuilderProvider.notifier).redo(),
-          ),
-          const SizedBox(width: OpticsSpacing.sm),
-          _iconBtn(
-            icon: Icons.refresh,
-            enabled: true,
-            tooltip: 'Start over',
-            onTap: () {
-              ref.read(aiBuilderProvider.notifier).reset();
-            },
-          ),
-        ],
+    return SizedBox(
+      height: _panelHeaderHeight,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: OpticsSpacing.lg),
+        child: Row(
+          children: [
+            Text('CONVERSATION', style: OpticsTextStyles.sectionLabel),
+            const Spacer(),
+            _iconBtn(
+              icon: Icons.undo,
+              enabled: st.canUndo,
+              tooltip: 'Undo',
+              onTap: () => ref.read(aiBuilderProvider.notifier).undo(),
+            ),
+            const SizedBox(width: OpticsSpacing.xs),
+            _iconBtn(
+              icon: Icons.redo,
+              enabled: st.canRedo,
+              tooltip: 'Redo',
+              onTap: () => ref.read(aiBuilderProvider.notifier).redo(),
+            ),
+            const SizedBox(width: OpticsSpacing.sm),
+            _iconBtn(
+              icon: Icons.refresh,
+              enabled: true,
+              tooltip: 'Start over',
+              onTap: () {
+                ref.read(aiBuilderProvider.notifier).reset();
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -566,6 +559,10 @@ class _AiReportBuilderScreenState
   }
 
   Widget _chatInput(AiBuilderState st) {
+    // Fixed height so the send button and the text field are exactly the
+    // same visual height (single-line input).
+    const double inputHeight = 44;
+    final busy = st.isGenerating || st.isCheckingLibrary;
     return Container(
       decoration: const BoxDecoration(
         border: Border(top: BorderSide(color: OpticsColors.border)),
@@ -573,46 +570,56 @@ class _AiReportBuilderScreenState
       ),
       padding: const EdgeInsets.all(OpticsSpacing.md),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(
-            child: Shortcuts(
-              shortcuts: <LogicalKeySet, Intent>{
-                LogicalKeySet(LogicalKeyboardKey.meta,
-                    LogicalKeyboardKey.enter): const _SubmitIntent(),
-                LogicalKeySet(LogicalKeyboardKey.control,
-                    LogicalKeyboardKey.enter): const _SubmitIntent(),
-              },
-              child: Actions(
-                actions: <Type, Action<Intent>>{
-                  _SubmitIntent: CallbackAction<_SubmitIntent>(
-                    onInvoke: (_) {
-                      _submitFollowup();
-                      return null;
-                    },
-                  ),
+            child: SizedBox(
+              height: inputHeight,
+              child: Shortcuts(
+                shortcuts: <LogicalKeySet, Intent>{
+                  LogicalKeySet(LogicalKeyboardKey.meta,
+                      LogicalKeyboardKey.enter): const _SubmitIntent(),
+                  LogicalKeySet(LogicalKeyboardKey.control,
+                      LogicalKeyboardKey.enter): const _SubmitIntent(),
                 },
-                child: TextField(
-                  controller: _followupCtrl,
-                  minLines: 1,
-                  maxLines: 4,
-                  style: OpticsTextStyles.body,
-                  decoration: InputDecoration(
-                    hintText: 'Refine the report…',
-                    hintStyle: OpticsTextStyles.bodyLight.copyWith(
-                      color: OpticsColors.textMuted,
+                child: Actions(
+                  actions: <Type, Action<Intent>>{
+                    _SubmitIntent: CallbackAction<_SubmitIntent>(
+                      onInvoke: (_) {
+                        _submitFollowup();
+                        return null;
+                      },
                     ),
-                    filled: true,
-                    fillColor: OpticsColors.surface,
-                    border: OutlineInputBorder(
-                      borderRadius:
-                          BorderRadius.circular(OpticsRadii.sm),
-                      borderSide: const BorderSide(
-                          color: OpticsColors.border),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: OpticsSpacing.md,
-                      vertical: OpticsSpacing.sm,
+                  },
+                  child: TextField(
+                    controller: _followupCtrl,
+                    maxLines: 1,
+                    style: OpticsTextStyles.body,
+                    textAlignVertical: TextAlignVertical.center,
+                    decoration: InputDecoration(
+                      hintText: 'Refine the report…',
+                      hintStyle: OpticsTextStyles.bodyLight.copyWith(
+                        color: OpticsColors.textMuted,
+                      ),
+                      isDense: true,
+                      filled: true,
+                      fillColor: OpticsColors.surface,
+                      border: OutlineInputBorder(
+                        borderRadius:
+                            BorderRadius.circular(OpticsRadii.sm),
+                        borderSide: const BorderSide(
+                            color: OpticsColors.border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius:
+                            BorderRadius.circular(OpticsRadii.sm),
+                        borderSide: const BorderSide(
+                            color: OpticsColors.border),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: OpticsSpacing.md,
+                        vertical: 0,
+                      ),
                     ),
                   ),
                 ),
@@ -620,23 +627,24 @@ class _AiReportBuilderScreenState
             ),
           ),
           const SizedBox(width: OpticsSpacing.sm),
-          FilledButton(
-            onPressed: st.isGenerating || st.isCheckingLibrary
-                ? null
-                : _submitFollowup,
-            style: FilledButton.styleFrom(
-              backgroundColor: OpticsColors.accentCyan,
-              foregroundColor: Colors.black,
-              shape: RoundedRectangleBorder(
-                borderRadius:
-                    BorderRadius.circular(OpticsRadii.sm),
+          SizedBox(
+            height: inputHeight,
+            child: FilledButton(
+              onPressed: busy ? null : _submitFollowup,
+              style: FilledButton.styleFrom(
+                backgroundColor: OpticsColors.accentCyan,
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(
+                  borderRadius:
+                      BorderRadius.circular(OpticsRadii.sm),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: OpticsSpacing.lg,
+                ),
+                minimumSize: Size(inputHeight, inputHeight),
               ),
-              padding: const EdgeInsets.symmetric(
-                horizontal: OpticsSpacing.md,
-                vertical: OpticsSpacing.sm + 4,
-              ),
+              child: const Icon(Icons.arrow_forward, size: 18),
             ),
-            child: const Icon(Icons.arrow_forward, size: 16),
           ),
         ],
       ),
@@ -660,63 +668,84 @@ class _AiReportBuilderScreenState
   }
 
   Widget _previewHeader(AiBuilderState st) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: OpticsSpacing.lg,
-        vertical: OpticsSpacing.md,
-      ),
-      child: Row(
-        children: [
-          _toggleBtn(
-            label: 'REPORT VIEW',
-            selected: st.previewMode == PreviewMode.report,
-            onTap: () => ref
-                .read(aiBuilderProvider.notifier)
-                .setPreviewMode(PreviewMode.report),
-          ),
-          const SizedBox(width: OpticsSpacing.xs),
-          _toggleBtn(
-            label: 'WIDGET VIEW',
-            selected: st.previewMode == PreviewMode.widget,
-            onTap: () => ref
-                .read(aiBuilderProvider.notifier)
-                .setPreviewMode(PreviewMode.widget),
-          ),
-        ],
+    // Combined pill toggle — same pattern as Reports Library > Open Report
+    // (Table View / Widget View). Two segments inside one rounded container.
+    return SizedBox(
+      height: _panelHeaderHeight,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: OpticsSpacing.lg),
+        child: Row(
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                color: OpticsColors.surfaceElevated,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: OpticsColors.border),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _toggleBtn(
+                    icon: Icons.description_outlined,
+                    label: 'Report View',
+                    active: st.previewMode == PreviewMode.report,
+                    onTap: () => ref
+                        .read(aiBuilderProvider.notifier)
+                        .setPreviewMode(PreviewMode.report),
+                  ),
+                  _toggleBtn(
+                    icon: Icons.bar_chart,
+                    label: 'Widget View',
+                    active: st.previewMode == PreviewMode.widget,
+                    onTap: () => ref
+                        .read(aiBuilderProvider.notifier)
+                        .setPreviewMode(PreviewMode.widget),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _toggleBtn({
+    required IconData icon,
     required String label,
-    required bool selected,
+    required bool active,
     required VoidCallback onTap,
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(OpticsRadii.sm),
+      borderRadius: BorderRadius.circular(5),
       child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: OpticsSpacing.md,
-          vertical: OpticsSpacing.sm,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color:
-              selected ? OpticsColors.surfaceElevated : Colors.transparent,
-          border: Border.all(
-            color: selected
-                ? OpticsColors.accentCyan
-                : OpticsColors.border,
-          ),
-          borderRadius: BorderRadius.circular(OpticsRadii.sm),
+          color: active
+              ? OpticsColors.accentCyan.withValues(alpha: 0.2)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(5),
         ),
-        child: Text(
-          label,
-          style: OpticsTextStyles.sectionLabel.copyWith(
-            color: selected
-                ? OpticsColors.accentCyan
-                : OpticsColors.textSecondary,
-          ),
+        child: Row(
+          children: [
+            Icon(icon,
+                size: 14,
+                color: active
+                    ? OpticsColors.accentCyan
+                    : OpticsColors.textSecondary),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+                color: active
+                    ? OpticsColors.accentCyan
+                    : OpticsColors.textPrimary,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -807,19 +836,22 @@ class _AiReportBuilderScreenState
         runSpacing: OpticsSpacing.sm,
         children: [
           _actionBtn(
-            label: 'SAVE REPORT',
+            label: 'Save Report',
+            icon: Icons.save_outlined,
             primary: true,
             enabled: enabled,
             onTap: () => _saveAsReport(st),
           ),
           _actionBtn(
-            label: 'SAVE WIDGET',
+            label: 'Save Widget',
+            icon: Icons.dashboard_customize_outlined,
             primary: false,
             enabled: enabled,
             onTap: () => _saveAsWidget(st),
           ),
           _actionBtn(
-            label: 'OPEN IN MANUAL BUILDER',
+            label: 'Open in Manual Builder',
+            icon: Icons.edit_outlined,
             primary: false,
             enabled: enabled,
             onTap: () => _openInManual(st),
@@ -829,47 +861,56 @@ class _AiReportBuilderScreenState
     );
   }
 
+  // Preview action button — visually matches the "+ Add Widget" button on
+  // the Dashboards screen (cyan pill, 14px icon, 12px mixed-case label,
+  // 14x8 padding). Non-primary variants swap to elevated surface + border.
   Widget _actionBtn({
     required String label,
     required bool primary,
     required bool enabled,
     required VoidCallback onTap,
+    IconData? icon,
   }) {
-    if (primary) {
-      return FilledButton(
-        onPressed: enabled ? onTap : null,
-        style: FilledButton.styleFrom(
-          backgroundColor: OpticsColors.accentCyan,
-          foregroundColor: Colors.black,
-          disabledBackgroundColor:
-              OpticsColors.surfaceElevated,
-          disabledForegroundColor: OpticsColors.textMuted,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(OpticsRadii.sm),
+    final bg = primary
+        ? OpticsColors.accentCyan
+        : OpticsColors.surfaceElevated;
+    final fg = primary ? Colors.black : OpticsColors.textPrimary;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(OpticsRadii.sm),
+        child: Opacity(
+          opacity: enabled ? 1 : 0.5,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: BorderRadius.circular(OpticsRadii.sm),
+              border: primary
+                  ? null
+                  : Border.all(color: OpticsColors.border),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (icon != null) ...[
+                  Icon(icon, size: 14, color: fg),
+                  const SizedBox(width: 6),
+                ],
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: fg,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
           ),
-          padding: const EdgeInsets.symmetric(
-            horizontal: OpticsSpacing.lg,
-            vertical: OpticsSpacing.sm + 4,
-          ),
-        ),
-        child: Text(label,
-            style: OpticsTextStyles.sectionLabel
-                .copyWith(color: Colors.black)),
-      );
-    }
-    return OutlinedButton(
-      onPressed: enabled ? onTap : null,
-      style: OutlinedButton.styleFrom(
-        side: const BorderSide(color: OpticsColors.border),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(OpticsRadii.sm),
-        ),
-        padding: const EdgeInsets.symmetric(
-          horizontal: OpticsSpacing.lg,
-          vertical: OpticsSpacing.sm + 4,
         ),
       ),
-      child: Text(label, style: OpticsTextStyles.sectionLabel),
     );
   }
 

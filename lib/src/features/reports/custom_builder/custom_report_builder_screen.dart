@@ -27,6 +27,7 @@ import '../../../data/supabase_repo.dart';
 import '../../../design/theme.dart';
 import '../../../shared/secure_error.dart';
 import '../report_viewer_screen.dart' show restDataSourceIdProvider;
+import '../ai_builder/ai_report_builder_screen.dart' show aiHandoffQuery;
 import 'custom_report_query_v2.dart';
 import 'custom_report_validator.dart';
 
@@ -266,11 +267,19 @@ class _CustomReportBuilderScreenState
     _hydrated = true;
     final id = widget.reportId;
     if (id == null) {
+      // One-shot handoff from AI Report Builder: if the user chose
+      // "Open in Manual Builder" from the AI flow, we preload the JSON
+      // it produced. The handoff is consumed exactly once.
+      final handoff = aiHandoffQuery;
+      aiHandoffQuery = null;
+      final initial = handoff != null
+          ? CustomReportQueryV2.fromJson(handoff)
+          : CustomReportQueryV2();
       ref.read(_builderProvider.notifier).hydrate(
             reportId: null,
             title: 'Untitled Report',
             description: null,
-            query: CustomReportQueryV2(),
+            query: initial,
           );
       return;
     }

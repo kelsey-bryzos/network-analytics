@@ -1,0 +1,957 @@
+// Network Analytics — AI Report Builder screen.
+//
+// Route: `/reports/new` (replaces the previous direct entry into the manual
+// CustomReportBuilderScreen). Layout:
+//
+//   * Hero landing view (default) — a large prompt input + "Build manually"
+//     escape hatch below.
+//   * After first submit, snaps into two-panel layout: chat on the left,
+//     live preview on the right with Report View / Widget View toggle.
+//
+// Gating: The AI feature is Bryzos-only in v1.0. Non-Bryzos users see the
+// legacy manual builder directly.
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../data/supabase_repo.dart';
+import '../../../design/theme.dart';
+import '../../../shared/secure_error.dart';
+import '../custom_builder/custom_report_builder_screen.dart';
+import '../custom_builder/custom_report_query_v2.dart';
+import '../custom_builder/v2_report_view.dart';
+import '../report_viewer_screen.dart' show restDataSourceIdProvider;
+import 'ai_api.dart';
+import 'ai_builder_state.dart';
+
+class AiReportBuilderScreen extends ConsumerStatefulWidget {
+  const AiReportBuilderScreen({super.key});
+
+  @override
+  ConsumerState<AiReportBuilderScreen> createState() =>
+      _AiReportBuilderScreenState();
+}
+
+class _AiReportBuilderScreenState
+    extends ConsumerState<AiReportBuilderScreen> {
+  final _heroCtrl = TextEditingController();
+  final _followupCtrl = TextEditingController();
+  final _chatScroll = ScrollController();
+
+  @override
+  void dispose() {
+    _heroCtrl.dispose();
+    _followupCtrl.dispose();
+    _chatScroll.dispose();
+    super.dispose();
+  }
+
+  void _scrollChatToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_chatScroll.hasClients) return;
+      _chatScroll.animateTo(
+        _chatScroll.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Bryzos gate — non-Bryzos users get the manual builder directly.
+    if (!isBryzosUser(ref)) {
+      return const CustomReportBuilderScreen();
+    }
+
+    final st = ref.watch(aiBuilderProvider);
+    ref.listen<AiBuilderState>(aiBuilderProvider, (_, __) {
+      _scrollChatToBottom();
+    });
+
+    return Container(
+      color: OpticsColors.canvas,
+      child: st.bootstrapped ? _twoPanel(st) : _hero(),
+    );
+  }
+
+  // ── HERO ──────────────────────────────────────────────────────────────────
+
+  Widget _hero() {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(
+          horizontal: OpticsSpacing.xl,
+          vertical: OpticsSpacing.xxl,
+        ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(height: OpticsSpacing.xxl),
+              Text(
+                'REPORT BUILDER',
+                textAlign: TextAlign.center,
+                style: OpticsTextStyles.headingXl.copyWith(fontSize: 22),
+              ),
+              const SizedBox(height: OpticsSpacing.xxl),
+              _heroPromptCard(),
+              const SizedBox(height: OpticsSpacing.md),
+              Text(
+                'The more detail you provide, the better the result.',
+                textAlign: TextAlign.center,
+                style: OpticsTextStyles.bodyLight,
+              ),
+              const SizedBox(height: OpticsSpacing.xxl),
+              _dividerOr(),
+              const SizedBox(height: OpticsSpacing.lg),
+              Center(
+                child: OutlinedButton(
+                  onPressed: () => context.go('/reports/new/manual'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: OpticsSpacing.xl,
+                      vertical: OpticsSpacing.md,
+                    ),
+                    side: const BorderSide(color: OpticsColors.border),
+                    shape: RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(OpticsRadii.sm),
+                    ),
+                  ),
+                  child: Text(
+                    'BUILD MANUALLY FROM TABLE SELECTION',
+                    style: OpticsTextStyles.sectionLabel.copyWith(
+                      color: OpticsColors.textPrimary,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _heroPromptCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: OpticsColors.surface,
+        border: Border.all(color: OpticsColors.border),
+        borderRadius: BorderRadius.circular(OpticsRadii.lg),
+      ),
+      padding: const EdgeInsets.all(OpticsSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'WHAT REPORT WOULD YOU LIKE TO BUILD?',
+            style: OpticsTextStyles.sectionLabel,
+          ),
+          const SizedBox(height: OpticsSpacing.md),
+          TextField(
+            controller: _heroCtrl,
+            minLines: 3,
+            maxLines: 8,
+            style: OpticsTextStyles.body,
+            decoration: InputDecoration(
+              hintText:
+                  'e.g. Show me the top 10 grades by gross sales in the last 30 days.',
+              hintStyle: OpticsTextStyles.bodyLight.copyWith(
+                color: OpticsColors.textMuted,
+              ),
+              border: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              filled: false,
+              contentPadding: EdgeInsets.zero,
+            ),
+            onSubmitted: (_) => _submitHero(),
+          ),
+          const SizedBox(height: OpticsSpacing.md),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton(
+              onPressed: _submitHero,
+              style: FilledButton.styleFrom(
+                backgroundColor: OpticsColors.accentCyan,
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(OpticsRadii.sm),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: OpticsSpacing.lg,
+                  vertical: OpticsSpacing.md,
+                ),
+              ),
+              child: const Icon(Icons.arrow_forward, size: 18),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _dividerOr() {
+    return Row(
+      children: [
+        Expanded(child: Container(height: 1, color: OpticsColors.border)),
+        Padding(
+          padding:
+              const EdgeInsets.symmetric(horizontal: OpticsSpacing.md),
+          child: Text('OR', style: OpticsTextStyles.sectionLabel),
+        ),
+        Expanded(child: Container(height: 1, color: OpticsColors.border)),
+      ],
+    );
+  }
+
+  void _submitHero() {
+    final v = _heroCtrl.text.trim();
+    if (v.isEmpty) return;
+    _heroCtrl.clear();
+    ref.read(aiBuilderProvider.notifier).submit(v);
+  }
+
+  void _submitFollowup() {
+    final v = _followupCtrl.text.trim();
+    if (v.isEmpty) return;
+    _followupCtrl.clear();
+    ref.read(aiBuilderProvider.notifier).submit(v);
+  }
+
+  // ── TWO-PANEL ─────────────────────────────────────────────────────────────
+
+  Widget _twoPanel(AiBuilderState st) {
+    return Row(
+      children: [
+        Expanded(flex: 5, child: _chatPanel(st)),
+        Container(width: 1, color: OpticsColors.border),
+        Expanded(flex: 7, child: _previewPanel(st)),
+      ],
+    );
+  }
+
+  Widget _chatPanel(AiBuilderState st) {
+    return Container(
+      color: OpticsColors.canvas,
+      child: Column(
+        children: [
+          _chatHeader(st),
+          Container(height: 1, color: OpticsColors.border),
+          Expanded(child: _chatBody(st)),
+          _chatInput(st),
+        ],
+      ),
+    );
+  }
+
+  Widget _chatHeader(AiBuilderState st) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: OpticsSpacing.lg,
+        vertical: OpticsSpacing.md,
+      ),
+      child: Row(
+        children: [
+          Text('CONVERSATION', style: OpticsTextStyles.sectionLabel),
+          const Spacer(),
+          _iconBtn(
+            icon: Icons.undo,
+            enabled: st.canUndo,
+            tooltip: 'Undo',
+            onTap: () => ref.read(aiBuilderProvider.notifier).undo(),
+          ),
+          const SizedBox(width: OpticsSpacing.xs),
+          _iconBtn(
+            icon: Icons.redo,
+            enabled: st.canRedo,
+            tooltip: 'Redo',
+            onTap: () => ref.read(aiBuilderProvider.notifier).redo(),
+          ),
+          const SizedBox(width: OpticsSpacing.sm),
+          _iconBtn(
+            icon: Icons.refresh,
+            enabled: true,
+            tooltip: 'Start over',
+            onTap: () {
+              ref.read(aiBuilderProvider.notifier).reset();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _iconBtn({
+    required IconData icon,
+    required bool enabled,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(OpticsRadii.xs),
+        child: Container(
+          padding: const EdgeInsets.all(OpticsSpacing.xs),
+          child: Icon(
+            icon,
+            size: 16,
+            color: enabled
+                ? OpticsColors.textSecondary
+                : OpticsColors.textMuted,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _chatBody(AiBuilderState st) {
+    return ListView(
+      controller: _chatScroll,
+      padding: const EdgeInsets.all(OpticsSpacing.lg),
+      children: [
+        for (final m in st.messages) _messageBubble(m),
+        if (st.pendingLibraryMatches.isNotEmpty)
+          _libraryMatchList(st),
+        if (st.isCheckingLibrary)
+          _statusRow('Checking your library…'),
+        if (st.isGenerating) _statusRow('Building your report…'),
+        if (st.errorMessage != null && isBryzosUser(ref))
+          Padding(
+            padding: const EdgeInsets.only(top: OpticsSpacing.sm),
+            child: Text(
+              st.errorMessage!,
+              style: OpticsTextStyles.bodySm
+                  .copyWith(color: OpticsColors.danger),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _messageBubble(ChatMessage m) {
+    final isUser = m.role == ChatRole.user;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: OpticsSpacing.md),
+      child: Column(
+        crossAxisAlignment:
+            isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          Text(
+            isUser ? 'YOU' : 'SYSTEM',
+            style: OpticsTextStyles.sectionLabel.copyWith(
+              color: isUser
+                  ? OpticsColors.accentCyan
+                  : OpticsColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: OpticsSpacing.xs),
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: OpticsSpacing.md,
+              vertical: OpticsSpacing.sm + 2,
+            ),
+            decoration: BoxDecoration(
+              color: isUser
+                  ? OpticsColors.surfaceElevated
+                  : OpticsColors.surface,
+              border: Border.all(color: OpticsColors.border),
+              borderRadius: BorderRadius.circular(OpticsRadii.md),
+            ),
+            child: Text(m.content, style: OpticsTextStyles.body),
+          ),
+          if (!isUser && m.providerUsed != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                _providerBadge(m),
+                style: OpticsTextStyles.bodySm.copyWith(
+                  fontSize: 10,
+                  color: OpticsColors.textMuted,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _providerBadge(ChatMessage m) {
+    final parts = <String>[];
+    if (m.providerUsed != null) {
+      parts.add(m.providerUsed!.toUpperCase());
+    }
+    if (m.modelUsed != null) parts.add(m.modelUsed!);
+    if (m.latencyMs != null) parts.add('${m.latencyMs}ms');
+    return parts.join(' · ');
+  }
+
+  Widget _libraryMatchList(AiBuilderState st) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: OpticsSpacing.md),
+      decoration: BoxDecoration(
+        color: OpticsColors.surface,
+        border: Border.all(color: OpticsColors.border),
+        borderRadius: BorderRadius.circular(OpticsRadii.md),
+      ),
+      padding: const EdgeInsets.all(OpticsSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('POSSIBLE MATCHES', style: OpticsTextStyles.sectionLabel),
+          const SizedBox(height: OpticsSpacing.sm),
+          for (final match in st.pendingLibraryMatches)
+            _libraryMatchRow(match),
+          const SizedBox(height: OpticsSpacing.sm),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () {
+                // Continue building anew — use the most recent user prompt.
+                final lastUser = st.messages
+                    .lastWhere((m) => m.role == ChatRole.user,
+                        orElse: () => ChatMessage(
+                            role: ChatRole.user,
+                            content: '',
+                            at: DateTime.now()))
+                    .content;
+                ref
+                    .read(aiBuilderProvider.notifier)
+                    .proceedFromLibraryPrompt(lastUser);
+              },
+              child: Text(
+                'NONE OF THESE — BUILD NEW',
+                style: OpticsTextStyles.sectionLabel.copyWith(
+                  color: OpticsColors.accentCyan,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _libraryMatchRow(LibraryMatch m) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: OpticsColors.surfaceElevated,
+              border: Border.all(color: OpticsColors.border),
+              borderRadius: BorderRadius.circular(OpticsRadii.xs),
+            ),
+            child: Text(
+              m.kind.toUpperCase(),
+              style: OpticsTextStyles.sectionLabel.copyWith(fontSize: 9),
+            ),
+          ),
+          const SizedBox(width: OpticsSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(m.name, style: OpticsTextStyles.body),
+                if (m.description.isNotEmpty)
+                  Text(
+                    m.description,
+                    style: OpticsTextStyles.bodySm,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: OpticsSpacing.sm),
+          Text(
+            '${(m.similarity * 100).toStringAsFixed(0)}%',
+            style: OpticsTextStyles.bodySm
+                .copyWith(color: OpticsColors.accentCyan),
+          ),
+          const SizedBox(width: OpticsSpacing.sm),
+          TextButton(
+            onPressed: () {
+              if (m.kind == 'report') {
+                context.go('/reports/${Uri.encodeComponent(m.id)}');
+              } else {
+                // Widget → jump to Explore or single-widget viewer.
+                context.go('/explore?widgetId=${Uri.encodeComponent(m.id)}');
+              }
+            },
+            child: Text(
+              'OPEN',
+              style: OpticsTextStyles.sectionLabel.copyWith(
+                color: OpticsColors.accentGreen,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statusRow(String label) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: OpticsSpacing.sm),
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(
+              strokeWidth: 1.5,
+              color: OpticsColors.accentCyan,
+            ),
+          ),
+          const SizedBox(width: OpticsSpacing.sm),
+          Text(label, style: OpticsTextStyles.bodySm),
+        ],
+      ),
+    );
+  }
+
+  Widget _chatInput(AiBuilderState st) {
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: OpticsColors.border)),
+        color: OpticsColors.canvas,
+      ),
+      padding: const EdgeInsets.all(OpticsSpacing.md),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: Shortcuts(
+              shortcuts: <LogicalKeySet, Intent>{
+                LogicalKeySet(LogicalKeyboardKey.meta,
+                    LogicalKeyboardKey.enter): const _SubmitIntent(),
+                LogicalKeySet(LogicalKeyboardKey.control,
+                    LogicalKeyboardKey.enter): const _SubmitIntent(),
+              },
+              child: Actions(
+                actions: <Type, Action<Intent>>{
+                  _SubmitIntent: CallbackAction<_SubmitIntent>(
+                    onInvoke: (_) {
+                      _submitFollowup();
+                      return null;
+                    },
+                  ),
+                },
+                child: TextField(
+                  controller: _followupCtrl,
+                  minLines: 1,
+                  maxLines: 4,
+                  style: OpticsTextStyles.body,
+                  decoration: InputDecoration(
+                    hintText: 'Refine the report…',
+                    hintStyle: OpticsTextStyles.bodyLight.copyWith(
+                      color: OpticsColors.textMuted,
+                    ),
+                    filled: true,
+                    fillColor: OpticsColors.surface,
+                    border: OutlineInputBorder(
+                      borderRadius:
+                          BorderRadius.circular(OpticsRadii.sm),
+                      borderSide: const BorderSide(
+                          color: OpticsColors.border),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: OpticsSpacing.md,
+                      vertical: OpticsSpacing.sm,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: OpticsSpacing.sm),
+          FilledButton(
+            onPressed: st.isGenerating || st.isCheckingLibrary
+                ? null
+                : _submitFollowup,
+            style: FilledButton.styleFrom(
+              backgroundColor: OpticsColors.accentCyan,
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(
+                borderRadius:
+                    BorderRadius.circular(OpticsRadii.sm),
+              ),
+              padding: const EdgeInsets.symmetric(
+                horizontal: OpticsSpacing.md,
+                vertical: OpticsSpacing.sm + 4,
+              ),
+            ),
+            child: const Icon(Icons.arrow_forward, size: 16),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── PREVIEW PANEL ─────────────────────────────────────────────────────────
+
+  Widget _previewPanel(AiBuilderState st) {
+    return Container(
+      color: OpticsColors.canvas,
+      child: Column(
+        children: [
+          _previewHeader(st),
+          Container(height: 1, color: OpticsColors.border),
+          Expanded(child: _previewBody(st)),
+          _previewActions(st),
+        ],
+      ),
+    );
+  }
+
+  Widget _previewHeader(AiBuilderState st) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: OpticsSpacing.lg,
+        vertical: OpticsSpacing.md,
+      ),
+      child: Row(
+        children: [
+          _toggleBtn(
+            label: 'REPORT VIEW',
+            selected: st.previewMode == PreviewMode.report,
+            onTap: () => ref
+                .read(aiBuilderProvider.notifier)
+                .setPreviewMode(PreviewMode.report),
+          ),
+          const SizedBox(width: OpticsSpacing.xs),
+          _toggleBtn(
+            label: 'WIDGET VIEW',
+            selected: st.previewMode == PreviewMode.widget,
+            onTap: () => ref
+                .read(aiBuilderProvider.notifier)
+                .setPreviewMode(PreviewMode.widget),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _toggleBtn({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(OpticsRadii.sm),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: OpticsSpacing.md,
+          vertical: OpticsSpacing.sm,
+        ),
+        decoration: BoxDecoration(
+          color:
+              selected ? OpticsColors.surfaceElevated : Colors.transparent,
+          border: Border.all(
+            color: selected
+                ? OpticsColors.accentCyan
+                : OpticsColors.border,
+          ),
+          borderRadius: BorderRadius.circular(OpticsRadii.sm),
+        ),
+        child: Text(
+          label,
+          style: OpticsTextStyles.sectionLabel.copyWith(
+            color: selected
+                ? OpticsColors.accentCyan
+                : OpticsColors.textSecondary,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _previewBody(AiBuilderState st) {
+    final q = st.currentQuery;
+    if (q == null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(OpticsSpacing.xl),
+          child: Text(
+            st.isGenerating
+                ? 'Building your report…'
+                : 'The preview will appear here.',
+            style: OpticsTextStyles.bodyLight,
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
+    final dsAsync = ref.watch(restDataSourceIdProvider);
+    return dsAsync.when(
+      loading: () => const Center(
+        child: CircularProgressIndicator(color: OpticsColors.accentCyan),
+      ),
+      error: (e, _) => Center(
+        child: SecureErrorText(
+          genericMessage: 'Could not load the data source.',
+          error: e,
+        ),
+      ),
+      data: (dsId) {
+        if (dsId == null) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(OpticsSpacing.xl),
+              child: Text(
+                'No REST data source configured for this tenant.',
+                style: OpticsTextStyles.bodyLight,
+                textAlign: TextAlign.center,
+              ),
+            ),
+          );
+        }
+        // Both preview modes use the same V2 renderer for now; the toggle
+        // affects future save actions and sizing hints. Widget mode wraps
+        // it in a compact card frame; report mode gives it full breathing
+        // room.
+        final query = CustomReportQueryV2.fromJson(q);
+        final content = Padding(
+          padding: const EdgeInsets.all(OpticsSpacing.lg),
+          child: V2ReportView(query: query, dataSourceId: dsId),
+        );
+        if (st.previewMode == PreviewMode.widget) {
+          return Padding(
+            padding: const EdgeInsets.all(OpticsSpacing.lg),
+            child: Container(
+              constraints: const BoxConstraints(
+                maxWidth: 460,
+                maxHeight: 320,
+              ),
+              decoration: BoxDecoration(
+                color: OpticsColors.surface,
+                border: Border.all(color: OpticsColors.border),
+                borderRadius: BorderRadius.circular(OpticsRadii.md),
+              ),
+              child: content,
+            ),
+          );
+        }
+        return content;
+      },
+    );
+  }
+
+  Widget _previewActions(AiBuilderState st) {
+    final enabled = st.currentQuery != null;
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: OpticsColors.border)),
+        color: OpticsColors.canvas,
+      ),
+      padding: const EdgeInsets.all(OpticsSpacing.md),
+      child: Wrap(
+        spacing: OpticsSpacing.sm,
+        runSpacing: OpticsSpacing.sm,
+        children: [
+          _actionBtn(
+            label: 'SAVE REPORT',
+            primary: true,
+            enabled: enabled,
+            onTap: () => _saveAsReport(st),
+          ),
+          _actionBtn(
+            label: 'SAVE WIDGET',
+            primary: false,
+            enabled: enabled,
+            onTap: () => _saveAsWidget(st),
+          ),
+          _actionBtn(
+            label: 'OPEN IN MANUAL BUILDER',
+            primary: false,
+            enabled: enabled,
+            onTap: () => _openInManual(st),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _actionBtn({
+    required String label,
+    required bool primary,
+    required bool enabled,
+    required VoidCallback onTap,
+  }) {
+    if (primary) {
+      return FilledButton(
+        onPressed: enabled ? onTap : null,
+        style: FilledButton.styleFrom(
+          backgroundColor: OpticsColors.accentCyan,
+          foregroundColor: Colors.black,
+          disabledBackgroundColor:
+              OpticsColors.surfaceElevated,
+          disabledForegroundColor: OpticsColors.textMuted,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(OpticsRadii.sm),
+          ),
+          padding: const EdgeInsets.symmetric(
+            horizontal: OpticsSpacing.lg,
+            vertical: OpticsSpacing.sm + 4,
+          ),
+        ),
+        child: Text(label,
+            style: OpticsTextStyles.sectionLabel
+                .copyWith(color: Colors.black)),
+      );
+    }
+    return OutlinedButton(
+      onPressed: enabled ? onTap : null,
+      style: OutlinedButton.styleFrom(
+        side: const BorderSide(color: OpticsColors.border),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(OpticsRadii.sm),
+        ),
+        padding: const EdgeInsets.symmetric(
+          horizontal: OpticsSpacing.lg,
+          vertical: OpticsSpacing.sm + 4,
+        ),
+      ),
+      child: Text(label, style: OpticsTextStyles.sectionLabel),
+    );
+  }
+
+  // ── SAVE ACTIONS ──────────────────────────────────────────────────────────
+
+  Future<String?> _promptForName(String kind) async {
+    final ctrl = TextEditingController(
+      text: kind == 'report' ? 'New AI Report' : 'New AI Widget',
+    );
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OpticsColors.surface,
+        title: Text('SAVE ${kind.toUpperCase()}',
+            style: OpticsTextStyles.headingMd),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: OpticsTextStyles.body,
+          decoration: const InputDecoration(hintText: 'Name'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('CANCEL'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            style: FilledButton.styleFrom(
+              backgroundColor: OpticsColors.accentCyan,
+              foregroundColor: Colors.black,
+            ),
+            child: const Text('SAVE'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _saveAsReport(AiBuilderState st) async {
+    final q = st.currentQuery;
+    if (q == null) return;
+    final name = await _promptForName('report');
+    if (name == null || name.isEmpty) return;
+    try {
+      final layout = {
+        'pages': [
+          {'title': name, 'widgets': const <Map<String, dynamic>>[]}
+        ],
+        'builder': {
+          'view': 'wizard',
+          'query_v2': q,
+        },
+      };
+      final repo = ref.read(repoProvider);
+      final row = await repo.createReportRow(
+        name: name,
+        layout: layout,
+        description: _lastUserPrompt(st),
+      );
+      final id = row['id'] as String?;
+      if (id != null) {
+        // Fire-and-forget indexing.
+        final tenantId = repo.client.auth.currentUser
+            ?.appMetadata['active_tenant_id'] as String?;
+        if (tenantId != null) {
+          ref
+              .read(aiApiProvider)
+              .indexItem(kind: 'report', id: id, tenantId: tenantId);
+        }
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Saved report "$name".')),
+      );
+      if (id != null) {
+        context.go('/reports/${Uri.encodeComponent(id)}');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      showSecureErrorSnackBar(context, ref, 'Could not save the report.', e);
+    }
+  }
+
+  Future<void> _saveAsWidget(AiBuilderState st) async {
+    final q = st.currentQuery;
+    if (q == null) return;
+    // v1.0 keeps this simple: hand off to the manual builder's Save-Widget
+    // path by opening the manual builder pre-populated. Full inline
+    // widget-dashboard-picker will come in a follow-up.
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Save-as-widget flow will open in the manual builder for '
+          'dashboard/placement selection.',
+        ),
+      ),
+    );
+    _openInManual(st);
+  }
+
+  Future<void> _openInManual(AiBuilderState st) async {
+    final q = st.currentQuery;
+    if (q == null) return;
+    // Stash the JSON on the notifier so the manual builder can pick it up
+    // via a Riverpod handoff provider.
+    aiHandoffQuery = q;
+    if (!mounted) return;
+    context.go('/reports/new/manual');
+  }
+
+  String _lastUserPrompt(AiBuilderState st) {
+    for (final m in st.messages.reversed) {
+      if (m.role == ChatRole.user) return m.content;
+    }
+    return '';
+  }
+}
+
+class _SubmitIntent extends Intent {
+  const _SubmitIntent();
+}
+
+/// One-shot handoff so the manual builder can pick up an AI-generated
+/// query when the user chooses "Open in Manual Builder". Consumed on
+/// the manual builder's first hydrate, then cleared.
+Map<String, dynamic>? aiHandoffQuery;

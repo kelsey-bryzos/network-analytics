@@ -13,6 +13,7 @@ import 'features/dashboards/dashboards_list_screen.dart';
 import 'features/reports/reports_list_screen.dart';
 import 'features/reports/report_viewer_screen.dart';
 import 'features/reports/custom_builder/custom_report_builder_screen.dart';
+import 'features/reports/ai_builder/ai_report_builder_screen.dart';
 import 'features/library/library_screen.dart';
 import 'features/explore/explore_screen.dart';
 import 'features/settings/settings_screen.dart';
@@ -91,7 +92,14 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: 'new',
                 pageBuilder: (_, __) =>
-                    const NoTransitionPage(child: CustomReportBuilderScreen()),
+                    const NoTransitionPage(child: AiReportBuilderScreen()),
+                routes: [
+                  GoRoute(
+                    path: 'manual',
+                    pageBuilder: (_, __) => const NoTransitionPage(
+                        child: CustomReportBuilderScreen()),
+                  ),
+                ],
               ),
               GoRoute(
                 path: ':reportId',

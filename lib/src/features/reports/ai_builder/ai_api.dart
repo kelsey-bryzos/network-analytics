@@ -13,6 +13,30 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/supabase_repo.dart';
 
+/// Recursively re-type a JSON tree so every nested Map is truly
+/// `Map<String, dynamic>` and every List is `List<dynamic>`. The
+/// Supabase Edge Functions client returns nested objects as
+/// `Map<dynamic, dynamic>`, which silently breaks the strict
+/// `whereType<Map<String, dynamic>>()` casts inside
+/// CustomReportQueryV2.fromJson — meaning joins/columns/filters/etc.
+/// all end up empty and the preview panel renders nothing.
+Object? _deepNormalize(Object? v) {
+  if (v is Map) {
+    return <String, dynamic>{
+      for (final e in v.entries) e.key.toString(): _deepNormalize(e.value),
+    };
+  }
+  if (v is List) {
+    return v.map(_deepNormalize).toList();
+  }
+  return v;
+}
+
+Map<String, dynamic>? _asMap(Object? v) {
+  final n = _deepNormalize(v);
+  return n is Map<String, dynamic> ? n : null;
+}
+
 class LibraryMatch {
   final String kind; // 'widget' | 'report'
   final String id;
@@ -98,11 +122,13 @@ class AiApi {
         'threshold': threshold,
       },
     );
-    final data = (res.data as Map?)?.cast<String, dynamic>() ?? const {};
+    final data = _asMap(res.data) ?? const <String, dynamic>{};
     final rawMatches = (data['matches'] as List?) ?? const [];
     final matches = rawMatches
         .whereType<Map>()
-        .map((m) => LibraryMatch.fromJson(m.cast<String, dynamic>()))
+        .map((m) => LibraryMatch.fromJson(
+              (_asMap(m) ?? <String, dynamic>{}),
+            ))
         .toList();
     return LibraryCheckResult(
       matches: matches,
@@ -131,13 +157,13 @@ class AiApi {
         'target_view': targetView,
       },
     );
-    final data = (res.data as Map?)?.cast<String, dynamic>() ?? const {};
+    final data = _asMap(res.data) ?? const <String, dynamic>{};
     final ok = data['ok'] == true;
     final needsClar = data['needs_clarification'] == true;
-    final tokens = (data['tokens'] as Map?)?.cast<String, dynamic>();
+    final tokens = _asMap(data['tokens']);
     return GenerateResult(
       ok: ok,
-      query: (data['query'] as Map?)?.cast<String, dynamic>(),
+      query: _asMap(data['query']),
       needsClarification: needsClar,
       questions: ((data['questions'] as List?) ?? const [])
           .map((q) => q.toString())
@@ -158,7 +184,7 @@ class AiApi {
           : (data['message'] as String?),
       attempts: ((data['attempts'] as List?) ?? const [])
           .whereType<Map>()
-          .map((m) => m.cast<String, dynamic>())
+          .map((m) => _asMap(m) ?? <String, dynamic>{})
           .toList(),
     );
   }

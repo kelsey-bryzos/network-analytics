@@ -182,7 +182,25 @@ SqlNormalizerResult normalizeMySqlToPostgres(String input) {
     },
   );
 
-  // Step 7: DATE_FORMAT(x, '%Y-%m-%d') → to_char(x, 'YYYY-MM-DD')
+  // Step 7a: DATE_SUB(x, INTERVAL n UNIT) → (x - INTERVAL 'n units')
+  //          DATE_ADD(x, INTERVAL n UNIT) → (x + INTERVAL 'n units')
+  sql = sql.replaceAllMapped(
+    RegExp(r'\bDATE_(SUB|ADD)\s*\(\s*(.+?)\s*,\s*INTERVAL\s+(\d+)\s+([A-Za-z]+)\s*\)',
+        caseSensitive: false),
+    (m) {
+      final op = m.group(1)!.toUpperCase() == 'SUB' ? '-' : '+';
+      final expr = m.group(2)!;
+      final amount = m.group(3)!;
+      final unit = m.group(4)!.toLowerCase();
+      // Normalize unit to Postgres interval keyword (plural form)
+      final pgUnit = _normalizePgIntervalUnit(unit);
+      applied.add(
+          'Rewrote DATE_${m.group(1)!.toUpperCase()}($expr, INTERVAL $amount $unit) → ($expr $op INTERVAL \'$amount $pgUnit\')');
+      return "($expr $op INTERVAL '$amount $pgUnit')";
+    },
+  );
+
+  // Step 7b: DATE_FORMAT(x, '%Y-%m-%d') → to_char(x, 'YYYY-MM-DD')
   // We convert a small set of the most common format tokens; unknown tokens
   // are passed through with a warning so the user knows to check.
   sql = sql.replaceAllMapped(
@@ -370,6 +388,31 @@ List<String> _splitTopLevelArgs(String s) {
   }
   if (buf.isNotEmpty) out.add(buf.toString().trim());
   return out;
+}
+
+/// Normalize a MySQL INTERVAL unit keyword to the Postgres plural form.
+/// e.g. DAY → days, MONTH → months, YEAR → years, HOUR → hours, etc.
+String _normalizePgIntervalUnit(String unit) {
+  const map = <String, String>{
+    'microsecond': 'microseconds',
+    'microseconds': 'microseconds',
+    'second': 'seconds',
+    'seconds': 'seconds',
+    'minute': 'minutes',
+    'minutes': 'minutes',
+    'hour': 'hours',
+    'hours': 'hours',
+    'day': 'days',
+    'days': 'days',
+    'week': 'weeks',
+    'weeks': 'weeks',
+    'month': 'months',
+    'months': 'months',
+    'quarter': 'months', // no direct quarter in Postgres interval, approximate
+    'year': 'years',
+    'years': 'years',
+  };
+  return map[unit.toLowerCase()] ?? unit.toLowerCase();
 }
 
 class _DateFormatConversion {

@@ -1,6 +1,5 @@
 name: Deploy Staging to Cloudflare Pages
 
-# Triggers: every push to `staging` branch OR a manual run from GitHub Actions UI.
 on:
   push:
     branches:
@@ -21,17 +20,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── 2. Flutter SDK ───────────────────────────────────────────────────
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.44.0'
-          channel: 'stable'
-          cache: false
+      # ── 2. Flutter SDK (direct install — no subosito/flutter-action) ─────
+      - name: Install Flutter 3.44.0
+        run: |
+          git clone https://github.com/flutter/flutter.git --depth 1 --branch 3.44.0 $HOME/flutter
+          echo "$HOME/flutter/bin" >> $GITHUB_PATH
 
-      # ── 3. Install dependencies ──────────────────────────────────────────
-      - name: Install Flutter dependencies
-        run: flutter pub get
+      # ── 3. Flutter precache + dependencies ───────────────────────────────
+      - name: Flutter precache & pub get
+        run: |
+          flutter precache --web
+          flutter pub get
 
       # ── 4. Build Flutter Web (Staging) ───────────────────────────────────
       - name: Build Flutter web (staging release)

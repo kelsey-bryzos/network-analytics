@@ -109,8 +109,21 @@ SqlNormalizerResult normalizeMySqlToPostgres(String input) {
   final applied = <String>[];
   final issues = <SqlNormalizerIssue>[];
 
-  // Step 0: mask strings + comments so we don't rewrite inside them.
-  final _MaskedSql masked = _maskLiteralsAndComments(input);
+  // Step 0a: Convert MySQL single-quoted column aliases to double-quoted
+  // Postgres identifiers BEFORE masking, so masking doesn't hide them.
+  // Pattern: AS 'some alias'  →  AS "some alias"
+  // We only match the alias context (after AS keyword) to avoid touching
+  // real string literals in WHERE clauses etc.
+  String preprocessed = input.replaceAllMapped(
+    RegExp(r"\bAS\s+'([^']+)'", caseSensitive: false),
+    (m) {
+      applied.add("Rewrote single-quoted alias AS '${m.group(1)}' → AS \"${m.group(1)}\"");
+      return 'AS "${m.group(1)}"';
+    },
+  );
+
+  // Step 0b: mask strings + comments so we don't rewrite inside them.
+  final _MaskedSql masked = _maskLiteralsAndComments(preprocessed);
   String sql = masked.masked;
 
   // Step 1: backticks → double quotes for identifiers.
@@ -266,29 +279,9 @@ SqlNormalizerResult normalizeMySqlToPostgres(String input) {
     },
   );
 
-  // Step 10: Double-quoted string literals — MySQL allows "foo" as a string,
-  // but in Postgres "foo" is an identifier. If any double-quoted literal was
-  // captured during masking as a *string* (not an identifier), we've already
-  // safely masked it and will unmask below. But if a raw `"...` remains in
-  // the visible sql now that clearly looks like a string (has spaces, is on
-  // the RHS of `=`, etc.) we warn — safer than a wrong auto-rewrite.
-  //
-  // In practice: the mask step captured only single-quoted literals, so any
-  // double-quoted content is treated as an identifier and left alone. We
-  // surface a warning if the SQL contains double-quoted content that looks
-  // suspicious (contains a space, common in string values).
-  final suspiciousDq = RegExp(r'"[^"]* [^"]*"').firstMatch(sql);
-  if (suspiciousDq != null) {
-    issues.add(SqlNormalizerIssue(
-      severity: SqlIssueSeverity.warning,
-      code: 'double_quoted_string_literal',
-      message:
-          'Found "${suspiciousDq.group(0)}" — in Postgres double quotes mean an identifier, not a string. If this was meant to be a string, use single quotes.',
-      suggestedFix: suspiciousDq
-          .group(0)!
-          .replaceAll('"', "'"),
-    ));
-  }
+  // Step 10: Double-quoted content with spaces is now intentional — it means
+  // a multi-word column alias that we auto-converted from single quotes in
+  // Step 0a (e.g. AS "Buyer Email"). No warning needed; this is valid Postgres.
 
   // Restore masked strings + comments.
   final restored = _unmask(sql, masked);

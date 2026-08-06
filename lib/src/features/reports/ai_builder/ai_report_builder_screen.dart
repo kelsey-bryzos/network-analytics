@@ -44,6 +44,13 @@ class _AiReportBuilderScreenState
   final _followupCtrl = TextEditingController();
   final _chatScroll = ScrollController();
 
+  // ── Name field controllers ─────────────────────────────────────────────────
+  // AI preview panel name — kept in sync with AiBuilderState.reportName.
+  final _nameCtrl = TextEditingController(text: 'Untitled');
+  bool _nameSyncPending = false;
+  // SQL panel name — standalone, not backed by state notifier.
+  final _sqlNameCtrl = TextEditingController(text: 'Untitled');
+
   // ── SQL builder state ─────────────────────────────────────────────────────
   _HeroMode _heroMode = _HeroMode.ai;
   final _sqlCtrl = TextEditingController();
@@ -55,11 +62,21 @@ class _AiReportBuilderScreenState
   List<String> _sqlRewrites = const [];
 
   @override
+  void initState() {
+    super.initState();
+    // Rebuild when the SQL name field changes so the action bar enable state
+    // updates in real time.
+    _sqlNameCtrl.addListener(() => setState(() {}));
+  }
+
+  @override
   void dispose() {
     _heroCtrl.dispose();
     _followupCtrl.dispose();
     _chatScroll.dispose();
     _sqlCtrl.dispose();
+    _nameCtrl.dispose();
+    _sqlNameCtrl.dispose();
     super.dispose();
   }
 
@@ -82,8 +99,17 @@ class _AiReportBuilderScreenState
     }
 
     final st = ref.watch(aiBuilderProvider);
-    ref.listen<AiBuilderState>(aiBuilderProvider, (_, __) {
+    ref.listen<AiBuilderState>(aiBuilderProvider, (prev, next) {
       _scrollChatToBottom();
+      // Sync the name controller when the state's reportName changes externally
+      // (e.g. auto-generated from the AI). Skip if the user is actively typing.
+      if (prev?.reportName != next.reportName && !_nameSyncPending) {
+        if (_nameCtrl.text != next.reportName) {
+          _nameCtrl.text = next.reportName;
+          _nameCtrl.selection = TextSelection.collapsed(
+              offset: _nameCtrl.text.length);
+        }
+      }
     });
 
     return Container(
@@ -362,6 +388,7 @@ class _AiReportBuilderScreenState
                   _sqlPreviewQuery = null;
                   _sqlIssues = const [];
                   _sqlRewrites = const [];
+                  _sqlNameCtrl.text = 'Untitled';
                 }),
                 borderRadius: BorderRadius.circular(OpticsRadii.xs),
                 child: Padding(
@@ -587,30 +614,50 @@ class _AiReportBuilderScreenState
     final hasQuery = _sqlPreviewQuery != null;
     final hasErrors =
         _sqlIssues.any((i) => i.severity == SqlIssueSeverity.error);
-    final canSave = hasQuery && !hasErrors;
+    final sqlName = _sqlNameCtrl.text.trim();
+    final nameOk = sqlName.isNotEmpty && sqlName != 'Untitled';
+    final canSave = hasQuery && !hasErrors && nameOk;
+    final showNameHint = hasQuery && !hasErrors && !nameOk;
     return Container(
       decoration: const BoxDecoration(
         border: Border(top: BorderSide(color: OpticsColors.border)),
         color: OpticsColors.canvas,
       ),
       padding: const EdgeInsets.all(OpticsSpacing.md),
-      child: Wrap(
-        spacing: OpticsSpacing.sm,
-        runSpacing: OpticsSpacing.sm,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          _actionBtn(
-            label: 'Save Report',
-            icon: Icons.save_outlined,
-            primary: true,
-            enabled: canSave,
-            onTap: () => _saveSqlAsReport(),
-          ),
-          _actionBtn(
-            label: 'Open in Manual Builder',
-            icon: Icons.edit_outlined,
-            primary: false,
-            enabled: canSave,
-            onTap: () => _openSqlInManual(),
+          if (showNameHint)
+            Padding(
+              padding: const EdgeInsets.only(bottom: OpticsSpacing.sm),
+              child: Text(
+                'Give this report a name before saving.',
+                style: OpticsTextStyles.bodySm.copyWith(
+                  color: OpticsColors.accentOrange,
+                  fontSize: 11,
+                ),
+              ),
+            ),
+          Wrap(
+            spacing: OpticsSpacing.sm,
+            runSpacing: OpticsSpacing.sm,
+            children: [
+              _actionBtn(
+                label: 'Save Report',
+                icon: Icons.save_outlined,
+                primary: true,
+                enabled: canSave,
+                onTap: () => _saveSqlAsReport(),
+              ),
+              _actionBtn(
+                label: 'Open in Manual Builder',
+                icon: Icons.edit_outlined,
+                primary: false,
+                enabled: hasQuery && !hasErrors,
+                onTap: () => _openSqlInManual(),
+              ),
+            ],
           ),
         ],
       ),
@@ -620,21 +667,62 @@ class _AiReportBuilderScreenState
   Widget _sqlPreviewPane() {
     return Column(
       children: [
-        // Pane header
+        // Pane header — label + inline name field
         Container(
           height: _panelHeaderHeight,
           padding: const EdgeInsets.symmetric(horizontal: OpticsSpacing.lg),
           decoration: const BoxDecoration(
             border: Border(bottom: BorderSide(color: OpticsColors.border)),
           ),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text('PREVIEW', style: OpticsTextStyles.sectionLabel),
+          child: Row(
+            children: [
+              Text('PREVIEW', style: OpticsTextStyles.sectionLabel),
+              const SizedBox(width: OpticsSpacing.md),
+              Expanded(child: _sqlNameField()),
+            ],
           ),
         ),
         // Preview body
         Expanded(child: _sqlPreviewBody()),
       ],
+    );
+  }
+
+  Widget _sqlNameField() {
+    return TextField(
+      controller: _sqlNameCtrl,
+      style: OpticsTextStyles.body.copyWith(fontSize: 13),
+      textAlignVertical: TextAlignVertical.center,
+      onTap: () {
+        if (_sqlNameCtrl.text == 'Untitled') {
+          _sqlNameCtrl.selection = TextSelection(
+              baseOffset: 0, extentOffset: _sqlNameCtrl.text.length);
+        }
+      },
+      onEditingComplete: () => FocusScope.of(context).unfocus(),
+      decoration: InputDecoration(
+        hintText: 'Report name…',
+        hintStyle: OpticsTextStyles.bodyLight.copyWith(
+          color: OpticsColors.textMuted,
+          fontSize: 13,
+        ),
+        filled: true,
+        fillColor: OpticsColors.surface,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(OpticsRadii.sm),
+          borderSide: const BorderSide(color: OpticsColors.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(OpticsRadii.sm),
+          borderSide: const BorderSide(color: OpticsColors.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(OpticsRadii.sm),
+          borderSide:
+              const BorderSide(color: OpticsColors.accentCyan, width: 1.2),
+        ),
+      ),
     );
   }
 
@@ -713,8 +801,8 @@ class _AiReportBuilderScreenState
   Future<void> _saveSqlAsReport() async {
     final q = _sqlPreviewQuery;
     if (q == null) return;
-    final name = await _promptForName('report');
-    if (name == null || name.isEmpty) return;
+    final name = _sqlNameCtrl.text.trim();
+    if (name.isEmpty || name == 'Untitled') return;
     try {
       final layout = {
         'pages': [
@@ -1320,37 +1408,58 @@ class _AiReportBuilderScreenState
   }
 
   Widget _previewActions(AiBuilderState st) {
-    final enabled = st.currentQuery != null;
+    final hasQuery = st.currentQuery != null;
+    final name = st.reportName.trim();
+    final nameOk = name.isNotEmpty && name != 'Untitled';
+    final enabled = hasQuery && nameOk;
+    final showNameHint = hasQuery && !nameOk;
     return Container(
       decoration: const BoxDecoration(
         border: Border(top: BorderSide(color: OpticsColors.border)),
         color: OpticsColors.canvas,
       ),
       padding: const EdgeInsets.all(OpticsSpacing.md),
-      child: Wrap(
-        spacing: OpticsSpacing.sm,
-        runSpacing: OpticsSpacing.sm,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          _actionBtn(
-            label: 'Save Report',
-            icon: Icons.save_outlined,
-            primary: true,
-            enabled: enabled,
-            onTap: () => _saveAsReport(st),
-          ),
-          _actionBtn(
-            label: 'Save Widget',
-            icon: Icons.dashboard_customize_outlined,
-            primary: false,
-            enabled: enabled,
-            onTap: () => _saveAsWidget(st),
-          ),
-          _actionBtn(
-            label: 'Open in Manual Builder',
-            icon: Icons.edit_outlined,
-            primary: false,
-            enabled: enabled,
-            onTap: () => _openInManual(st),
+          if (showNameHint)
+            Padding(
+              padding: const EdgeInsets.only(bottom: OpticsSpacing.sm),
+              child: Text(
+                'Give this report a name before saving.',
+                style: OpticsTextStyles.bodySm.copyWith(
+                  color: OpticsColors.accentOrange,
+                  fontSize: 11,
+                ),
+              ),
+            ),
+          Wrap(
+            spacing: OpticsSpacing.sm,
+            runSpacing: OpticsSpacing.sm,
+            children: [
+              _actionBtn(
+                label: 'Save Report',
+                icon: Icons.save_outlined,
+                primary: true,
+                enabled: enabled,
+                onTap: () => _saveAsReport(st),
+              ),
+              _actionBtn(
+                label: 'Save Widget',
+                icon: Icons.dashboard_customize_outlined,
+                primary: false,
+                enabled: enabled,
+                onTap: () => _saveAsWidget(st),
+              ),
+              _actionBtn(
+                label: 'Open in Manual Builder',
+                icon: Icons.edit_outlined,
+                primary: false,
+                enabled: hasQuery, // manual builder has its own name flow
+                onTap: () => _openInManual(st),
+              ),
+            ],
           ),
         ],
       ),
@@ -1449,8 +1558,8 @@ class _AiReportBuilderScreenState
   Future<void> _saveAsReport(AiBuilderState st) async {
     final q = st.currentQuery;
     if (q == null) return;
-    final name = await _promptForName('report');
-    if (name == null || name.isEmpty) return;
+    final name = st.reportName.trim();
+    if (name.isEmpty || name == 'Untitled') return;
     try {
       final layout = {
         'pages': [

@@ -94,6 +94,11 @@ class AiBuilderState {
   final String? errorMessage;
   final bool bootstrapped; // has the user submitted anything yet
 
+  /// The user-editable name for this report/widget. Auto-populated from
+  /// primary_table on first AI generation (no chart type). Must be non-empty
+  /// and not "Untitled" before saving is allowed.
+  final String reportName;
+
   const AiBuilderState({
     required this.sessionId,
     this.turnIndex = 0,
@@ -106,6 +111,7 @@ class AiBuilderState {
     this.pendingLibraryMatches = const [],
     this.errorMessage,
     this.bootstrapped = false,
+    this.reportName = 'Untitled',
   });
 
   Map<String, dynamic>? get currentQuery =>
@@ -128,6 +134,7 @@ class AiBuilderState {
     List<LibraryMatch>? pendingLibraryMatches,
     Object? errorMessage = _sentinel,
     bool? bootstrapped,
+    String? reportName,
   }) {
     return AiBuilderState(
       sessionId: sessionId ?? this.sessionId,
@@ -144,6 +151,7 @@ class AiBuilderState {
           ? this.errorMessage
           : errorMessage as String?,
       bootstrapped: bootstrapped ?? this.bootstrapped,
+      reportName: reportName ?? this.reportName,
     );
   }
 
@@ -181,6 +189,11 @@ class AiBuilderNotifier extends StateNotifier<AiBuilderState> {
 
   // ── Public actions ─────────────────────────────────────────────────────────
 
+  void setReportName(String name) {
+    state = state.copyWith(reportName: name);
+    _persist();
+  }
+
   void setPreviewMode(PreviewMode mode) {
     if (state.previewMode == mode) return;
     state = state.copyWith(previewMode: mode);
@@ -188,7 +201,7 @@ class AiBuilderNotifier extends StateNotifier<AiBuilderState> {
   }
 
   void reset() {
-    state = AiBuilderState(sessionId: _uuid());
+    state = AiBuilderState(sessionId: _uuid(), reportName: 'Untitled');
   }
 
   void undo() {
@@ -243,7 +256,7 @@ class AiBuilderNotifier extends StateNotifier<AiBuilderState> {
           prompt: prompt,
           tenantId: tenantId,
           limit: 5,
-          threshold: 0.55,
+          threshold: 0.40,
         );
         if (res.matches.isNotEmpty) {
           final assistantMsg = ChatMessage(
@@ -351,6 +364,11 @@ class AiBuilderNotifier extends StateNotifier<AiBuilderState> {
           outputTokens: result.outputTokens,
           costUsd: result.costUsd,
         );
+        // Auto-name from primary_table on first generation only.
+        // Never includes chart type per design rule.
+        final autoName = state.reportName == 'Untitled'
+            ? _autoNameFromQuery(result.query!)
+            : state.reportName;
         state = state.copyWith(
           isGenerating: false,
           sessionId: result.sessionId,
@@ -358,6 +376,7 @@ class AiBuilderNotifier extends StateNotifier<AiBuilderState> {
           messages: [...state.messages, msg],
           queryStack: trimmed,
           stackIndex: newIndex,
+          reportName: autoName,
         );
         _persist();
         return;
@@ -394,6 +413,20 @@ class AiBuilderNotifier extends StateNotifier<AiBuilderState> {
         errorMessage: e.toString(),
       );
     }
+  }
+
+  /// Auto-generates a human-readable name from the query's primary_table.
+  /// Uses only the table name — never the chart type per design rules.
+  /// e.g. "rds_user_purchase_order" → "User Purchase Order"
+  String _autoNameFromQuery(Map<String, dynamic> q) {
+    final raw = (q['primary_table'] ?? '').toString();
+    if (raw.isEmpty) return 'Untitled';
+    // Strip common rds_ prefix, then title-case each word.
+    final stripped = raw.startsWith('rds_') ? raw.substring(4) : raw;
+    return stripped
+        .split('_')
+        .map((w) => w.isEmpty ? '' : '${w[0].toUpperCase()}${w.substring(1)}')
+        .join(' ');
   }
 
   String _summariseQuery(Map<String, dynamic> q) {

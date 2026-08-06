@@ -154,9 +154,9 @@ class _AiReportBuilderScreenState
                       const SizedBox(height: 56),
                       _dividerOr(),
                       const SizedBox(height: 56),
-                      Center(child: _manualBuildButton()),
+                      SizedBox(width: 310, child: _manualBuildButton()),
                       const SizedBox(height: OpticsSpacing.sm),
-                      Center(child: _sqlBuildButton()),
+                      SizedBox(width: 310, child: _sqlBuildButton()),
                       const SizedBox(height: OpticsSpacing.xl),
                     ],
                   ),
@@ -181,6 +181,7 @@ class _AiReportBuilderScreenState
         onTap: () => context.go('/reports/new/manual'),
         borderRadius: BorderRadius.circular(OpticsRadii.md),
         child: Container(
+          width: double.infinity,
           padding: const EdgeInsets.symmetric(
             horizontal: 28,
             vertical: 16,
@@ -192,6 +193,7 @@ class _AiReportBuilderScreenState
           ),
           child: Text(
             'Build from Manual Data Selection',
+            textAlign: TextAlign.center,
             style: OpticsTextStyles.body.copyWith(
               fontSize: 15,
               fontWeight: FontWeight.w500,
@@ -210,6 +212,7 @@ class _AiReportBuilderScreenState
         onTap: () => setState(() => _heroMode = _HeroMode.sql),
         borderRadius: BorderRadius.circular(OpticsRadii.md),
         child: Container(
+          width: double.infinity,
           padding: const EdgeInsets.symmetric(
             horizontal: 28,
             vertical: 16,
@@ -221,6 +224,7 @@ class _AiReportBuilderScreenState
           ),
           child: Text(
             'Build from SQL Statement',
+            textAlign: TextAlign.center,
             style: OpticsTextStyles.body.copyWith(
               fontSize: 15,
               fontWeight: FontWeight.w500,

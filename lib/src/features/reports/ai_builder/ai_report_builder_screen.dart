@@ -856,6 +856,7 @@ class _AiReportBuilderScreenState
     if (q == null) return;
     final name = _sqlNameCtrl.text.trim();
     if (name.isEmpty || name == 'Untitled') return;
+    if (!await _confirmIfDuplicate(name)) return;
     try {
       final layout = {
         'pages': [
@@ -1575,6 +1576,40 @@ class _AiReportBuilderScreenState
 
   // ── SAVE ACTIONS ──────────────────────────────────────────────────────────
 
+  /// Returns true if the user confirmed they want to overwrite/duplicate,
+  /// or if no duplicate exists. Returns false if the user cancelled.
+  Future<bool> _confirmIfDuplicate(String name) async {
+    final exists = await ref.read(repoProvider).reportExistsByName(name);
+    if (!exists) return true;
+    if (!mounted) return false;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: OpticsColors.surface,
+        title: Text('DUPLICATE REPORT', style: OpticsTextStyles.headingMd),
+        content: Text(
+          'A report named "$name" already exists. Save anyway as a copy?',
+          style: OpticsTextStyles.body,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('CANCEL'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: OpticsColors.accentCyan,
+              foregroundColor: Colors.black,
+            ),
+            child: const Text('SAVE COPY'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
   Future<String?> _promptForName(String kind) async {
     final ctrl = TextEditingController(
       text: kind == 'report' ? 'New AI Report' : 'New AI Widget',
@@ -1614,6 +1649,7 @@ class _AiReportBuilderScreenState
     if (q == null) return;
     final name = st.reportName.trim();
     if (name.isEmpty || name == 'Untitled') return;
+    if (!await _confirmIfDuplicate(name)) return;
     try {
       final layout = {
         'pages': [

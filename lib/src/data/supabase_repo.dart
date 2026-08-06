@@ -1115,6 +1115,18 @@ class SupabaseRepo {
     return row['id'] as String?;
   }
 
+  /// Returns true if a live report with [name] already exists in the current
+  /// tenant. Used by the AI/SQL builders to warn before creating a duplicate.
+  Future<bool> reportExistsByName(String name) async {
+    final rows = await client
+        .from('reports')
+        .select('id')
+        .eq('name', name)
+        .eq('status', 'live')
+        .limit(1);
+    return (rows as List).isNotEmpty;
+  }
+
   /// Create a custom report and return the full row map (used by the Builder
   /// which needs the inserted row to materialize a [Report] locally).
   Future<Map<String, dynamic>> createReportRow({

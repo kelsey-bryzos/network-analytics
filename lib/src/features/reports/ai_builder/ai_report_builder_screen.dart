@@ -60,6 +60,8 @@ class _AiReportBuilderScreenState
   List<SqlNormalizerIssue> _sqlIssues = const [];
   // Rewrites applied automatically.
   List<String> _sqlRewrites = const [];
+  // Preview mode for the SQL panel — mirrors AI panel behaviour.
+  PreviewMode _sqlPreviewMode = PreviewMode.report;
 
   @override
   void initState() {
@@ -674,7 +676,7 @@ class _AiReportBuilderScreenState
   Widget _sqlPreviewPane() {
     return Column(
       children: [
-        // Pane header — label + inline name field
+        // Pane header — view toggle + inline name field
         Container(
           height: _panelHeaderHeight,
           padding: const EdgeInsets.symmetric(horizontal: OpticsSpacing.lg),
@@ -683,7 +685,33 @@ class _AiReportBuilderScreenState
           ),
           child: Row(
             children: [
-              Text('PREVIEW', style: OpticsTextStyles.sectionLabel),
+              // Report / Widget toggle — identical to AI panel
+              Container(
+                decoration: BoxDecoration(
+                  color: OpticsColors.surfaceElevated,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: OpticsColors.border),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _toggleBtn(
+                      icon: Icons.description_outlined,
+                      label: 'Report View',
+                      active: _sqlPreviewMode == PreviewMode.report,
+                      onTap: () =>
+                          setState(() => _sqlPreviewMode = PreviewMode.report),
+                    ),
+                    _toggleBtn(
+                      icon: Icons.bar_chart,
+                      label: 'Widget View',
+                      active: _sqlPreviewMode == PreviewMode.widget,
+                      onTap: () =>
+                          setState(() => _sqlPreviewMode = PreviewMode.widget),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(width: OpticsSpacing.md),
               Expanded(child: _sqlNameField()),
             ],
@@ -797,10 +825,28 @@ class _AiReportBuilderScreenState
             ),
           );
         }
-        return Padding(
+        final content = Padding(
           padding: const EdgeInsets.all(OpticsSpacing.lg),
           child: V2ReportView(query: q, dataSourceId: dsId),
         );
+        if (_sqlPreviewMode == PreviewMode.widget) {
+          return Padding(
+            padding: const EdgeInsets.all(OpticsSpacing.lg),
+            child: Container(
+              constraints: const BoxConstraints(
+                maxWidth: 460,
+                maxHeight: 320,
+              ),
+              decoration: BoxDecoration(
+                color: OpticsColors.surface,
+                border: Border.all(color: OpticsColors.border),
+                borderRadius: BorderRadius.circular(OpticsRadii.md),
+              ),
+              child: content,
+            ),
+          );
+        }
+        return content;
       },
     );
   }

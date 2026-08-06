@@ -825,6 +825,7 @@ class _AiReportBuilderScreenState
         name: name,
         layout: layout,
         description: 'SQL report',
+        status: 'live',
       );
       final id = row['id'] as String?;
       if (!mounted) return;
@@ -1582,6 +1583,7 @@ class _AiReportBuilderScreenState
         name: name,
         layout: layout,
         description: _lastUserPrompt(st),
+        status: 'live',
       );
       final id = row['id'] as String?;
       if (id != null) {

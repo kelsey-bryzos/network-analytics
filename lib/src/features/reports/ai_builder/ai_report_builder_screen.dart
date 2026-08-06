@@ -180,9 +180,18 @@ class _AiReportBuilderScreenState
                       const SizedBox(height: 56),
                       _dividerOr(),
                       const SizedBox(height: 56),
-                      SizedBox(width: 310, child: _manualBuildButton()),
-                      const SizedBox(height: OpticsSpacing.sm),
-                      SizedBox(width: 310, child: _sqlBuildButton()),
+                      Center(
+                        child: IntrinsicWidth(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _manualBuildButton(),
+                              const SizedBox(height: OpticsSpacing.sm),
+                              _sqlBuildButton(),
+                            ],
+                          ),
+                        ),
+                      ),
                       const SizedBox(height: OpticsSpacing.xl),
                     ],
                   ),
@@ -207,7 +216,6 @@ class _AiReportBuilderScreenState
         onTap: () => context.go('/reports/new/manual'),
         borderRadius: BorderRadius.circular(OpticsRadii.md),
         child: Container(
-          width: double.infinity,
           padding: const EdgeInsets.symmetric(
             horizontal: 28,
             vertical: 16,
@@ -238,7 +246,6 @@ class _AiReportBuilderScreenState
         onTap: () => setState(() => _heroMode = _HeroMode.sql),
         borderRadius: BorderRadius.circular(OpticsRadii.md),
         child: Container(
-          width: double.infinity,
           padding: const EdgeInsets.symmetric(
             horizontal: 28,
             vertical: 16,

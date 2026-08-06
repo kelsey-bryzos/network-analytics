@@ -21,10 +21,14 @@ import '../../../design/theme.dart';
 import '../../../shared/secure_error.dart';
 import '../custom_builder/custom_report_builder_screen.dart';
 import '../custom_builder/custom_report_query_v2.dart';
+import '../custom_builder/sql_dialect_normalizer.dart';
 import '../custom_builder/v2_report_view.dart';
 import '../report_viewer_screen.dart' show restDataSourceIdProvider;
 import 'ai_api.dart';
 import 'ai_builder_state.dart';
+
+/// Which mode the hero screen is in.
+enum _HeroMode { ai, sql }
 
 class AiReportBuilderScreen extends ConsumerStatefulWidget {
   const AiReportBuilderScreen({super.key});
@@ -40,11 +44,22 @@ class _AiReportBuilderScreenState
   final _followupCtrl = TextEditingController();
   final _chatScroll = ScrollController();
 
+  // ── SQL builder state ─────────────────────────────────────────────────────
+  _HeroMode _heroMode = _HeroMode.ai;
+  final _sqlCtrl = TextEditingController();
+  // The normalized query passed to the preview. Null = not yet run.
+  CustomReportQueryV2? _sqlPreviewQuery;
+  // Issues surfaced by the normalizer.
+  List<SqlNormalizerIssue> _sqlIssues = const [];
+  // Rewrites applied automatically.
+  List<String> _sqlRewrites = const [];
+
   @override
   void dispose() {
     _heroCtrl.dispose();
     _followupCtrl.dispose();
     _chatScroll.dispose();
+    _sqlCtrl.dispose();
     super.dispose();
   }
 
@@ -73,7 +88,11 @@ class _AiReportBuilderScreenState
 
     return Container(
       color: OpticsColors.canvas,
-      child: st.bootstrapped ? _twoPanel(st) : _hero(),
+      child: st.bootstrapped
+          ? _twoPanel(st)
+          : _heroMode == _HeroMode.sql
+              ? _sqlPanel()
+              : _hero(),
     );
   }
 
@@ -136,6 +155,8 @@ class _AiReportBuilderScreenState
                       _dividerOr(),
                       const SizedBox(height: 56),
                       Center(child: _manualBuildButton()),
+                      const SizedBox(height: OpticsSpacing.sm),
+                      Center(child: _sqlBuildButton()),
                       const SizedBox(height: OpticsSpacing.xl),
                     ],
                   ),
@@ -171,6 +192,35 @@ class _AiReportBuilderScreenState
           ),
           child: Text(
             'Build from Manual Data Selection',
+            style: OpticsTextStyles.body.copyWith(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: OpticsColors.textPrimary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _sqlBuildButton() {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => setState(() => _heroMode = _HeroMode.sql),
+        borderRadius: BorderRadius.circular(OpticsRadii.md),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 28,
+            vertical: 16,
+          ),
+          decoration: BoxDecoration(
+            color: OpticsColors.surfaceElevated,
+            borderRadius: BorderRadius.circular(OpticsRadii.md),
+            border: Border.all(color: OpticsColors.border),
+          ),
+          child: Text(
+            'Build from SQL Statement',
             style: OpticsTextStyles.body.copyWith(
               fontSize: 15,
               fontWeight: FontWeight.w500,
@@ -270,6 +320,432 @@ class _AiReportBuilderScreenState
     if (v.isEmpty) return;
     _followupCtrl.clear();
     ref.read(aiBuilderProvider.notifier).submit(v);
+  }
+
+  // ── SQL BUILDER PANEL ─────────────────────────────────────────────────────
+
+  /// Run the current SQL through the normalizer and update the preview.
+  void _runSql() {
+    final raw = _sqlCtrl.text.trim();
+    if (raw.isEmpty) return;
+    final result = normalizeMySqlToPostgres(raw);
+    final query = CustomReportQueryV2(
+      useRawSql: true,
+      rawSql: result.normalized,
+    );
+    setState(() {
+      _sqlPreviewQuery = query;
+      _sqlIssues = result.issues;
+      _sqlRewrites = result.appliedRewrites;
+    });
+  }
+
+  Widget _sqlPanel() {
+    return Column(
+      children: [
+        // Header bar — page title + back button
+        Container(
+          height: 56,
+          padding: const EdgeInsets.symmetric(horizontal: OpticsSpacing.lg),
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: OpticsColors.border)),
+          ),
+          child: Row(
+            children: [
+              InkWell(
+                onTap: () => setState(() {
+                  _heroMode = _HeroMode.ai;
+                  _sqlPreviewQuery = null;
+                  _sqlIssues = const [];
+                  _sqlRewrites = const [];
+                }),
+                borderRadius: BorderRadius.circular(OpticsRadii.xs),
+                child: Padding(
+                  padding: const EdgeInsets.all(OpticsSpacing.xs),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.arrow_back_ios_new,
+                          size: 13, color: OpticsColors.textSecondary),
+                      const SizedBox(width: 4),
+                      Text('BACK', style: OpticsTextStyles.sectionLabel),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: OpticsSpacing.md),
+              const Text('SQL REPORT BUILDER',
+                  style: OpticsTextStyles.headingXl),
+            ],
+          ),
+        ),
+        // Body — two columns
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Left: SQL editor
+              Expanded(flex: 5, child: _sqlEditorPane()),
+              Container(width: 1, color: OpticsColors.border),
+              // Right: live preview
+              Expanded(flex: 7, child: _sqlPreviewPane()),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _sqlEditorPane() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Pane header
+        Container(
+          height: _panelHeaderHeight,
+          padding: const EdgeInsets.symmetric(horizontal: OpticsSpacing.lg),
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: OpticsColors.border)),
+          ),
+          child: Row(
+            children: [
+              Text('SQL STATEMENT', style: OpticsTextStyles.sectionLabel),
+              const Spacer(),
+              // Run button
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _runSql,
+                  borderRadius: BorderRadius.circular(OpticsRadii.sm),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: OpticsColors.accentCyan,
+                      borderRadius: BorderRadius.circular(OpticsRadii.sm),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.play_arrow,
+                            size: 14, color: Colors.black),
+                        const SizedBox(width: 5),
+                        Text(
+                          'Run',
+                          style: OpticsTextStyles.body.copyWith(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // SQL text area
+        Expanded(
+          child: Container(
+            color: OpticsColors.surface,
+            padding: const EdgeInsets.all(OpticsSpacing.md),
+            child: TextField(
+              controller: _sqlCtrl,
+              maxLines: null,
+              expands: true,
+              textAlignVertical: TextAlignVertical.top,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 13,
+                color: OpticsColors.textPrimary,
+                height: 1.6,
+              ),
+              decoration: InputDecoration(
+                hintText:
+                    'Paste or type your SQL here.\n\n'
+                    'You can use the original AWS RDS table names — the system\n'
+                    'will automatically translate them to the Supabase mirror names.\n\n'
+                    'Example:\n'
+                    '  SELECT u.first_name, u.last_name,\n'
+                    '         COUNT(po.id) AS quote_count\n'
+                    '  FROM user_purchase_order po\n'
+                    '  JOIN user u ON po.buyer_email = u.email_id\n'
+                    '  GROUP BY u.first_name, u.last_name\n'
+                    '  ORDER BY quote_count DESC\n'
+                    '  LIMIT 25',
+                hintStyle: OpticsTextStyles.bodyLight.copyWith(
+                  color: OpticsColors.textMuted,
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                ),
+                border: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                filled: false,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ),
+        ),
+        // Normalizer feedback strip
+        if (_sqlRewrites.isNotEmpty || _sqlIssues.isNotEmpty)
+          _sqlFeedbackStrip(),
+        // Bottom action bar
+        _sqlActionBar(),
+      ],
+    );
+  }
+
+  Widget _sqlFeedbackStrip() {
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 160),
+      decoration: BoxDecoration(
+        color: OpticsColors.canvas,
+        border: const Border(top: BorderSide(color: OpticsColors.border)),
+      ),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(OpticsSpacing.sm),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_sqlRewrites.isNotEmpty) ...[
+              Text('AUTO-CORRECTED',
+                  style: OpticsTextStyles.sectionLabel.copyWith(
+                    color: OpticsColors.accentGreen,
+                    fontSize: 10,
+                  )),
+              for (final r in _sqlRewrites)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.check,
+                          size: 11, color: OpticsColors.accentGreen),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(r,
+                            style: OpticsTextStyles.bodySm
+                                .copyWith(fontSize: 11)),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+            if (_sqlIssues.isNotEmpty) ...[
+              if (_sqlRewrites.isNotEmpty)
+                const SizedBox(height: OpticsSpacing.xs),
+              for (final issue in _sqlIssues)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        issue.severity == SqlIssueSeverity.error
+                            ? Icons.error_outline
+                            : issue.severity == SqlIssueSeverity.warning
+                                ? Icons.warning_amber_outlined
+                                : Icons.info_outline,
+                        size: 11,
+                        color: issue.severity == SqlIssueSeverity.error
+                            ? OpticsColors.danger
+                            : issue.severity == SqlIssueSeverity.warning
+                                ? OpticsColors.accentOrange
+                                : OpticsColors.textSecondary,
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          issue.message,
+                          style: OpticsTextStyles.bodySm.copyWith(
+                            fontSize: 11,
+                            color: issue.severity == SqlIssueSeverity.error
+                                ? OpticsColors.danger
+                                : issue.severity == SqlIssueSeverity.warning
+                                    ? OpticsColors.accentOrange
+                                    : OpticsColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _sqlActionBar() {
+    final hasQuery = _sqlPreviewQuery != null;
+    final hasErrors =
+        _sqlIssues.any((i) => i.severity == SqlIssueSeverity.error);
+    final canSave = hasQuery && !hasErrors;
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: OpticsColors.border)),
+        color: OpticsColors.canvas,
+      ),
+      padding: const EdgeInsets.all(OpticsSpacing.md),
+      child: Wrap(
+        spacing: OpticsSpacing.sm,
+        runSpacing: OpticsSpacing.sm,
+        children: [
+          _actionBtn(
+            label: 'Save Report',
+            icon: Icons.save_outlined,
+            primary: true,
+            enabled: canSave,
+            onTap: () => _saveSqlAsReport(),
+          ),
+          _actionBtn(
+            label: 'Open in Manual Builder',
+            icon: Icons.edit_outlined,
+            primary: false,
+            enabled: canSave,
+            onTap: () => _openSqlInManual(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sqlPreviewPane() {
+    return Column(
+      children: [
+        // Pane header
+        Container(
+          height: _panelHeaderHeight,
+          padding: const EdgeInsets.symmetric(horizontal: OpticsSpacing.lg),
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: OpticsColors.border)),
+          ),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text('PREVIEW', style: OpticsTextStyles.sectionLabel),
+          ),
+        ),
+        // Preview body
+        Expanded(child: _sqlPreviewBody()),
+      ],
+    );
+  }
+
+  Widget _sqlPreviewBody() {
+    final q = _sqlPreviewQuery;
+    if (q == null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(OpticsSpacing.xl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.code,
+                  size: 40, color: OpticsColors.textMuted),
+              const SizedBox(height: OpticsSpacing.md),
+              Text(
+                'Enter a SQL statement and press Run to see a live preview.',
+                style: OpticsTextStyles.bodyLight,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Block rendering if there are hard errors from the normalizer.
+    final hasErrors =
+        _sqlIssues.any((i) => i.severity == SqlIssueSeverity.error);
+    if (hasErrors) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(OpticsSpacing.xl),
+          child: Text(
+            'Fix the errors shown in the editor before running.',
+            style: OpticsTextStyles.bodyLight
+                .copyWith(color: OpticsColors.danger),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
+    final dsAsync = ref.watch(restDataSourceIdProvider);
+    return dsAsync.when(
+      loading: () => const Center(
+        child: CircularProgressIndicator(color: OpticsColors.accentCyan),
+      ),
+      error: (e, _) => Center(
+        child: SecureErrorText(
+          genericMessage: 'Could not load the data source.',
+          error: e,
+        ),
+      ),
+      data: (dsId) {
+        if (dsId == null) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(OpticsSpacing.xl),
+              child: Text(
+                'No REST data source configured for this tenant.',
+                style: OpticsTextStyles.bodyLight,
+                textAlign: TextAlign.center,
+              ),
+            ),
+          );
+        }
+        return Padding(
+          padding: const EdgeInsets.all(OpticsSpacing.lg),
+          child: V2ReportView(query: q, dataSourceId: dsId),
+        );
+      },
+    );
+  }
+
+  Future<void> _saveSqlAsReport() async {
+    final q = _sqlPreviewQuery;
+    if (q == null) return;
+    final name = await _promptForName('report');
+    if (name == null || name.isEmpty) return;
+    try {
+      final layout = {
+        'pages': [
+          {'title': name, 'widgets': const <Map<String, dynamic>>[]}
+        ],
+        'builder': {
+          'view': 'sql',
+          'query_v2': q.toJson(),
+        },
+      };
+      final repo = ref.read(repoProvider);
+      final row = await repo.createReportRow(
+        name: name,
+        layout: layout,
+        description: 'SQL report',
+      );
+      final id = row['id'] as String?;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Saved report "$name".')));
+      if (id != null) {
+        context.go('/reports/${Uri.encodeComponent(id)}');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      showSecureErrorSnackBar(context, ref, 'Could not save the report.', e);
+    }
+  }
+
+  void _openSqlInManual() {
+    final q = _sqlPreviewQuery;
+    if (q == null) return;
+    aiHandoffQuery = q.toJson();
+    if (!mounted) return;
+    context.go('/reports/new/manual');
   }
 
   // ── TWO-PANEL ─────────────────────────────────────────────────────────────

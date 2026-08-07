@@ -662,8 +662,8 @@ class V2ReportView extends ConsumerWidget {
 
   /// Y-axis label formatter — compact suffixes for large numbers.
   static String _fmtAxisValue(double v) {
-    if (v >= 1000000) return '\${(v / 1000000).toStringAsFixed(1)}M';
-    if (v >= 1000) return '\${(v / 1000).toStringAsFixed(0)}K';
+    if (v >= 1000000) return '${(v / 1000000).toStringAsFixed(1)}M';
+    if (v >= 1000) return '${(v / 1000).toStringAsFixed(0)}K';
     if (v == v.roundToDouble()) return v.toStringAsFixed(0);
     return v.toStringAsFixed(1);
   }

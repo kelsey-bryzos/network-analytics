@@ -844,6 +844,7 @@ class _AiReportBuilderScreenState
     ('table', Icons.table_chart_outlined,        'Table'),
     ('line',  Icons.show_chart,                  'Line'),
     ('bar',   Icons.bar_chart,                   'Bar'),
+    ('hbar',  Icons.bar_chart,                   'H-Bar'),
     ('combo', Icons.stacked_line_bar,            'Combo'),
     ('pie',   Icons.pie_chart_outline,           'Pie'),
     ('donut', Icons.donut_small,                 'Donut'),

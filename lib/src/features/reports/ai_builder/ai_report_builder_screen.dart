@@ -62,6 +62,8 @@ class _AiReportBuilderScreenState
   List<String> _sqlRewrites = const [];
   // Preview mode for the SQL panel — mirrors AI panel behaviour.
   PreviewMode _sqlPreviewMode = PreviewMode.report;
+  // Chart type selected in Widget View. Defaults to table; user can switch.
+  String _sqlWidgetChartType = 'table';
 
   @override
   void initState() {
@@ -371,6 +373,7 @@ class _AiReportBuilderScreenState
     final query = CustomReportQueryV2(
       useRawSql: true,
       rawSql: result.normalized,
+      showShare: false,
     );
     setState(() {
       _sqlPreviewQuery = query;
@@ -406,14 +409,12 @@ class _AiReportBuilderScreenState
                     children: [
                       const Icon(Icons.arrow_back_ios_new,
                           size: 13, color: OpticsColors.textSecondary),
-                      const SizedBox(width: 4),
-                      Text('BACK', style: OpticsTextStyles.sectionLabel),
                     ],
                   ),
                 ),
               ),
               const SizedBox(width: OpticsSpacing.md),
-              const Text('SQL REPORT BUILDER',
+              const Text('REPORT BUILDER',
                   style: OpticsTextStyles.headingXl),
             ],
           ),
@@ -825,29 +826,163 @@ class _AiReportBuilderScreenState
             ),
           );
         }
-        final content = Padding(
+        if (_sqlPreviewMode == PreviewMode.widget) {
+          return _sqlWidgetView(q, dsId);
+        }
+        return Padding(
           padding: const EdgeInsets.all(OpticsSpacing.lg),
           child: V2ReportView(query: q, dataSourceId: dsId),
         );
-        if (_sqlPreviewMode == PreviewMode.widget) {
-          return Padding(
-            padding: const EdgeInsets.all(OpticsSpacing.lg),
-            child: Container(
-              constraints: const BoxConstraints(
-                maxWidth: 460,
-                maxHeight: 320,
-              ),
-              decoration: BoxDecoration(
-                color: OpticsColors.surface,
-                border: Border.all(color: OpticsColors.border),
-                borderRadius: BorderRadius.circular(OpticsRadii.md),
-              ),
-              child: content,
-            ),
-          );
-        }
-        return content;
       },
+    );
+  }
+
+  // ── Widget View for SQL builder — chart type selector + preview ──────────
+
+  static const _sqlChartTypes = [
+    ('table',  Icons.table_chart_outlined,   'Table'),
+    ('bar',    Icons.bar_chart,              'Bar'),
+    ('hbar',   Icons.bar_chart_outlined,      'H-Bar'),
+    ('line',   Icons.show_chart,             'Line'),
+    ('area',   Icons.area_chart,             'Area'),
+    ('pie',    Icons.pie_chart_outline,      'Pie'),
+    ('donut',  Icons.donut_small,             'Donut'),
+  ];
+
+  /// Parse column aliases from a raw SQL SELECT to auto-detect x/y axes.
+  /// Returns a list of alias strings in SELECT order.
+  List<String> _parseSqlAliases(String sql) {
+    // Extract the SELECT…FROM block.
+    final selectMatch = RegExp(
+      r'SELECT\s+(.*?)\s+FROM',
+      caseSensitive: false,
+      dotAll: true,
+    ).firstMatch(sql);
+    if (selectMatch == null) return [];
+    final selectClause = selectMatch.group(1) ?? '';
+    final aliases = <String>[];
+    // Each comma-separated term: grab the last AS "…" or AS word.
+    for (final term in selectClause.split(',')) {
+      final asMatch = RegExp(
+        r'AS\s+(?:"([^"]+)"|(\w+))',
+        caseSensitive: false,
+      ).firstMatch(term.trim());
+      if (asMatch != null) {
+        aliases.add(asMatch.group(1) ?? asMatch.group(2) ?? '');
+      }
+    }
+    return aliases;
+  }
+
+  Widget _sqlWidgetView(CustomReportQueryV2 q, String? dsId) {
+    // Auto-detect x (first column) and y (second column) from the authored SQL.
+    final aliases = _parseSqlAliases(q.sqlAuthored ?? q.rawSql ?? '');
+    final autoX = aliases.isNotEmpty ? aliases.first : null;
+    final autoY = aliases.length > 1 ? aliases[1] : null;
+
+    // Build the viz-aware query for the selected chart type via JSON round-trip.
+    final baseJson = q.toJson();
+    baseJson['viz'] = VizSpec(
+      chartType: _sqlWidgetChartType,
+      x: autoX,
+      y: autoY,
+    ).toJson();
+    final chartQ = CustomReportQueryV2.fromJson(baseJson);
+
+    return Column(
+      children: [
+        // Chart type selector bar
+        Container(
+          padding: const EdgeInsets.symmetric(
+              horizontal: OpticsSpacing.lg, vertical: OpticsSpacing.sm),
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: OpticsColors.border)),
+          ),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                Text('CHART TYPE',
+                    style: OpticsTextStyles.sectionLabel
+                        .copyWith(fontSize: 10)),
+                const SizedBox(width: OpticsSpacing.md),
+                ..._sqlChartTypes.map((t) {
+                  final (type, icon, label) = t;
+                  final active = _sqlWidgetChartType == type;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: OpticsSpacing.xs),
+                    child: InkWell(
+                      onTap: () =>
+                          setState(() => _sqlWidgetChartType = type),
+                      borderRadius:
+                          BorderRadius.circular(OpticsRadii.xs),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: OpticsSpacing.sm,
+                            vertical: 5),
+                        decoration: BoxDecoration(
+                          color: active
+                              ? OpticsColors.accentCyan.withOpacity(0.15)
+                              : Colors.transparent,
+                          borderRadius:
+                              BorderRadius.circular(OpticsRadii.xs),
+                          border: Border.all(
+                            color: active
+                                ? OpticsColors.accentCyan
+                                : OpticsColors.border,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(icon,
+                                size: 13,
+                                color: active
+                                    ? OpticsColors.accentCyan
+                                    : OpticsColors.textSecondary),
+                            const SizedBox(width: 4),
+                            Text(label,
+                                style: OpticsTextStyles.bodySm.copyWith(
+                                  color: active
+                                      ? OpticsColors.accentCyan
+                                      : OpticsColors.textSecondary,
+                                  fontSize: 10,
+                                )),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        ),
+        // Chart preview — card-framed like a real dashboard widget
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.all(OpticsSpacing.lg),
+            child: Center(
+              child: Container(
+                constraints: const BoxConstraints(
+                  maxWidth: 480,
+                  maxHeight: 340,
+                ),
+                decoration: BoxDecoration(
+                  color: OpticsColors.surface,
+                  border: Border.all(color: OpticsColors.border),
+                  borderRadius: BorderRadius.circular(OpticsRadii.md),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(OpticsSpacing.md),
+                  child: V2ReportView(query: chartQ, dataSourceId: dsId ?? ''),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -875,6 +1010,7 @@ class _AiReportBuilderScreenState
         status: 'live',
       );
       final id = row['id'] as String?;
+      ref.invalidate(reportsProvider);
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('Saved report "$name".')));
@@ -1678,6 +1814,7 @@ class _AiReportBuilderScreenState
               .indexItem(kind: 'report', id: id, tenantId: tenantId);
         }
       }
+      ref.invalidate(reportsProvider);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Saved report "$name".')),

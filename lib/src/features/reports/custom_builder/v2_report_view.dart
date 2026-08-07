@@ -190,7 +190,12 @@ class V2ReportView extends ConsumerWidget {
         grandTotal += _toDouble(r[primaryNumericKey]) ?? 0;
       }
     }
-    final showShare = query.showShare && primaryNumericKey.isNotEmpty && grandTotal > 0;
+    // Raw-SQL reports never show the auto-calculated Share % column — it wasn't
+    // part of the query the user wrote, so it must not appear.
+    final showShare = !query.useRawSql &&
+        query.showShare &&
+        primaryNumericKey.isNotEmpty &&
+        grandTotal > 0;
 
     Widget headerCell(String text, {bool rightAlign = false}) => Text(
           text,
@@ -647,6 +652,17 @@ class V2ReportView extends ConsumerWidget {
 /// Columns that should be rendered as $xx,xxx.xx currency values.
 const _moneyHeaders = {'AOV', 'Total Purchases', 'Total Sales', 'Revenue', 'COGS', 'GP (\$)'};
 
+/// Keywords that indicate a column contains a currency/dollar value.
+/// Used as a fallback for raw-SQL reports where column names are arbitrary.
+/// v2 — expanded keyword set.
+final _moneyKeywords = RegExp(
+  r'\b(value|price|amount|revenue|cost|spend|total|sales|purchase|earning|income|profit|fee|charge|sum|subtotal)\b',
+  caseSensitive: false,
+);
+
+bool _isMoneyHeader(String header) =>
+    _moneyHeaders.contains(header) || _moneyKeywords.hasMatch(header);
+
 /// Maps raw DB values to display-friendly labels for specific columns.
 String _formatCellValue(String header, dynamic value) {
   final raw = value?.toString() ?? '';
@@ -662,7 +678,7 @@ String _formatCellValue(String header, dynamic value) {
     };
     return eventLabels[raw] ?? raw;
   }
-  if (_moneyHeaders.contains(header)) {
+  if (_isMoneyHeader(header)) {
     final n = double.tryParse(raw.replaceAll(RegExp(r'[^\d.\-]'), ''));
     if (n != null) {
       final isNeg = n < 0;

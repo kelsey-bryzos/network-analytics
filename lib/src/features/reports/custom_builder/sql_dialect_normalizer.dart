@@ -271,7 +271,7 @@ SqlNormalizerResult normalizeMySqlToPostgres(String input) {
   // Step 7a: DATE_SUB(x, INTERVAL n UNIT) → (x - INTERVAL 'n units')
   //          DATE_ADD(x, INTERVAL n UNIT) → (x + INTERVAL 'n units')
   sql = sql.replaceAllMapped(
-    RegExp(r'\bDATE_(SUB|ADD)\s*\(\s*(.+?)\s*,\s*INTERVAL\s+(\d+)\s+([A-Za-z]+)\s*\)',
+    RegExp(r"\bDATE_(SUB|ADD)\s*\(\s*(.+?)\s*,\s*INTERVAL\s+'?(\d+)\s+([A-Za-z]+)'?\s*\)",
         caseSensitive: false),
     (m) {
       final op = m.group(1)!.toUpperCase() == 'SUB' ? '-' : '+';

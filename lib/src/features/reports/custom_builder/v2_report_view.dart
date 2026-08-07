@@ -368,10 +368,48 @@ class V2ReportView extends ConsumerWidget {
     );
   }
 
+  /// Auto-detect x (first non-numeric column) and y (first numeric column)
+  /// from actual row data. Falls back gracefully when rows are empty.
+  ({String? x, String? y}) _autoXY(List<Map<String, dynamic>> rows) {
+    if (rows.isEmpty) return (x: null, y: null);
+    final keys = rows.first.keys.toList();
+    String? xKey, yKey;
+    for (final k in keys) {
+      final sample = rows.first[k];
+      if (_toDouble(sample) != null) {
+        yKey ??= k;
+      } else {
+        xKey ??= k;
+      }
+    }
+    return (x: xKey, y: yKey);
+  }
+
+  /// Resolve x/y from viz spec, falling back to auto-detection from rows.
+  /// Ensures y is always a numeric column in the actual data.
+  ({String x, String y})? _resolveXY(List<Map<String, dynamic>> rows) {
+    if (rows.isEmpty) return null;
+    String? x = query.viz.x;
+    String? y = query.viz.y;
+    // Validate y is actually numeric in the data.
+    if (y != null && _toDouble(rows.first[y]) == null) y = null;
+    // Validate x exists in data.
+    if (x != null && !rows.first.containsKey(x)) x = null;
+    // Fall back to auto-detection for any nulls.
+    if (x == null || y == null) {
+      final auto = _autoXY(rows);
+      x ??= auto.x;
+      y ??= auto.y;
+    }
+    if (x == null || y == null) return null;
+    return (x: x, y: y);
+  }
+
   Widget _bar(List<Map<String, dynamic>> rows, {bool horizontal = false}) {
-    final x = query.viz.x;
-    final y = query.viz.y;
-    if (x == null || y == null) return _table(rows);
+    final xy = _resolveXY(rows);
+    if (xy == null) return _table(rows);
+    final x = xy.x;
+    final y = xy.y;
     final bars = rows
         .map((r) {
           final yv = _toDouble(r[y]);
@@ -442,9 +480,10 @@ class V2ReportView extends ConsumerWidget {
   }
 
   Widget _combo(List<Map<String, dynamic>> rows) {
-    final x = query.viz.x;
-    final y = query.viz.y;
-    if (x == null || y == null) return _table(rows);
+    final xy = _resolveXY(rows);
+    if (xy == null) return _table(rows);
+    final x = xy.x;
+    final y = xy.y;
     final bars = rows
         .map((r) {
           final yv = _toDouble(r[y]);
@@ -573,9 +612,9 @@ class V2ReportView extends ConsumerWidget {
   }
 
   Widget _line(List<Map<String, dynamic>> rows, {bool area = false}) {
-    final x = query.viz.x;
-    final y = query.viz.y;
-    if (x == null || y == null) return _table(rows);
+    final xy = _resolveXY(rows);
+    if (xy == null) return _table(rows);
+    final y = xy.y; // x-axis uses index position for line charts
     final pts = <FlSpot>[];
     for (int i = 0; i < rows.length; i++) {
       final yv = _toDouble(rows[i][y]);
@@ -610,9 +649,10 @@ class V2ReportView extends ConsumerWidget {
   }
 
   Widget _pie(List<Map<String, dynamic>> rows, {bool donut = false}) {
-    final x = query.viz.x;
-    final y = query.viz.y;
-    if (x == null || y == null) return _table(rows);
+    final xy = _resolveXY(rows);
+    if (xy == null) return _table(rows);
+    final x = xy.x;
+    final y = xy.y;
     final slices = rows
         .map((r) {
           final yv = _toDouble(r[y]);

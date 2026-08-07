@@ -134,25 +134,32 @@ class V2ReportView extends ConsumerWidget {
     final List<String> headers;
     final List<String> lookupKeys;
 
-    if (query.columns.isNotEmpty) {
+    if (query.columns.isNotEmpty || query.aggregates.isNotEmpty) {
       // rds_execute_query returns rows keyed by alias (e.g. "Source", "Buyer")
       // because the SQL uses: SELECT t.source as "Source", ...
-      // So both the display header AND the lookup key must use c.alias.
+      // Column order: regular columns first, then aggregates -- matching the
+      // SELECT list order the RPC builds.
       final available = rows.first.keys.toSet();
-      final cols = query.columns
-          .where((c) => available.contains(c.alias))
+      final colAliases = query.columns
+          .map((c) => c.alias)
+          .where(available.contains)
           .toList();
-      if (cols.isNotEmpty) {
-        headers    = cols.map((c) => c.alias).toList();
-        lookupKeys = cols.map((c) => c.alias).toList();
+      final aggAliases = query.aggregates
+          .map((a) => a.alias)
+          .where(available.contains)
+          .toList();
+      final combined = [...colAliases, ...aggAliases];
+      if (combined.isNotEmpty) {
+        headers    = combined;
+        lookupKeys = combined;
       } else {
-        // Fallback: no alias matches — use raw row key order
+        // Fallback: no alias matches -- use raw row key order
         final keys = rows.first.keys.toList();
         headers    = keys;
         lookupKeys = keys;
       }
     } else {
-      // Legacy reports with no columns spec — fall back to row key order.
+      // Legacy reports with no columns spec -- fall back to row key order.
       final keys = rows.first.keys.toList();
       headers    = keys;
       lookupKeys = keys;
@@ -177,20 +184,7 @@ class V2ReportView extends ConsumerWidget {
       if (hasValue && allNum) numericCols.add(headers[i]);
     }
 
-    // primaryNumeric = display header of first numeric column.
-    // primaryNumericKey = lookup key for that column (used to read row values).
-    final primaryNumeric =
-        headers.firstWhere(numericCols.contains, orElse: () => '');
-    final primaryNumericKey = primaryNumeric.isNotEmpty
-        ? lookupKeys[headers.indexOf(primaryNumeric)]
-        : '';
-    double grandTotal = 0;
-    if (primaryNumericKey.isNotEmpty) {
-      for (final r in rows) {
-        grandTotal += _toDouble(r[primaryNumericKey]) ?? 0;
-      }
-    }
-    final showShare = query.showShare && primaryNumericKey.isNotEmpty && grandTotal > 0;
+    // Share % column is permanently removed — never compute or display it.
 
     Widget headerCell(String text, {bool rightAlign = false}) => Text(
           text,
@@ -224,11 +218,7 @@ class V2ReportView extends ConsumerWidget {
                     flex: _colFlex(headers[i], i),
                     child: headerCell(headers[i]),
                   ),
-                if (showShare)
-                  SizedBox(
-                    width: 56,
-                    child: headerCell('Share', rightAlign: true),
-                  ),
+
               ],
             ),
           ),
@@ -243,9 +233,6 @@ class V2ReportView extends ConsumerWidget {
                       headers: headers,
                       lookupKeys: lookupKeys,
                       numericCols: numericCols,
-                      primaryNumericKey: primaryNumericKey,
-                      grandTotal: grandTotal,
-                      showShare: showShare,
                     ),
                 ],
               ),
@@ -262,16 +249,10 @@ class V2ReportView extends ConsumerWidget {
     required List<String> headers,
     required List<String> lookupKeys,
     required Set<String> numericCols,
-    required String primaryNumericKey,
-    required double grandTotal,
-    required bool showShare,
   }) {
     final palette = OpticsColors.chartPalette;
     final rowColor = palette[rank % palette.length];
     final isOdd = rank % 2 == 1;
-    final share = showShare
-        ? ((_toDouble(row[primaryNumericKey]) ?? 0) / grandTotal * 100)
-        : 0.0;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
@@ -328,18 +309,7 @@ class V2ReportView extends ConsumerWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
             ),
-          if (showShare)
-            SizedBox(
-              width: 56,
-              child: Text(
-                '${share.toStringAsFixed(1)}%',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: OpticsColors.textSecondary,
-                ),
-                textAlign: TextAlign.right,
-              ),
-            ),
+
         ],
       ),
     );
@@ -363,10 +333,48 @@ class V2ReportView extends ConsumerWidget {
     );
   }
 
+  /// Auto-detect x (first non-numeric column) and y (first numeric column)
+  /// from actual row data. Falls back gracefully when rows are empty.
+  ({String? x, String? y}) _autoXY(List<Map<String, dynamic>> rows) {
+    if (rows.isEmpty) return (x: null, y: null);
+    final keys = rows.first.keys.toList();
+    String? xKey, yKey;
+    for (final k in keys) {
+      final sample = rows.first[k];
+      if (_toDouble(sample) != null) {
+        yKey ??= k;
+      } else {
+        xKey ??= k;
+      }
+    }
+    return (x: xKey, y: yKey);
+  }
+
+  /// Resolve x/y from viz spec, falling back to auto-detection from rows.
+  /// Ensures y is always a numeric column in the actual data.
+  ({String x, String y})? _resolveXY(List<Map<String, dynamic>> rows) {
+    if (rows.isEmpty) return null;
+    String? x = query.viz.x;
+    String? y = query.viz.y;
+    // Validate y is actually numeric in the data.
+    if (y != null && _toDouble(rows.first[y]) == null) y = null;
+    // Validate x exists in data.
+    if (x != null && !rows.first.containsKey(x)) x = null;
+    // Fall back to auto-detection for any nulls.
+    if (x == null || y == null) {
+      final auto = _autoXY(rows);
+      x ??= auto.x;
+      y ??= auto.y;
+    }
+    if (x == null || y == null) return null;
+    return (x: x, y: y);
+  }
+
   Widget _bar(List<Map<String, dynamic>> rows, {bool horizontal = false}) {
-    final x = query.viz.x;
-    final y = query.viz.y;
-    if (x == null || y == null) return _table(rows);
+    final xy = _resolveXY(rows);
+    if (xy == null) return _table(rows);
+    final x = xy.x;
+    final y = xy.y;
     final bars = rows
         .map((r) {
           final yv = _toDouble(r[y]);
@@ -437,9 +445,10 @@ class V2ReportView extends ConsumerWidget {
   }
 
   Widget _combo(List<Map<String, dynamic>> rows) {
-    final x = query.viz.x;
-    final y = query.viz.y;
-    if (x == null || y == null) return _table(rows);
+    final xy = _resolveXY(rows);
+    if (xy == null) return _table(rows);
+    final x = xy.x;
+    final y = xy.y;
     final bars = rows
         .map((r) {
           final yv = _toDouble(r[y]);
@@ -568,46 +577,117 @@ class V2ReportView extends ConsumerWidget {
   }
 
   Widget _line(List<Map<String, dynamic>> rows, {bool area = false}) {
-    final x = query.viz.x;
-    final y = query.viz.y;
-    if (x == null || y == null) return _table(rows);
+    final xy = _resolveXY(rows);
+    if (xy == null) return _table(rows);
+    final x = xy.x;
+    final y = xy.y;
     final pts = <FlSpot>[];
     for (int i = 0; i < rows.length; i++) {
       final yv = _toDouble(rows[i][y]);
       if (yv != null) pts.add(FlSpot(i.toDouble(), yv));
     }
     if (pts.isEmpty) return _table(rows);
+    final maxY = pts.map((p) => p.y).fold<double>(0, (a, b) => b > a ? b : a);
+    final topY = maxY <= 0 ? 1.0 : maxY * 1.12;
     return _shell(
       child: LineChart(
         LineChartData(
+          minY: 0,
+          maxY: topY,
           lineBarsData: [
             LineChartBarData(
               spots: pts,
               isCurved: true,
               barWidth: 2,
               color: OpticsColors.accentCyan,
-              dotData: const FlDotData(show: false),
+              dotData: FlDotData(
+                show: rows.length <= 12,
+                getDotPainter: (_, __, ___, ____) => FlDotCirclePainter(
+                  radius: 3,
+                  color: OpticsColors.accentCyan,
+                  strokeWidth: 0,
+                ),
+              ),
               belowBarData: area
                   ? BarAreaData(
                       show: true,
-                      color:
-                          OpticsColors.accentCyan.withValues(alpha: 0.18),
+                      color: OpticsColors.accentCyan.withValues(alpha: 0.18),
                     )
                   : BarAreaData(show: false),
             ),
           ],
-          gridData: const FlGridData(show: false),
+          gridData: FlGridData(
+            show: true,
+            drawVerticalLine: false,
+            getDrawingHorizontalLine: (_) => FlLine(
+              color: OpticsColors.border.withValues(alpha: 0.4),
+              strokeWidth: 0.5,
+            ),
+          ),
           borderData: FlBorderData(show: false),
-          titlesData: const FlTitlesData(show: false),
+          titlesData: FlTitlesData(
+            topTitles: const AxisTitles(),
+            rightTitles: const AxisTitles(),
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 48,
+                getTitlesWidget: (v, _) => Text(
+                  _fmtAxisValue(v),
+                  style: OpticsTextStyles.bodySm.copyWith(fontSize: 9),
+                  textAlign: TextAlign.right,
+                ),
+              ),
+            ),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 28,
+                interval: _xInterval(rows.length),
+                getTitlesWidget: (v, _) {
+                  final i = v.toInt();
+                  if (i < 0 || i >= rows.length) return const SizedBox.shrink();
+                  final label = rows[i][x]?.toString() ?? '';
+                  // Shorten to last 5 chars for dates like "5-11-26"
+                  final short = label.length > 7 ? label.substring(label.length - 7) : label;
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      short,
+                      style: OpticsTextStyles.bodySm.copyWith(fontSize: 9),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
         ),
       ),
     );
   }
 
+  /// Y-axis label formatter — compact suffixes for large numbers.
+  static String _fmtAxisValue(double v) {
+    if (v >= 1000000) return '${(v / 1000000).toStringAsFixed(1)}M';
+    if (v >= 1000) return '${(v / 1000).toStringAsFixed(0)}K';
+    if (v == v.roundToDouble()) return v.toStringAsFixed(0);
+    return v.toStringAsFixed(1);
+  }
+
+  /// Interval so we don't show every x label when there are many points.
+  static double _xInterval(int count) {
+    if (count <= 8) return 1;
+    if (count <= 16) return 2;
+    if (count <= 24) return 3;
+    return (count / 8).ceilToDouble();
+  }
+
   Widget _pie(List<Map<String, dynamic>> rows, {bool donut = false}) {
-    final x = query.viz.x;
-    final y = query.viz.y;
-    if (x == null || y == null) return _table(rows);
+    final xy = _resolveXY(rows);
+    if (xy == null) return _table(rows);
+    final x = xy.x;
+    final y = xy.y;
     final slices = rows
         .map((r) {
           final yv = _toDouble(r[y]);
@@ -647,6 +727,24 @@ class V2ReportView extends ConsumerWidget {
 /// Columns that should be rendered as $xx,xxx.xx currency values.
 const _moneyHeaders = {'AOV', 'Total Purchases', 'Total Sales', 'Revenue', 'COGS', 'GP (\$)'};
 
+/// Keywords that indicate a column contains a currency/dollar value.
+/// Used as a fallback for raw-SQL reports where column names are arbitrary.
+/// v2 — expanded keyword set.
+final _moneyKeywords = RegExp(
+  r'\b(value|price|amount|revenue|cost|spend|total|sales|purchase|earning|income|profit|fee|charge|sum|subtotal)\b',
+  caseSensitive: false,
+);
+
+bool _isMoneyHeader(String header) {
+  if (_moneyHeaders.contains(header)) return true;
+  // Test against the full header, AND against individual words split by
+  // underscore/space so that snake_case column names like "total_sales_usd"
+  // are correctly detected (underscores are word chars, so \b won't fire).
+  if (_moneyKeywords.hasMatch(header)) return true;
+  final words = header.split(RegExp(r'[_\s]+'));
+  return words.any((w) => _moneyKeywords.hasMatch(w));
+}
+
 /// Maps raw DB values to display-friendly labels for specific columns.
 String _formatCellValue(String header, dynamic value) {
   final raw = value?.toString() ?? '';
@@ -662,7 +760,7 @@ String _formatCellValue(String header, dynamic value) {
     };
     return eventLabels[raw] ?? raw;
   }
-  if (_moneyHeaders.contains(header)) {
+  if (_isMoneyHeader(header)) {
     final n = double.tryParse(raw.replaceAll(RegExp(r'[^\d.\-]'), ''));
     if (n != null) {
       final isNeg = n < 0;

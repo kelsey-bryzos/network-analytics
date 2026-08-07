@@ -332,7 +332,7 @@ class _CustomReportBuilderScreenState
         'name': st.title,
         'description': st.description,
         'layout': layout,
-        'status': 'pending',
+        'status': 'live',
         'query_version': 2,
       };
       String? newId = st.reportId;
@@ -482,16 +482,6 @@ class _CustomReportBuilderScreenState
               icon: const Icon(Icons.check, size: 16),
               label: const Text('Save & Close'),
               onPressed: _saving ? null : () => _save(close: true),
-            ),
-            const SizedBox(width: OpticsSpacing.sm),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.publish, size: 16),
-              label: const Text('Publish'),
-              onPressed: _saving ? null : _publish,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: OpticsColors.accentGreen,
-                foregroundColor: Colors.white,
-              ),
             ),
             const SizedBox(width: OpticsSpacing.md),
           ],

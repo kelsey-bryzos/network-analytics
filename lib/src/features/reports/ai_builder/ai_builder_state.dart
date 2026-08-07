@@ -338,11 +338,12 @@ class AiBuilderNotifier extends StateNotifier<AiBuilderState> {
 
     // On follow-up turns, annotate the prompt so the LLM knows this is a
     // refinement request against an existing query, not a fresh report request.
-    // Short user messages like "no data displayed", "change to bar chart", or
-    // "remove the date filter" are completely ambiguous without this framing.
+    // Keep it short and natural — the system prompt's currentQueryBlock already
+    // has the full refinement instructions. We just add the word "REFINE:" so
+    // the LLM understands intent without being confused by protocol overhead.
     final isFollowUp = state.turnIndex > 0 && state.currentQuery != null;
     final effectivePrompt = isFollowUp
-        ? '[REFINEMENT REQUEST — modify the current query shown in the system prompt]\n\nUser says: $prompt'
+        ? 'REFINE: $prompt'
         : prompt;
 
     try {

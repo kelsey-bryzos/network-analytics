@@ -210,6 +210,22 @@ SqlNormalizerResult normalizeMySqlToPostgres(String input) {
     },
   );
 
+  // Step 6b: Bare INTERVAL n UNIT (no quotes) → INTERVAL 'n UNIT'
+  // MySQL allows: NOW() - INTERVAL 56 DAY
+  // Postgres requires: NOW() - INTERVAL '56 DAY'
+  // Only fires when INTERVAL is NOT already followed by a single-quoted string.
+  // We match the __SQLLIT_n__ mask to detect already-quoted cases (they were
+  // masked in Step 0c) — if INTERVAL is followed by a placeholder, skip it.
+  sql = sql.replaceAllMapped(
+    RegExp(r'\bINTERVAL\s+(\d+)\s+([A-Za-z]+)\b', caseSensitive: false),
+    (m) {
+      final amount = m.group(1)!;
+      final unit = m.group(2)!.toUpperCase();
+      applied.add("Rewrote bare INTERVAL $amount $unit → INTERVAL '$amount $unit'");
+      return "INTERVAL '$amount $unit'";
+    },
+  );
+
   // Step 7a: DATE_SUB(x, INTERVAL n UNIT) → (x - INTERVAL 'n units')
   //          DATE_ADD(x, INTERVAL n UNIT) → (x + INTERVAL 'n units')
   sql = sql.replaceAllMapped(

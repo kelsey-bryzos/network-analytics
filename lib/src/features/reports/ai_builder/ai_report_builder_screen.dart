@@ -375,7 +375,6 @@ class _AiReportBuilderScreenState
     final query = CustomReportQueryV2(
       useRawSql: true,
       rawSql: result.normalized,
-      showShare: false,
     );
     setState(() {
       _sqlPreviewQuery = query;

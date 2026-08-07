@@ -177,25 +177,7 @@ class V2ReportView extends ConsumerWidget {
       if (hasValue && allNum) numericCols.add(headers[i]);
     }
 
-    // primaryNumeric = display header of first numeric column.
-    // primaryNumericKey = lookup key for that column (used to read row values).
-    final primaryNumeric =
-        headers.firstWhere(numericCols.contains, orElse: () => '');
-    final primaryNumericKey = primaryNumeric.isNotEmpty
-        ? lookupKeys[headers.indexOf(primaryNumeric)]
-        : '';
-    double grandTotal = 0;
-    if (primaryNumericKey.isNotEmpty) {
-      for (final r in rows) {
-        grandTotal += _toDouble(r[primaryNumericKey]) ?? 0;
-      }
-    }
-    // Raw-SQL reports never show the auto-calculated Share % column — it wasn't
-    // part of the query the user wrote, so it must not appear.
-    final showShare = !query.useRawSql &&
-        query.showShare &&
-        primaryNumericKey.isNotEmpty &&
-        grandTotal > 0;
+    // Share % column is permanently removed — never compute or display it.
 
     Widget headerCell(String text, {bool rightAlign = false}) => Text(
           text,
@@ -229,11 +211,7 @@ class V2ReportView extends ConsumerWidget {
                     flex: _colFlex(headers[i], i),
                     child: headerCell(headers[i]),
                   ),
-                if (showShare)
-                  SizedBox(
-                    width: 56,
-                    child: headerCell('Share', rightAlign: true),
-                  ),
+
               ],
             ),
           ),
@@ -248,9 +226,6 @@ class V2ReportView extends ConsumerWidget {
                       headers: headers,
                       lookupKeys: lookupKeys,
                       numericCols: numericCols,
-                      primaryNumericKey: primaryNumericKey,
-                      grandTotal: grandTotal,
-                      showShare: showShare,
                     ),
                 ],
               ),
@@ -267,16 +242,10 @@ class V2ReportView extends ConsumerWidget {
     required List<String> headers,
     required List<String> lookupKeys,
     required Set<String> numericCols,
-    required String primaryNumericKey,
-    required double grandTotal,
-    required bool showShare,
   }) {
     final palette = OpticsColors.chartPalette;
     final rowColor = palette[rank % palette.length];
     final isOdd = rank % 2 == 1;
-    final share = showShare
-        ? ((_toDouble(row[primaryNumericKey]) ?? 0) / grandTotal * 100)
-        : 0.0;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
@@ -333,18 +302,7 @@ class V2ReportView extends ConsumerWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
             ),
-          if (showShare)
-            SizedBox(
-              width: 56,
-              child: Text(
-                '${share.toStringAsFixed(1)}%',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: OpticsColors.textSecondary,
-                ),
-                textAlign: TextAlign.right,
-              ),
-            ),
+
         ],
       ),
     );

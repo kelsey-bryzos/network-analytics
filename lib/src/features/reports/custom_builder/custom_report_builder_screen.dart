@@ -2990,17 +2990,7 @@ class _PreviewPanel extends ConsumerWidget {
       }
       if (hasValue && allNum) numericCols.add(h);
     }
-    final primaryNumeric =
-        headers.firstWhere(numericCols.contains, orElse: () => '');
-    double grandTotal = 0;
-    if (primaryNumeric.isNotEmpty) {
-      for (final r in rows) {
-        final v = r[primaryNumeric];
-        final n = v is num ? v.toDouble() : double.tryParse('${v ?? ''}');
-        if (n != null) grandTotal += n;
-      }
-    }
-    final showShare = primaryNumeric.isNotEmpty && grandTotal > 0;
+    // Share % permanently removed — no computation needed.
     final palette = OpticsColors.chartPalette;
 
     Widget headerCell(String text, {bool rightAlign = false}) => Text(
@@ -3042,11 +3032,7 @@ class _PreviewPanel extends ConsumerWidget {
                       rightAlign: numericCols.contains(headers[i]),
                     ),
                   ),
-                if (showShare)
-                  SizedBox(
-                    width: 56,
-                    child: headerCell('Share', rightAlign: true),
-                  ),
+
               ],
             ),
           ),
@@ -3060,9 +3046,6 @@ class _PreviewPanel extends ConsumerWidget {
                       row: rows[rank],
                       headers: headers,
                       numericCols: numericCols,
-                      primaryNumeric: primaryNumeric,
-                      grandTotal: grandTotal,
-                      showShare: showShare,
                       palette: palette,
                     ),
                 ],
@@ -3079,21 +3062,10 @@ class _PreviewPanel extends ConsumerWidget {
     required Map<String, dynamic> row,
     required List<String> headers,
     required Set<String> numericCols,
-    required String primaryNumeric,
-    required double grandTotal,
-    required bool showShare,
     required List<Color> palette,
   }) {
     final rowColor = palette[rank % palette.length];
     final isOdd = rank % 2 == 1;
-    double? primaryVal;
-    if (showShare) {
-      final v = row[primaryNumeric];
-      primaryVal = v is num ? v.toDouble() : double.tryParse('${v ?? ''}');
-    }
-    final share = (primaryVal != null && grandTotal > 0)
-        ? primaryVal / grandTotal * 100
-        : 0.0;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
@@ -3155,18 +3127,6 @@ class _PreviewPanel extends ConsumerWidget {
                           : TextAlign.left,
                       overflow: TextOverflow.ellipsis,
                     ),
-            ),
-          if (showShare)
-            SizedBox(
-              width: 56,
-              child: Text(
-                '${share.toStringAsFixed(1)}%',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: OpticsColors.textSecondary,
-                ),
-                textAlign: TextAlign.right,
-              ),
             ),
         ],
       ),

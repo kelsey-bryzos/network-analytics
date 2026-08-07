@@ -1007,7 +1007,7 @@ class _AiReportBuilderScreenState
       final row = await repo.createReportRow(
         name: name,
         layout: layout,
-        description: 'SQL report',
+        description: null,
         status: 'live',
       );
       final id = row['id'] as String?;
@@ -1937,7 +1937,7 @@ class _AiReportBuilderScreenState
       final row = await repo.createReportRow(
         name: name,
         layout: layout,
-        description: _lastUserPrompt(st),
+        description: null,
         status: 'live',
       );
       final id = row['id'] as String?;

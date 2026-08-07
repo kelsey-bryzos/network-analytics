@@ -572,38 +572,108 @@ class V2ReportView extends ConsumerWidget {
   Widget _line(List<Map<String, dynamic>> rows, {bool area = false}) {
     final xy = _resolveXY(rows);
     if (xy == null) return _table(rows);
-    final y = xy.y; // x-axis uses index position for line charts
+    final x = xy.x;
+    final y = xy.y;
     final pts = <FlSpot>[];
     for (int i = 0; i < rows.length; i++) {
       final yv = _toDouble(rows[i][y]);
       if (yv != null) pts.add(FlSpot(i.toDouble(), yv));
     }
     if (pts.isEmpty) return _table(rows);
+    final maxY = pts.map((p) => p.y).fold<double>(0, (a, b) => b > a ? b : a);
+    final topY = maxY <= 0 ? 1.0 : maxY * 1.12;
     return _shell(
       child: LineChart(
         LineChartData(
+          minY: 0,
+          maxY: topY,
           lineBarsData: [
             LineChartBarData(
               spots: pts,
               isCurved: true,
               barWidth: 2,
               color: OpticsColors.accentCyan,
-              dotData: const FlDotData(show: false),
+              dotData: FlDotData(
+                show: rows.length <= 12,
+                getDotPainter: (_, __, ___, ____) => FlDotCirclePainter(
+                  radius: 3,
+                  color: OpticsColors.accentCyan,
+                  strokeWidth: 0,
+                ),
+              ),
               belowBarData: area
                   ? BarAreaData(
                       show: true,
-                      color:
-                          OpticsColors.accentCyan.withValues(alpha: 0.18),
+                      color: OpticsColors.accentCyan.withValues(alpha: 0.18),
                     )
                   : BarAreaData(show: false),
             ),
           ],
-          gridData: const FlGridData(show: false),
+          gridData: FlGridData(
+            show: true,
+            drawVerticalLine: false,
+            getDrawingHorizontalLine: (_) => FlLine(
+              color: OpticsColors.border.withValues(alpha: 0.4),
+              strokeWidth: 0.5,
+            ),
+          ),
           borderData: FlBorderData(show: false),
-          titlesData: const FlTitlesData(show: false),
+          titlesData: FlTitlesData(
+            topTitles: const AxisTitles(),
+            rightTitles: const AxisTitles(),
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 48,
+                getTitlesWidget: (v, _) => Text(
+                  _fmtAxisValue(v),
+                  style: OpticsTextStyles.bodySm.copyWith(fontSize: 9),
+                  textAlign: TextAlign.right,
+                ),
+              ),
+            ),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 28,
+                interval: _xInterval(rows.length),
+                getTitlesWidget: (v, _) {
+                  final i = v.toInt();
+                  if (i < 0 || i >= rows.length) return const SizedBox.shrink();
+                  final label = rows[i][x]?.toString() ?? '';
+                  // Shorten to last 5 chars for dates like "5-11-26"
+                  final short = label.length > 7 ? label.substring(label.length - 7) : label;
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      short,
+                      style: OpticsTextStyles.bodySm.copyWith(fontSize: 9),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
         ),
       ),
     );
+  }
+
+  /// Y-axis label formatter — compact suffixes for large numbers.
+  static String _fmtAxisValue(double v) {
+    if (v >= 1000000) return '\${(v / 1000000).toStringAsFixed(1)}M';
+    if (v >= 1000) return '\${(v / 1000).toStringAsFixed(0)}K';
+    if (v == v.roundToDouble()) return v.toStringAsFixed(0);
+    return v.toStringAsFixed(1);
+  }
+
+  /// Interval so we don't show every x label when there are many points.
+  static double _xInterval(int count) {
+    if (count <= 8) return 1;
+    if (count <= 16) return 2;
+    if (count <= 24) return 3;
+    return (count / 8).ceilToDouble();
   }
 
   Widget _pie(List<Map<String, dynamic>> rows, {bool donut = false}) {
@@ -658,8 +728,15 @@ final _moneyKeywords = RegExp(
   caseSensitive: false,
 );
 
-bool _isMoneyHeader(String header) =>
-    _moneyHeaders.contains(header) || _moneyKeywords.hasMatch(header);
+bool _isMoneyHeader(String header) {
+  if (_moneyHeaders.contains(header)) return true;
+  // Test against the full header, AND against individual words split by
+  // underscore/space so that snake_case column names like "total_sales_usd"
+  // are correctly detected (underscores are word chars, so \b won't fire).
+  if (_moneyKeywords.hasMatch(header)) return true;
+  final words = header.split(RegExp(r'[_\s]+'));
+  return words.any((w) => _moneyKeywords.hasMatch(w));
+}
 
 /// Maps raw DB values to display-friendly labels for specific columns.
 String _formatCellValue(String header, dynamic value) {

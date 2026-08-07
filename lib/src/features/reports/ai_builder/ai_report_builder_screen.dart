@@ -841,13 +841,12 @@ class _AiReportBuilderScreenState
   // ── Widget View for SQL builder — chart type selector + preview ──────────
 
   static const _sqlChartTypes = [
-    ('table',  Icons.table_chart_outlined,   'Table'),
-    ('bar',    Icons.bar_chart,              'Bar'),
-    ('hbar',   Icons.bar_chart_outlined,      'H-Bar'),
-    ('line',   Icons.show_chart,             'Line'),
-    ('area',   Icons.area_chart,             'Area'),
-    ('pie',    Icons.pie_chart_outline,      'Pie'),
-    ('donut',  Icons.donut_small,             'Donut'),
+    ('table', Icons.table_chart_outlined,        'Table'),
+    ('line',  Icons.show_chart,                  'Line'),
+    ('bar',   Icons.bar_chart,                   'Bar'),
+    ('combo', Icons.stacked_line_bar,            'Combo'),
+    ('pie',   Icons.pie_chart_outline,           'Pie'),
+    ('donut', Icons.donut_small,                 'Donut'),
   ];
 
   /// Parse column aliases from a raw SQL SELECT to auto-detect x/y axes.

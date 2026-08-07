@@ -122,7 +122,22 @@ SqlNormalizerResult normalizeMySqlToPostgres(String input) {
     },
   );
 
-  // Step 0b: mask strings + comments so we don't rewrite inside them.
+  // Step 0b: DATE_FORMAT(x, 'fmt') → to_char(x, 'PG_FMT') BEFORE masking.
+  // This must run before masking because masking will hide the format string
+  // inside a __SQLLIT_n__ placeholder, causing the regex to not match.
+  preprocessed = preprocessed.replaceAllMapped(
+    RegExp(r"\bDATE_FORMAT\s*\(\s*([^,]+?)\s*,\s*'([^']*)'\s*\)",
+        caseSensitive: false),
+    (m) {
+      final expr = m.group(1)!;
+      final fmt = m.group(2)!;
+      final converted = _convertMySqlDateFormat(fmt);
+      applied.add('Rewrote DATE_FORMAT($expr, ...) → to_char(...)');
+      return "to_char($expr, '${converted.postgresFormat}')";
+    },
+  );
+
+  // Step 0c: mask strings + comments so we don't rewrite inside them.
   final _MaskedSql masked = _maskLiteralsAndComments(preprocessed);
   String sql = masked.masked;
 

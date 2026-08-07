@@ -336,9 +336,18 @@ class AiBuilderNotifier extends StateNotifier<AiBuilderState> {
         ? history.sublist(history.length - 20)
         : history;
 
+    // On follow-up turns, annotate the prompt so the LLM knows this is a
+    // refinement request against an existing query, not a fresh report request.
+    // Short user messages like "no data displayed", "change to bar chart", or
+    // "remove the date filter" are completely ambiguous without this framing.
+    final isFollowUp = state.turnIndex > 0 && state.currentQuery != null;
+    final effectivePrompt = isFollowUp
+        ? '[REFINEMENT REQUEST — modify the current query shown in the system prompt]\n\nUser says: $prompt'
+        : prompt;
+
     try {
       final result = await _api.generateQuery(
-        prompt: prompt,
+        prompt: effectivePrompt,
         tenantId: tenantId,
         sessionId: state.sessionId,
         turnIndex: state.turnIndex,

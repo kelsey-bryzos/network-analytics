@@ -11,6 +11,7 @@
 // change (best-effort; UI is optimistic and does not block on the write).
 
 import 'dart:async';
+import 'dart:convert' show jsonEncode;
 import 'dart:math' as math;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -31,6 +32,10 @@ class ChatMessage {
   final int? inputTokens;
   final int? outputTokens;
   final double? costUsd;
+  // The actual query JSON this assistant message produced (null for user/system).
+  // Used to inject the LLM's own prior outputs back into conversation history
+  // so follow-up turns have full context of what was built.
+  final Map<String, dynamic>? queryJson;
 
   const ChatMessage({
     required this.role,
@@ -42,6 +47,7 @@ class ChatMessage {
     this.inputTokens,
     this.outputTokens,
     this.costUsd,
+    this.queryJson,
   });
 
   Map<String, dynamic> toJson() => {
@@ -54,6 +60,7 @@ class ChatMessage {
         if (inputTokens != null) 'input_tokens': inputTokens,
         if (outputTokens != null) 'output_tokens': outputTokens,
         if (costUsd != null) 'cost_usd': costUsd,
+        if (queryJson != null) 'query_json': queryJson,
       };
 
   static ChatMessage fromJson(Map<String, dynamic> j) => ChatMessage(
@@ -70,6 +77,9 @@ class ChatMessage {
         outputTokens: j['output_tokens'] as int?,
         costUsd: (j['cost_usd'] is num)
             ? (j['cost_usd'] as num).toDouble()
+            : null,
+        queryJson: j['query_json'] is Map
+            ? Map<String, dynamic>.from(j['query_json'] as Map)
             : null,
       );
 }
@@ -298,14 +308,33 @@ class AiBuilderNotifier extends StateNotifier<AiBuilderState> {
     }
     state = state.copyWith(isGenerating: true, errorMessage: null);
 
-    // Compose history (only user/assistant text messages, most recent 20).
+    // Compose history for the LLM — last 20 non-system messages.
+    // For assistant turns that produced a query, we embed the actual query
+    // JSON inline so the LLM sees exactly what it built and can refine it
+    // precisely. Without this, it only sees a vague human summary and
+    // essentially starts from scratch on every follow-up turn.
     final history = state.messages
         .where((m) => m.role != ChatRole.system)
-        .map((m) => {
-              'role': m.role == ChatRole.user ? 'user' : 'assistant',
-              'content': m.content,
-            })
-        .toList();
+        .map((m) {
+          if (m.role == ChatRole.assistant && m.queryJson != null) {
+            // Embed the query JSON so the LLM knows what it actually produced.
+            final json = _prettyJson(m.queryJson!);
+            return {
+              'role': 'assistant',
+              'content': '${m.content}\n\nQuery I built:\n```json\n$json\n```',
+            };
+          }
+          return {
+            'role': m.role == ChatRole.user ? 'user' : 'assistant',
+            'content': m.content,
+          };
+        })
+        .toList()
+        .cast<Map<String, dynamic>>();
+    // Keep most recent 20 turns — older turns are still covered by current_query.
+    final trimmedHistory = history.length > 20
+        ? history.sublist(history.length - 20)
+        : history;
 
     try {
       final result = await _api.generateQuery(
@@ -313,7 +342,7 @@ class AiBuilderNotifier extends StateNotifier<AiBuilderState> {
         tenantId: tenantId,
         sessionId: state.sessionId,
         turnIndex: state.turnIndex,
-        history: history,
+        history: trimmedHistory,
         currentQuery: state.currentQuery,
         targetView: state.previewMode == PreviewMode.widget ? 'widget' : 'report',
       );
@@ -363,6 +392,7 @@ class AiBuilderNotifier extends StateNotifier<AiBuilderState> {
           inputTokens: result.inputTokens,
           outputTokens: result.outputTokens,
           costUsd: result.costUsd,
+          queryJson: result.query, // persist the actual query for history enrichment
         );
         // Auto-name from primary_table on first generation only.
         // Never includes chart type per design rule.
@@ -412,6 +442,16 @@ class AiBuilderNotifier extends StateNotifier<AiBuilderState> {
         ],
         errorMessage: e.toString(),
       );
+    }
+  }
+
+  /// Produces a compact JSON string of a query map.
+  /// Used to embed the LLM's previous output into conversation history.
+  String _prettyJson(Map<String, dynamic> q) {
+    try {
+      return jsonEncode(q);
+    } catch (_) {
+      return q.toString();
     }
   }
 

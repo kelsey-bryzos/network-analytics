@@ -141,7 +141,7 @@ class AiApi {
     required String tenantId,
     required String sessionId,
     required int turnIndex,
-    List<Map<String, String>> history = const [],
+    List<Map<String, dynamic>> history = const [],
     Map<String, dynamic>? currentQuery,
     String targetView = 'report',
   }) async {

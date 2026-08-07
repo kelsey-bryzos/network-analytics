@@ -404,11 +404,6 @@ class AiBuilderNotifier extends StateNotifier<AiBuilderState> {
           costUsd: result.costUsd,
           queryJson: result.query, // persist the actual query for history enrichment
         );
-        // Auto-name from primary_table on first generation only.
-        // Never includes chart type per design rule.
-        final autoName = state.reportName == 'Untitled'
-            ? _autoNameFromQuery(result.query!)
-            : state.reportName;
         state = state.copyWith(
           isGenerating: false,
           sessionId: result.sessionId,
@@ -416,7 +411,6 @@ class AiBuilderNotifier extends StateNotifier<AiBuilderState> {
           messages: [...state.messages, msg],
           queryStack: trimmed,
           stackIndex: newIndex,
-          reportName: autoName,
         );
         _persist();
         return;

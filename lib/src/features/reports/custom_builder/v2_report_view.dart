@@ -134,25 +134,32 @@ class V2ReportView extends ConsumerWidget {
     final List<String> headers;
     final List<String> lookupKeys;
 
-    if (query.columns.isNotEmpty) {
+    if (query.columns.isNotEmpty || query.aggregates.isNotEmpty) {
       // rds_execute_query returns rows keyed by alias (e.g. "Source", "Buyer")
       // because the SQL uses: SELECT t.source as "Source", ...
-      // So both the display header AND the lookup key must use c.alias.
+      // Column order: regular columns first, then aggregates -- matching the
+      // SELECT list order the RPC builds.
       final available = rows.first.keys.toSet();
-      final cols = query.columns
-          .where((c) => available.contains(c.alias))
+      final colAliases = query.columns
+          .map((c) => c.alias)
+          .where(available.contains)
           .toList();
-      if (cols.isNotEmpty) {
-        headers    = cols.map((c) => c.alias).toList();
-        lookupKeys = cols.map((c) => c.alias).toList();
+      final aggAliases = query.aggregates
+          .map((a) => a.alias)
+          .where(available.contains)
+          .toList();
+      final combined = [...colAliases, ...aggAliases];
+      if (combined.isNotEmpty) {
+        headers    = combined;
+        lookupKeys = combined;
       } else {
-        // Fallback: no alias matches — use raw row key order
+        // Fallback: no alias matches -- use raw row key order
         final keys = rows.first.keys.toList();
         headers    = keys;
         lookupKeys = keys;
       }
     } else {
-      // Legacy reports with no columns spec — fall back to row key order.
+      // Legacy reports with no columns spec -- fall back to row key order.
       final keys = rows.first.keys.toList();
       headers    = keys;
       lookupKeys = keys;

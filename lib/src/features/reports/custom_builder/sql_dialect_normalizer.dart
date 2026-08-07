@@ -226,6 +226,48 @@ SqlNormalizerResult normalizeMySqlToPostgres(String input) {
     },
   );
 
+  // Step 6c: YEAR(x) → EXTRACT(YEAR FROM x)
+  //           MONTH(x) → EXTRACT(MONTH FROM x)
+  //           DAY(x) / DAYOFMONTH(x) → EXTRACT(DAY FROM x)
+  //           HOUR(x)  → EXTRACT(HOUR FROM x)
+  //           MINUTE(x) → EXTRACT(MINUTE FROM x)
+  //           SECOND(x) → EXTRACT(SECOND FROM x)
+  //           WEEK(x)   → EXTRACT(WEEK FROM x)
+  // Must run before masking step already done, so applied to current `sql`.
+  final extractFunctions = <String, String>{
+    r'\bYEAR\b': 'YEAR',
+    r'\bMONTH\b': 'MONTH',
+    r'\bDAYOFMONTH\b': 'DAY',
+    r'\bDAY\b': 'DAY',
+    r'\bHOUR\b': 'HOUR',
+    r'\bMINUTE\b': 'MINUTE',
+    r'\bSECOND\b': 'SECOND',
+    r'\bWEEK\b': 'WEEK',
+  };
+  // Process longest/most-specific patterns first to avoid DAY matching DAYOFMONTH.
+  final orderedKeys = ['DAYOFMONTH', 'YEAR', 'MONTH', 'HOUR', 'MINUTE', 'SECOND', 'WEEK', 'DAY'];
+  final extractMap = {
+    'DAYOFMONTH': 'DAY',
+    'YEAR': 'YEAR',
+    'MONTH': 'MONTH',
+    'HOUR': 'HOUR',
+    'MINUTE': 'MINUTE',
+    'SECOND': 'SECOND',
+    'WEEK': 'WEEK',
+    'DAY': 'DAY',
+  };
+  for (final fn in orderedKeys) {
+    final re = RegExp(r'\b' + fn + r'\s*\(([^)]+)\)', caseSensitive: false);
+    if (re.hasMatch(sql)) {
+      sql = sql.replaceAllMapped(re, (m) {
+        final expr = m.group(1)!;
+        final part = extractMap[fn]!;
+        applied.add('Rewrote MySQL $fn(x) → EXTRACT($part FROM x)');
+        return 'EXTRACT($part FROM $expr)';
+      });
+    }
+  }
+
   // Step 7a: DATE_SUB(x, INTERVAL n UNIT) → (x - INTERVAL 'n units')
   //          DATE_ADD(x, INTERVAL n UNIT) → (x + INTERVAL 'n units')
   sql = sql.replaceAllMapped(

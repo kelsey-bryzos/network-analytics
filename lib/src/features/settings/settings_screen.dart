@@ -14,6 +14,7 @@ import '../dashboards/dashboards_list_screen.dart' show activeDashboardIdProvide
 import '../../design/optics_card.dart';
 import '../../design/theme.dart';
 import 'role_info_tooltip.dart';
+import 'ai_context_objective_section.dart';
 
 // ---------------------------------------------------------------------------
 // Secure error display helpers.
@@ -368,21 +369,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('ORGANIZATION SETTINGS', style: OpticsTextStyles.headingXl),
-              // Only Bryzos Owners can create new organizations.
-              Consumer(builder: (context, ref, _) {
-                final isOwner = ref.watch(isBryzosOwnerProvider).value ?? false;
-                if (!isOwner) return const SizedBox.shrink();
-                return ElevatedButton.icon(
-                  onPressed: _showAddOrgDialog,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Add New Organization'),
-                );
-              }),
-            ],
+          // Header row height locked to 36px so the title's vertical position
+          // matches Reports Library and Report Builder exactly.
+          SizedBox(
+            height: 36,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Text('ORGANIZATION SETTINGS',
+                    style: OpticsTextStyles.headingXl),
+                // Only Bryzos Owners can create new organizations.
+                Consumer(builder: (context, ref, _) {
+                  final isOwner =
+                      ref.watch(isBryzosOwnerProvider).value ?? false;
+                  if (!isOwner) return const SizedBox.shrink();
+                  return ElevatedButton.icon(
+                    onPressed: _showAddOrgDialog,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add New Organization'),
+                  );
+                }),
+              ],
+            ),
           ),
           const SizedBox(height: OpticsSpacing.xl),
           if (_loading)
@@ -427,6 +436,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               );
             }),
 
+          // ─────────────────────────────────────────────────────────────
+          // AI Context Objective — Bryzos-only, global (not tenant-scoped).
+          // Silently injected into every AI Report Builder request so every
+          // LLM understands the Bryzos "Gone In 60 Seconds" domain.
+          // The section itself renders nothing for non-Bryzos users.
+          // ─────────────────────────────────────────────────────────────
+          const SizedBox(height: OpticsSpacing.xl),
+          const AiContextObjectiveSection(),
         ],
       ),
     );

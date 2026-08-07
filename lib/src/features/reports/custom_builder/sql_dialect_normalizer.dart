@@ -109,8 +109,36 @@ SqlNormalizerResult normalizeMySqlToPostgres(String input) {
   final applied = <String>[];
   final issues = <SqlNormalizerIssue>[];
 
-  // Step 0: mask strings + comments so we don't rewrite inside them.
-  final _MaskedSql masked = _maskLiteralsAndComments(input);
+  // Step 0a: Convert MySQL single-quoted column aliases to double-quoted
+  // Postgres identifiers BEFORE masking, so masking doesn't hide them.
+  // Pattern: AS 'some alias'  →  AS "some alias"
+  // We only match the alias context (after AS keyword) to avoid touching
+  // real string literals in WHERE clauses etc.
+  String preprocessed = input.replaceAllMapped(
+    RegExp(r"\bAS\s+'([^']+)'", caseSensitive: false),
+    (m) {
+      applied.add("Rewrote single-quoted alias AS '${m.group(1)}' → AS \"${m.group(1)}\"");
+      return 'AS "${m.group(1)}"';
+    },
+  );
+
+  // Step 0b: DATE_FORMAT(x, 'fmt') → to_char(x, 'PG_FMT') BEFORE masking.
+  // This must run before masking because masking will hide the format string
+  // inside a __SQLLIT_n__ placeholder, causing the regex to not match.
+  preprocessed = preprocessed.replaceAllMapped(
+    RegExp(r"\bDATE_FORMAT\s*\(\s*([^,]+?)\s*,\s*'([^']*)'\s*\)",
+        caseSensitive: false),
+    (m) {
+      final expr = m.group(1)!;
+      final fmt = m.group(2)!;
+      final converted = _convertMySqlDateFormat(fmt);
+      applied.add('Rewrote DATE_FORMAT($expr, ...) → to_char(...)');
+      return "to_char($expr, '${converted.postgresFormat}')";
+    },
+  );
+
+  // Step 0c: mask strings + comments so we don't rewrite inside them.
+  final _MaskedSql masked = _maskLiteralsAndComments(preprocessed);
   String sql = masked.masked;
 
   // Step 1: backticks → double quotes for identifiers.
@@ -182,7 +210,83 @@ SqlNormalizerResult normalizeMySqlToPostgres(String input) {
     },
   );
 
-  // Step 7: DATE_FORMAT(x, '%Y-%m-%d') → to_char(x, 'YYYY-MM-DD')
+  // Step 6b: Bare INTERVAL n UNIT (no quotes) → INTERVAL 'n UNIT'
+  // MySQL allows: NOW() - INTERVAL 56 DAY
+  // Postgres requires: NOW() - INTERVAL '56 DAY'
+  // Only fires when INTERVAL is NOT already followed by a single-quoted string.
+  // We match the __SQLLIT_n__ mask to detect already-quoted cases (they were
+  // masked in Step 0c) — if INTERVAL is followed by a placeholder, skip it.
+  sql = sql.replaceAllMapped(
+    RegExp(r'\bINTERVAL\s+(\d+)\s+([A-Za-z]+)\b', caseSensitive: false),
+    (m) {
+      final amount = m.group(1)!;
+      final unit = m.group(2)!.toUpperCase();
+      applied.add("Rewrote bare INTERVAL $amount $unit → INTERVAL '$amount $unit'");
+      return "INTERVAL '$amount $unit'";
+    },
+  );
+
+  // Step 6c: YEAR(x) → EXTRACT(YEAR FROM x)
+  //           MONTH(x) → EXTRACT(MONTH FROM x)
+  //           DAY(x) / DAYOFMONTH(x) → EXTRACT(DAY FROM x)
+  //           HOUR(x)  → EXTRACT(HOUR FROM x)
+  //           MINUTE(x) → EXTRACT(MINUTE FROM x)
+  //           SECOND(x) → EXTRACT(SECOND FROM x)
+  //           WEEK(x)   → EXTRACT(WEEK FROM x)
+  // Must run before masking step already done, so applied to current `sql`.
+  final extractFunctions = <String, String>{
+    r'\bYEAR\b': 'YEAR',
+    r'\bMONTH\b': 'MONTH',
+    r'\bDAYOFMONTH\b': 'DAY',
+    r'\bDAY\b': 'DAY',
+    r'\bHOUR\b': 'HOUR',
+    r'\bMINUTE\b': 'MINUTE',
+    r'\bSECOND\b': 'SECOND',
+    r'\bWEEK\b': 'WEEK',
+  };
+  // Process longest/most-specific patterns first to avoid DAY matching DAYOFMONTH.
+  final orderedKeys = ['DAYOFMONTH', 'YEAR', 'MONTH', 'HOUR', 'MINUTE', 'SECOND', 'WEEK', 'DAY'];
+  final extractMap = {
+    'DAYOFMONTH': 'DAY',
+    'YEAR': 'YEAR',
+    'MONTH': 'MONTH',
+    'HOUR': 'HOUR',
+    'MINUTE': 'MINUTE',
+    'SECOND': 'SECOND',
+    'WEEK': 'WEEK',
+    'DAY': 'DAY',
+  };
+  for (final fn in orderedKeys) {
+    final re = RegExp(r'\b' + fn + r'\s*\(([^)]+)\)', caseSensitive: false);
+    if (re.hasMatch(sql)) {
+      sql = sql.replaceAllMapped(re, (m) {
+        final expr = m.group(1)!;
+        final part = extractMap[fn]!;
+        applied.add('Rewrote MySQL $fn(x) → EXTRACT($part FROM x)');
+        return 'EXTRACT($part FROM $expr)';
+      });
+    }
+  }
+
+  // Step 7a: DATE_SUB(x, INTERVAL n UNIT) → (x - INTERVAL 'n units')
+  //          DATE_ADD(x, INTERVAL n UNIT) → (x + INTERVAL 'n units')
+  sql = sql.replaceAllMapped(
+    RegExp(r"\bDATE_(SUB|ADD)\s*\(\s*(.+?)\s*,\s*INTERVAL\s+'?(\d+)\s+([A-Za-z]+)'?\s*\)",
+        caseSensitive: false),
+    (m) {
+      final op = m.group(1)!.toUpperCase() == 'SUB' ? '-' : '+';
+      final expr = m.group(2)!;
+      final amount = m.group(3)!;
+      final unit = m.group(4)!.toLowerCase();
+      // Normalize unit to Postgres interval keyword (plural form)
+      final pgUnit = _normalizePgIntervalUnit(unit);
+      applied.add(
+          'Rewrote DATE_${m.group(1)!.toUpperCase()}($expr, INTERVAL $amount $unit) → ($expr $op INTERVAL \'$amount $pgUnit\')');
+      return "($expr $op INTERVAL '$amount $pgUnit')";
+    },
+  );
+
+  // Step 7b: DATE_FORMAT(x, '%Y-%m-%d') → to_char(x, 'YYYY-MM-DD')
   // We convert a small set of the most common format tokens; unknown tokens
   // are passed through with a warning so the user knows to check.
   sql = sql.replaceAllMapped(
@@ -248,29 +352,9 @@ SqlNormalizerResult normalizeMySqlToPostgres(String input) {
     },
   );
 
-  // Step 10: Double-quoted string literals — MySQL allows "foo" as a string,
-  // but in Postgres "foo" is an identifier. If any double-quoted literal was
-  // captured during masking as a *string* (not an identifier), we've already
-  // safely masked it and will unmask below. But if a raw `"...` remains in
-  // the visible sql now that clearly looks like a string (has spaces, is on
-  // the RHS of `=`, etc.) we warn — safer than a wrong auto-rewrite.
-  //
-  // In practice: the mask step captured only single-quoted literals, so any
-  // double-quoted content is treated as an identifier and left alone. We
-  // surface a warning if the SQL contains double-quoted content that looks
-  // suspicious (contains a space, common in string values).
-  final suspiciousDq = RegExp(r'"[^"]* [^"]*"').firstMatch(sql);
-  if (suspiciousDq != null) {
-    issues.add(SqlNormalizerIssue(
-      severity: SqlIssueSeverity.warning,
-      code: 'double_quoted_string_literal',
-      message:
-          'Found "${suspiciousDq.group(0)}" — in Postgres double quotes mean an identifier, not a string. If this was meant to be a string, use single quotes.',
-      suggestedFix: suspiciousDq
-          .group(0)!
-          .replaceAll('"', "'"),
-    ));
-  }
+  // Step 10: Double-quoted content with spaces is now intentional — it means
+  // a multi-word column alias that we auto-converted from single quotes in
+  // Step 0a (e.g. AS "Buyer Email"). No warning needed; this is valid Postgres.
 
   // Restore masked strings + comments.
   final restored = _unmask(sql, masked);
@@ -370,6 +454,31 @@ List<String> _splitTopLevelArgs(String s) {
   }
   if (buf.isNotEmpty) out.add(buf.toString().trim());
   return out;
+}
+
+/// Normalize a MySQL INTERVAL unit keyword to the Postgres plural form.
+/// e.g. DAY → days, MONTH → months, YEAR → years, HOUR → hours, etc.
+String _normalizePgIntervalUnit(String unit) {
+  const map = <String, String>{
+    'microsecond': 'microseconds',
+    'microseconds': 'microseconds',
+    'second': 'seconds',
+    'seconds': 'seconds',
+    'minute': 'minutes',
+    'minutes': 'minutes',
+    'hour': 'hours',
+    'hours': 'hours',
+    'day': 'days',
+    'days': 'days',
+    'week': 'weeks',
+    'weeks': 'weeks',
+    'month': 'months',
+    'months': 'months',
+    'quarter': 'months', // no direct quarter in Postgres interval, approximate
+    'year': 'years',
+    'years': 'years',
+  };
+  return map[unit.toLowerCase()] ?? unit.toLowerCase();
 }
 
 class _DateFormatConversion {

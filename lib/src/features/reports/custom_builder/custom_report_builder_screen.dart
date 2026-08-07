@@ -27,6 +27,7 @@ import '../../../data/supabase_repo.dart';
 import '../../../design/theme.dart';
 import '../../../shared/secure_error.dart';
 import '../report_viewer_screen.dart' show restDataSourceIdProvider;
+import '../ai_builder/ai_report_builder_screen.dart' show aiHandoffQuery;
 import 'custom_report_query_v2.dart';
 import 'custom_report_validator.dart';
 
@@ -266,11 +267,19 @@ class _CustomReportBuilderScreenState
     _hydrated = true;
     final id = widget.reportId;
     if (id == null) {
+      // One-shot handoff from AI Report Builder: if the user chose
+      // "Open in Manual Builder" from the AI flow, we preload the JSON
+      // it produced. The handoff is consumed exactly once.
+      final handoff = aiHandoffQuery;
+      aiHandoffQuery = null;
+      final initial = handoff != null
+          ? CustomReportQueryV2.fromJson(handoff)
+          : CustomReportQueryV2();
       ref.read(_builderProvider.notifier).hydrate(
             reportId: null,
             title: 'Untitled Report',
             description: null,
-            query: CustomReportQueryV2(),
+            query: initial,
           );
       return;
     }
@@ -323,7 +332,7 @@ class _CustomReportBuilderScreenState
         'name': st.title,
         'description': st.description,
         'layout': layout,
-        'status': 'pending',
+        'status': 'live',
         'query_version': 2,
       };
       String? newId = st.reportId;
@@ -473,16 +482,6 @@ class _CustomReportBuilderScreenState
               icon: const Icon(Icons.check, size: 16),
               label: const Text('Save & Close'),
               onPressed: _saving ? null : () => _save(close: true),
-            ),
-            const SizedBox(width: OpticsSpacing.sm),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.publish, size: 16),
-              label: const Text('Publish'),
-              onPressed: _saving ? null : _publish,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: OpticsColors.accentGreen,
-                foregroundColor: Colors.white,
-              ),
             ),
             const SizedBox(width: OpticsSpacing.md),
           ],
@@ -2991,17 +2990,7 @@ class _PreviewPanel extends ConsumerWidget {
       }
       if (hasValue && allNum) numericCols.add(h);
     }
-    final primaryNumeric =
-        headers.firstWhere(numericCols.contains, orElse: () => '');
-    double grandTotal = 0;
-    if (primaryNumeric.isNotEmpty) {
-      for (final r in rows) {
-        final v = r[primaryNumeric];
-        final n = v is num ? v.toDouble() : double.tryParse('${v ?? ''}');
-        if (n != null) grandTotal += n;
-      }
-    }
-    final showShare = primaryNumeric.isNotEmpty && grandTotal > 0;
+    // Share % permanently removed — no computation needed.
     final palette = OpticsColors.chartPalette;
 
     Widget headerCell(String text, {bool rightAlign = false}) => Text(
@@ -3043,11 +3032,7 @@ class _PreviewPanel extends ConsumerWidget {
                       rightAlign: numericCols.contains(headers[i]),
                     ),
                   ),
-                if (showShare)
-                  SizedBox(
-                    width: 56,
-                    child: headerCell('Share', rightAlign: true),
-                  ),
+
               ],
             ),
           ),
@@ -3061,9 +3046,6 @@ class _PreviewPanel extends ConsumerWidget {
                       row: rows[rank],
                       headers: headers,
                       numericCols: numericCols,
-                      primaryNumeric: primaryNumeric,
-                      grandTotal: grandTotal,
-                      showShare: showShare,
                       palette: palette,
                     ),
                 ],
@@ -3080,21 +3062,10 @@ class _PreviewPanel extends ConsumerWidget {
     required Map<String, dynamic> row,
     required List<String> headers,
     required Set<String> numericCols,
-    required String primaryNumeric,
-    required double grandTotal,
-    required bool showShare,
     required List<Color> palette,
   }) {
     final rowColor = palette[rank % palette.length];
     final isOdd = rank % 2 == 1;
-    double? primaryVal;
-    if (showShare) {
-      final v = row[primaryNumeric];
-      primaryVal = v is num ? v.toDouble() : double.tryParse('${v ?? ''}');
-    }
-    final share = (primaryVal != null && grandTotal > 0)
-        ? primaryVal / grandTotal * 100
-        : 0.0;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
@@ -3156,18 +3127,6 @@ class _PreviewPanel extends ConsumerWidget {
                           : TextAlign.left,
                       overflow: TextOverflow.ellipsis,
                     ),
-            ),
-          if (showShare)
-            SizedBox(
-              width: 56,
-              child: Text(
-                '${share.toStringAsFixed(1)}%',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: OpticsColors.textSecondary,
-                ),
-                textAlign: TextAlign.right,
-              ),
             ),
         ],
       ),

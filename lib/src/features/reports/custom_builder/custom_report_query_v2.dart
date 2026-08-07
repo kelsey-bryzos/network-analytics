@@ -311,7 +311,6 @@ class CustomReportQueryV2 {
   final List<OrderBySpec> orderBy;
   int? limit;
   VizSpec viz;
-  bool showShare;
 
   /// Computed SELECT expressions (Bryzos-only). Emitted verbatim into the
   /// SELECT list with the given alias; alias becomes referenceable by
@@ -359,7 +358,6 @@ class CustomReportQueryV2 {
     this.postFetchAggregationNote,
     this.limit,
     VizSpec? viz,
-    this.showShare = true,
     this.useRawSql = false,
     this.sqlAuthored,
     this.sqlNormalized,
@@ -392,7 +390,6 @@ class CustomReportQueryV2 {
           'post_fetch_aggregation_note': postFetchAggregationNote,
         if (limit != null) 'limit': limit,
         'viz': viz.toJson(),
-        if (!showShare) 'show_share': false,
         if (useRawSql) 'use_raw_sql': true,
         if (sqlAuthored != null && sqlAuthored!.isNotEmpty)
           'sql_authored': sqlAuthored,
@@ -442,7 +439,6 @@ class CustomReportQueryV2 {
         viz: j['viz'] is Map<String, dynamic>
             ? VizSpec.fromJson(j['viz'] as Map<String, dynamic>)
             : VizSpec(),
-        showShare: j['show_share'] is bool ? j['show_share'] as bool : true,
         useRawSql: j['use_raw_sql'] is bool ? j['use_raw_sql'] as bool : false,
         sqlAuthored: j['sql_authored'] as String?,
         sqlNormalized: j['sql_normalized'] as String?,

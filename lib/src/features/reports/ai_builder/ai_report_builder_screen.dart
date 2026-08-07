@@ -1480,7 +1480,54 @@ class _AiReportBuilderScreenState
                 ],
               ),
             ),
+            const SizedBox(width: OpticsSpacing.md),
+            // Inline name field — mirrors SQL panel behaviour.
+            Expanded(child: _aiNameField(st)),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _aiNameField(AiBuilderState st) {
+    return TextField(
+      controller: _nameCtrl,
+      style: OpticsTextStyles.body.copyWith(fontSize: 13),
+      textAlignVertical: TextAlignVertical.center,
+      onTap: () {
+        if (_nameCtrl.text == 'Untitled') {
+          _nameCtrl.selection = TextSelection(
+              baseOffset: 0, extentOffset: _nameCtrl.text.length);
+        }
+      },
+      onChanged: (v) {
+        _nameSyncPending = true;
+        ref.read(aiBuilderProvider.notifier).setReportName(v);
+        _nameSyncPending = false;
+      },
+      onEditingComplete: () => FocusScope.of(context).unfocus(),
+      decoration: InputDecoration(
+        hintText: 'Report name…',
+        hintStyle: OpticsTextStyles.bodyLight.copyWith(
+          color: OpticsColors.textMuted,
+          fontSize: 13,
+        ),
+        filled: true,
+        fillColor: OpticsColors.surface,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(OpticsRadii.sm),
+          borderSide: const BorderSide(color: OpticsColors.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(OpticsRadii.sm),
+          borderSide: const BorderSide(color: OpticsColors.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(OpticsRadii.sm),
+          borderSide:
+              const BorderSide(color: OpticsColors.accentCyan, width: 1.2),
         ),
       ),
     );
@@ -1727,18 +1774,11 @@ class _AiReportBuilderScreenState
             runSpacing: OpticsSpacing.sm,
             children: [
               _actionBtn(
-                label: 'Save Report',
+                label: 'Save Report & Widget',
                 icon: Icons.save_outlined,
                 primary: true,
                 enabled: enabled,
                 onTap: () => _saveAsReport(st),
-              ),
-              _actionBtn(
-                label: 'Save Widget',
-                icon: Icons.dashboard_customize_outlined,
-                primary: false,
-                enabled: enabled,
-                onTap: () => _saveAsWidget(st),
               ),
               _actionBtn(
                 label: 'Open in Manual Builder',

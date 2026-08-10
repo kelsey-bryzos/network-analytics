@@ -19,7 +19,6 @@ import 'package:go_router/go_router.dart';
 import '../../../data/supabase_repo.dart';
 import '../../../design/theme.dart';
 import '../../../shared/secure_error.dart';
-import '../custom_builder/custom_report_builder_screen.dart';
 import '../custom_builder/custom_report_query_v2.dart';
 import '../custom_builder/sql_dialect_normalizer.dart';
 import '../custom_builder/v2_report_view.dart';
@@ -99,11 +98,6 @@ class _AiReportBuilderScreenState
 
   @override
   Widget build(BuildContext context) {
-    // Bryzos gate — non-Bryzos users get the manual builder directly.
-    if (!isBryzosUser(ref)) {
-      return const CustomReportBuilderScreen();
-    }
-
     final st = ref.watch(aiBuilderProvider);
     ref.listen<AiBuilderState>(aiBuilderProvider, (prev, next) {
       _scrollChatToBottom();
@@ -192,8 +186,10 @@ class _AiReportBuilderScreenState
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               _manualBuildButton(),
-                              const SizedBox(height: OpticsSpacing.sm),
-                              _sqlBuildButton(),
+                              if (isBryzosUser(ref)) ...[
+                                const SizedBox(height: OpticsSpacing.sm),
+                                _sqlBuildButton(),
+                              ],
                             ],
                           ),
                         ),

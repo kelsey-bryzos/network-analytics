@@ -60,6 +60,12 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
   /// Auto-refresh timer driven by the dashboard-level `refreshInterval` setting.
   Timer? _autoRefreshTimer;
 
+  /// Monotonically-increasing counter passed to every WidgetRenderer as its
+  /// fetch-cache key suffix. Incrementing this on each auto-refresh tick (or
+  /// manual reload) forces every renderer to bypass its cache and re-fetch
+  /// live data from the Edge Function, without rebuilding the widget tree.
+  int _refreshNonce = 0;
+
   /// Wall-clock timestamp of the last successful widget load — drives the
   /// "Last refreshed HH:MM" indicator next to the dashboard refresh button.
   DateTime? _lastRefreshedAt;

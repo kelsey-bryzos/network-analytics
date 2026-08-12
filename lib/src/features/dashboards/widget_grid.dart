@@ -32,6 +32,9 @@ class WidgetGrid extends StatefulWidget {
   final double cellHeight;
   final bool canEdit;
   final ScrollController? scrollController;
+  /// Forwarded to each WidgetRenderer to force a live data re-fetch on
+  /// auto-refresh timer ticks without rebuilding the widget tree.
+  final int refreshNonce;
 
   const WidgetGrid({
     super.key,
@@ -45,6 +48,7 @@ class WidgetGrid extends StatefulWidget {
     this.cellHeight = 24,
     this.canEdit = true,
     this.scrollController,
+    this.refreshNonce = 0,
   });
 
   @override
@@ -168,6 +172,7 @@ class _WidgetGridState extends State<WidgetGrid> {
           isDragging: isDragging,
           isResizing: isResizing,
           canEdit: widget.canEdit,
+          refreshNonce: widget.refreshNonce,
           onTap: widget.canEdit ? () => widget.onSelect(w) : null,
           onSettingsTap:
               widget.canEdit ? () => widget.onSelect(w) : null,
@@ -326,6 +331,7 @@ class GridCell extends StatefulWidget {
   final void Function(Offset globalPos)? onResizeStart;
   final void Function(Offset globalPos)? onResizeUpdate;
   final VoidCallback? onResizeEnd;
+  final int refreshNonce;
 
   const GridCell({
     super.key,
@@ -343,6 +349,7 @@ class GridCell extends StatefulWidget {
     this.onResizeStart,
     this.onResizeUpdate,
     this.onResizeEnd,
+    this.refreshNonce = 0,
   });
 
   @override
@@ -424,6 +431,7 @@ class _GridCellState extends State<GridCell> {
                               model: widget.model,
                               selected: widget.selected,
                               chromeless: true,
+                              refreshNonce: widget.refreshNonce,
                             ),
                           )
                         : IgnorePointer(
@@ -431,6 +439,7 @@ class _GridCellState extends State<GridCell> {
                               model: widget.model,
                               selected: widget.selected,
                               chromeless: true,
+                              refreshNonce: widget.refreshNonce,
                             ),
                           ),
                   ),

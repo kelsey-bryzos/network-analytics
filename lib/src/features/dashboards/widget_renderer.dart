@@ -120,6 +120,9 @@ class WidgetRenderer extends ConsumerStatefulWidget {
   final bool chromeless;
   final VoidCallback? onSettingsTap;
   final VoidCallback? onDeleteTap;
+  /// Increment this counter to force a live data re-fetch even when all other
+  /// widget parameters are unchanged (e.g. auto-refresh timer tick).
+  final int refreshNonce;
 
   const WidgetRenderer({
     super.key,
@@ -128,6 +131,7 @@ class WidgetRenderer extends ConsumerStatefulWidget {
     this.chromeless = false,
     this.onSettingsTap,
     this.onDeleteTap,
+    this.refreshNonce = 0,
   });
 
   @override
@@ -236,7 +240,7 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
     if (brz == null) return '';
     final tid = ref.read(activeTenantProvider) ?? '';
     final tableMode = widget.model.settings['tableMode'] as String? ?? '';
-    return '${brz['data_source_id']}|${_effectiveMetric ?? ''}|$_timeRange|$_maxItems|$tid|$tableMode';
+    return '${brz['data_source_id']}|${_effectiveMetric ?? ''}|$_timeRange|$_maxItems|$tid|$tableMode|${widget.refreshNonce}';
   }
 
   @override

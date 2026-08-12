@@ -238,6 +238,7 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
         _loadedDashId = dashId;
         _selected = null;
         _lastRefreshedAt = DateTime.now();
+        _refreshNonce++;
       });
       _ensureLastRefreshedTicker();
     }).catchError((e, st) {
@@ -1409,6 +1410,7 @@ class _DashboardsListScreenState extends ConsumerState<DashboardsListScreen> {
                                   widgets: _widgets,
                                   scrollController: _gridScrollController,
                                   selectedId: _selected,
+                                  refreshNonce: _refreshNonce,
                                   onSelect: (w) =>
                                       setState(() {
                                         _selected = w;

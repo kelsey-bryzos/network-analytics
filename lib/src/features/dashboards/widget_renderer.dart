@@ -1903,8 +1903,8 @@ class _WidgetRendererCore extends StatelessWidget {
       // Orders in Dispute (Edge Function returns aliased keys)
       'Order#':          3,
       'Dispute Type':    5,
-      'Buyer':           4,
-      'Seller':          4,
+      'Buyer':           6,
+      'Seller':          6,
       'Status':          9,
       // Monthly Financial Summary
       'Month':           5,
@@ -1927,6 +1927,7 @@ class _WidgetRendererCore extends StatelessWidget {
       'Total Purchases': 5,
       'Sales':           3,
       'Total Sales':     5,
+      'Date Joined':     3,
       // Quotes by Company / Quotes by User (summary _rows) — also used by Chat Messages
       'company':         5,
       'user':            5,
@@ -1942,8 +1943,8 @@ class _WidgetRendererCore extends StatelessWidget {
       // Last Login by User / Failed Login Attempts by User
       'name':                 7,
       'email':                8,
-      'last_login':           5,
-      'Last Login':           5,
+      'last_login':           3,
+      'Last Login':           3,
       'failed_attempts':      3,
       'Failed Attempts':      3,
       'last_failed_login_at': 5,

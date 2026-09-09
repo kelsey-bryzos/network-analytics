@@ -2125,6 +2125,21 @@ class ShareReportDialogState extends ConsumerState<ShareReportDialog> {
       targets.add({'email': typed});
     }
     if (targets.isEmpty) {
+      // If the user has enabled tenant-wide sharing (saved separately via
+      // _saveTenantWide on toggle change), the Share button effectively has
+      // nothing more to do — treat as a successful close instead of erroring.
+      if (_tenantWide) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text(
+              'Shared with everyone in this tenant.',
+              style: TextStyle(color: Colors.white),
+            ),
+          ));
+          Navigator.of(context).pop();
+        }
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text(
           'Pick at least one user or type an email to share with.',
@@ -2208,7 +2223,7 @@ class ShareReportDialogState extends ConsumerState<ShareReportDialog> {
     final picked = _selectedUserIds.length;
     final hasEmail = _emailController.text.trim().contains('@');
     final total = picked + (hasEmail ? 1 : 0);
-    if (total <= 0) return 'Share';
+    if (total <= 0) return _tenantWide ? 'Done' : 'Share';
     return 'Share with $total';
   }
 

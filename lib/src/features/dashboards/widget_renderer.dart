@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:fl_chart/fl_chart.dart';
@@ -143,6 +144,8 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
   bool _loading = false;
   String? _error;
   String? _lastFetchKey;
+  bool _autoRetried = false;   // true once a silent auto-retry has fired
+  Timer? _retryTimer;
 
   Map<String, dynamic>? get _brz {
     final b = widget.model.binding['brz'];
@@ -255,6 +258,21 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
     _maybeFetch();
   }
 
+  @override
+  void dispose() {
+    _retryTimer?.cancel();
+    super.dispose();
+  }
+
+  /// Force a fresh fetch regardless of whether the fetch key changed.
+  /// Used by the manual "↺ Retry" button.
+  void _forceFetch() {
+    _retryTimer?.cancel();
+    _autoRetried = false;
+    _lastFetchKey = null;   // clear the key so _maybeFetch treats it as new
+    _maybeFetch();
+  }
+
   Future<void> _maybeFetch() async {
     final brz = _brz;
     if (brz == null) return;
@@ -286,15 +304,32 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
         });
         return;
       }
+      _autoRetried = false;
       setState(() {
         _loading = false;
         _liveData = res;
       });
     } catch (e) {
       if (!mounted) return;
+      final errStr = e.toString();
+      // Silent auto-retry for transient network errors (e.g. "Failed to fetch").
+      // Fire once after 4 s; if it fails again, show the error state normally.
+      final isNetworkError = errStr.toLowerCase().contains('failed to fetch') ||
+          errStr.toLowerCase().contains('clientexception') ||
+          errStr.toLowerCase().contains('network');
+      if (isNetworkError && !_autoRetried) {
+        _autoRetried = true;
+        _lastFetchKey = null; // allow _maybeFetch to re-run
+        _retryTimer?.cancel();
+        _retryTimer = Timer(const Duration(seconds: 4), () {
+          if (mounted) _maybeFetch();
+        });
+        // Stay in loading state during the silent retry window
+        return;
+      }
       setState(() {
         _loading = false;
-        _error = e.toString();
+        _error = errStr;
       });
     }
   }
@@ -346,13 +381,30 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
         Center(
           child: Padding(
             padding: const EdgeInsets.all(8),
-            child: Text(
-              msg,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Color(0xFFFF6B6B),
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  msg,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFFFF6B6B),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextButton.icon(
+                  onPressed: _forceFetch,
+                  icon: const Icon(Icons.refresh_rounded, size: 14),
+                  label: const Text('Retry', style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF3DB8FF),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              ],
             ),
           ),
         ),

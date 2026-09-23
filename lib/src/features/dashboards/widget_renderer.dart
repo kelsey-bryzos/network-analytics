@@ -146,6 +146,7 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
   String? _lastFetchKey;
   bool _autoRetried = false;   // true once a silent auto-retry has fired
   Timer? _retryTimer;
+  bool _debugForceError = false; // staging-only: simulate a network failure
 
   Map<String, dynamic>? get _brz {
     final b = widget.model.binding['brz'];
@@ -290,6 +291,10 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
     });
 
     try {
+      if (_debugForceError) {
+        _debugForceError = false; // one-shot — clears itself after firing
+        throw Exception('ClientException: Failed to fetch (simulated)');
+      }
       final res = await ref.read(repoProvider).widgetDataBryzos(
             dataSourceId: dataSourceId,
             metric: metric,
@@ -415,13 +420,47 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
     final displayCols = (tableMode == 'detail' && baseMet != null)
         ? _detailDisplayColumns[baseMet]
         : null;
-    return _WidgetRendererCore(
+    // ── DEBUG ONLY (Staging) — "Force Error" overlay ──────────────
+    // Tap this button to simulate a ClientException and test retry UX.
+    // Remove before shipping to Demo / Prod.
+    final core = _WidgetRendererCore(
       model: _effectiveModel,
       selected: widget.selected,
       chromeless: widget.chromeless,
       onSettingsTap: widget.onSettingsTap,
       onDeleteTap: widget.onDeleteTap,
       displayColumns: displayCols,
+    );
+    return Stack(
+      children: [
+        core,
+        Positioned(
+          top: 4,
+          left: 4,
+          child: GestureDetector(
+            onTap: () {
+              setState(() => _debugForceError = true);
+              _lastFetchKey = null;
+              _maybeFetch();
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF6B6B).withValues(alpha: 0.85),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text(
+                '⚡ Force Error',
+                style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

@@ -440,8 +440,7 @@ class _WidgetRendererState extends ConsumerState<WidgetRenderer> {
           child: GestureDetector(
             onTap: () {
               setState(() => _debugForceError = true);
-              _lastFetchKey = null;
-              _maybeFetch();
+              _forceFetch();
             },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),

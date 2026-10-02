@@ -30,6 +30,7 @@ import '../report_viewer_screen.dart' show restDataSourceIdProvider;
 import '../ai_builder/ai_report_builder_screen.dart' show aiHandoffQuery;
 import 'custom_report_query_v2.dart';
 import 'custom_report_validator.dart';
+import 'sql_dialect_normalizer.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Providers
@@ -127,6 +128,11 @@ final _builderProvider =
   (ref) => _BuilderNotifier(),
 );
 
+/// Holds the last SQL normalization result so the editor UI can display
+/// the applied rewrites and any warnings to the user.
+final _normalizerResultProvider =
+    StateProvider<SqlNormalizerResult?>((ref) => null);
+
 final _previewRowsProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final st = ref.watch(_builderProvider);
@@ -137,10 +143,22 @@ final _previewRowsProvider =
   if (st.query.useRawSql) {
     final raw = (st.query.rawSql ?? '').trim();
     if (raw.isEmpty) return const [];
+
+    // Normalize MySQL → Postgres dialect before sending to the RPC.
+    final normResult = normalizeMySqlToPostgres(raw);
+    // Publish normalization result so the editor UI can show rewrites/issues.
+    ref.read(_normalizerResultProvider.notifier).state = normResult;
+
+    if (normResult.hasErrors) {
+      // Surface normalizer errors as a thrown exception so the preview panel
+      // shows the actionable message rather than letting the DB reject it.
+      throw _NormalizerErrorException(normResult);
+    }
+
     await Future<void>.delayed(const Duration(milliseconds: 250));
     return ref.read(repoProvider).rdsExecuteRawSqlBryzos(
           dataSourceId: dsId,
-          sql: raw,
+          sql: normResult.normalized,
           preview: true,
         );
   }
@@ -178,6 +196,18 @@ class _PreviewBlockedException implements Exception {
   _PreviewBlockedException(this.report);
   @override
   String toString() => 'Preview blocked by validation issues.';
+}
+
+/// Sentinel surfaced by `_previewRowsProvider` when the MySQL→Postgres
+/// normalizer detected a hard error (e.g. DDL keyword) in the raw SQL.
+class _NormalizerErrorException implements Exception {
+  final SqlNormalizerResult result;
+  _NormalizerErrorException(this.result);
+  @override
+  String toString() => result.issues
+      .where((i) => i.severity == SqlIssueSeverity.error)
+      .map((i) => i.message)
+      .join('\n');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2738,13 +2768,67 @@ class _PreviewPanel extends ConsumerWidget {
                         ref.read(_builderProvider.notifier).setStep(s),
                   );
                 }
+                if (e is _NormalizerErrorException) {
+                  final errors = e.result.issues
+                      .where((i) => i.severity == SqlIssueSeverity.error)
+                      .toList();
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(OpticsSpacing.md),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.error_outline,
+                              color: OpticsColors.danger, size: 32),
+                          const SizedBox(height: OpticsSpacing.sm),
+                          Text('SQL Error',
+                              style: OpticsTextStyles.bodySm.copyWith(
+                                  color: OpticsColors.danger,
+                                  fontWeight: FontWeight.bold)),
+                          const SizedBox(height: OpticsSpacing.xs),
+                          ...errors.map((i) => Text(
+                                i.message,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                    color: OpticsColors.textSecondary,
+                                    fontSize: 12),
+                              )),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+                // Clean up raw DB error messages for display.
+                final msg = e.toString();
+                final cleaned = msg.contains('rds_execute_raw_sql_bryzos:')
+                    ? msg
+                        .replaceAll(
+                            RegExp(r'Exception: '), '')
+                        .replaceAll('rds_execute_raw_sql_bryzos: ', '')
+                    : msg;
                 return Center(
                   child: Padding(
                     padding: const EdgeInsets.all(OpticsSpacing.md),
-                    child: Text(
-                      'Query failed:\n$e',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: OpticsColors.danger),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.error_outline,
+                            color: OpticsColors.danger, size: 32),
+                        const SizedBox(height: OpticsSpacing.sm),
+                        Text(
+                          'Query failed',
+                          style: OpticsTextStyles.bodySm.copyWith(
+                              color: OpticsColors.danger,
+                              fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: OpticsSpacing.xs),
+                        Text(
+                          cleaned,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              color: OpticsColors.textSecondary, fontSize: 12),
+                        ),
+                      ],
                     ),
                   ),
                 );

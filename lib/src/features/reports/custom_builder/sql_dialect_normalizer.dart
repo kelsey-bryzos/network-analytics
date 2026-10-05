@@ -393,14 +393,17 @@ SqlNormalizerResult normalizeMySqlToPostgres(String input) {
   // return an arbitrary row value. Postgres rejects this with an error.
   // We detect non-aggregated SELECT columns missing from GROUP BY and surface
   // a clear, actionable warning rather than letting the DB error confuse the user.
-  _checkGroupByCompleteness(sql, issues);
-
   // Step 10: Double-quoted content with spaces is now intentional — it means
   // a multi-word column alias that we auto-converted from single quotes in
   // Step 0a (e.g. AS "Buyer Email"). No warning needed; this is valid Postgres.
 
   // Restore masked strings + comments.
   final restored = _unmask(sql, masked);
+
+  // Step 10b: GROUP BY completeness check — runs on the RESTORED sql so any
+  // column expressions quoted in the warning show real literals instead of
+  // __SQLLIT_N__ mask placeholders.
+  _checkGroupByCompleteness(restored, issues);
 
   return SqlNormalizerResult(
     normalized: restored,
@@ -673,8 +676,9 @@ String _rewriteGroupOrderByAliases(String sql, List<String> applied) {
         caseSensitive: false, dotAll: true),
     (m) {
       final clause = m.group(1)!;
+      final trailingWs = RegExp(r'\s*$').firstMatch(clause)!.group(0)!;
       final rewritten = _replaceAliasesInClause(clause, selectAliases, applied, 'GROUP BY');
-      return 'GROUP BY$rewritten';
+      return 'GROUP BY$rewritten$trailingWs';
     },
   );
 
@@ -684,8 +688,9 @@ String _rewriteGroupOrderByAliases(String sql, List<String> applied) {
         caseSensitive: false, dotAll: true),
     (m) {
       final clause = m.group(1)!;
+      final trailingWs = RegExp(r'\s*$').firstMatch(clause)!.group(0)!;
       final rewritten = _replaceAliasesInClause(clause, selectAliases, applied, 'ORDER BY');
-      return 'ORDER BY$rewritten';
+      return 'ORDER BY$rewritten$trailingWs';
     },
   );
 
@@ -699,7 +704,14 @@ String _replaceAliasesInClause(
   final items = _splitTopLevelArgs(clause);
   final out = <String>[];
   for (final item in items) {
-    final trimmed = item.trim();
+    var trimmed = item.trim();
+    // Preserve a trailing semicolon separately so the alias match isn't
+    // defeated by it (e.g. `ORDER BY "Revenue" DESC;`).
+    var terminator = '';
+    if (trimmed.endsWith(';')) {
+      terminator = ';';
+      trimmed = trimmed.substring(0, trimmed.length - 1).trimRight();
+    }
     // Match: "alias" optionally followed by ASC or DESC
     final m = RegExp(r'^"([^"]+)"(\s+(?:ASC|DESC))?\s*$', caseSensitive: false)
         .firstMatch(trimmed);
@@ -709,11 +721,11 @@ String _replaceAliasesInClause(
       final posn = aliasMap[aliasName.toLowerCase()];
       if (posn != null) {
         applied.add('Rewrote $clauseName alias "$aliasName" → positional $posn');
-        out.add(' $posn$dir');
+        out.add(' $posn$dir$terminator');
         continue;
       }
     }
-    out.add(' $trimmed');
+    out.add(' $trimmed$terminator');
   }
   return out.join(',');
 }

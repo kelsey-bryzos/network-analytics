@@ -13,6 +13,7 @@ import '../../../data/supabase_repo.dart';
 import '../../../design/theme.dart';
 import '../../../shared/secure_error.dart';
 import 'custom_report_query_v2.dart';
+import 'sql_dialect_normalizer.dart' show extractSelectAliases;
 
 class _V2Args {
   final String dataSourceId;
@@ -134,7 +135,24 @@ class V2ReportView extends ConsumerWidget {
     final List<String> headers;
     final List<String> lookupKeys;
 
-    if (query.columns.isNotEmpty || query.aggregates.isNotEmpty) {
+    if (query.useRawSql) {
+      // Raw SQL mode: Postgres jsonb alphabetizes row keys, so derive the
+      // column order from the SQL the user actually authored.
+      final available = rows.first.keys.toSet();
+      final ordered = extractSelectAliases(
+              query.sqlAuthored ?? query.rawSql ?? '')
+          .where(available.contains)
+          .toList();
+      // Append any row keys the parser didn't account for (e.g. unaliased
+      // expressions) so no data is hidden.
+      final seen = ordered.toSet();
+      final keys = [
+        ...ordered,
+        ...rows.first.keys.where((k) => !seen.contains(k)),
+      ];
+      headers    = keys;
+      lookupKeys = keys;
+    } else if (query.columns.isNotEmpty || query.aggregates.isNotEmpty) {
       // rds_execute_query returns rows keyed by alias (e.g. "Source", "Buyer")
       // because the SQL uses: SELECT t.source as "Source", ...
       // Column order: regular columns first, then aggregates -- matching the
@@ -288,7 +306,8 @@ class V2ReportView extends ConsumerWidget {
                         ),
                         Expanded(
                           child: Text(
-                            _formatCellValue(headers[i], row[lookupKeys[i]]),
+                            _formatCellValue(headers[i], row[lookupKeys[i]],
+                          rawSqlRatio: query.useRawSql),
                             style: const TextStyle(
                               fontSize: 12,
                               color: OpticsColors.textPrimary,
@@ -299,7 +318,8 @@ class V2ReportView extends ConsumerWidget {
                       ],
                     )
                   : Text(
-                      _formatCellValue(headers[i], row[lookupKeys[i]]),
+                      _formatCellValue(headers[i], row[lookupKeys[i]],
+                          rawSqlRatio: query.useRawSql),
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w400,
@@ -735,7 +755,16 @@ final _moneyKeywords = RegExp(
   caseSensitive: false,
 );
 
+/// True when the header indicates a percentage column: contains a literal
+/// '%' (e.g. "GP (%)", "Margin %") or ends with "pct"/"percent".
+bool _isPercentHeader(String header) {
+  if (header.contains('%')) return true;
+  return RegExp(r'\b(pct|percent|percentage)\b', caseSensitive: false)
+      .hasMatch(header.replaceAll(RegExp(r'[_\s]+'), ' '));
+}
+
 bool _isMoneyHeader(String header) {
+  if (_isPercentHeader(header)) return false;
   if (_moneyHeaders.contains(header)) return true;
   // Test against the full header, AND against individual words split by
   // underscore/space so that snake_case column names like "total_sales_usd"
@@ -746,7 +775,13 @@ bool _isMoneyHeader(String header) {
 }
 
 /// Maps raw DB values to display-friendly labels for specific columns.
-String _formatCellValue(String header, dynamic value) {
+///
+/// [rawSqlRatio] — true when rendering a raw-SQL report. Raw SQL percent
+/// expressions (e.g. GP / NULLIF(Revenue, 0)) return a RATIO (0.0196), while
+/// canned widgets (Monthly Financial Summary) pre-multiply ×100 server-side.
+/// In raw-SQL mode, percent columns are multiplied by 100 for display.
+String _formatCellValue(String header, dynamic value,
+    {bool rawSqlRatio = false}) {
   final raw = value?.toString() ?? '';
   if (header == 'Dispute Type') {
     const eventLabels = {
@@ -780,9 +815,12 @@ String _formatCellValue(String header, dynamic value) {
     }
     return raw;
   }
-  if (header == 'GP (%)') {
+  if (_isPercentHeader(header)) {
     final n = double.tryParse(raw.replaceAll(RegExp(r'[^\d.\-]'), ''));
-    if (n != null) return '${n.toStringAsFixed(2)}%';
+    if (n != null) {
+      final display = rawSqlRatio ? n * 100 : n;
+      return '${display.toStringAsFixed(2)}%';
+    }
     return raw;
   }
   // ISO date/timestamp → M-D-YY

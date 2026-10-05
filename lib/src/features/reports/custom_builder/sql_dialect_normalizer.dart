@@ -1001,3 +1001,66 @@ _DateFormatConversion _convertMySqlDateFormat(String mysqlFmt) {
   }
   return _DateFormatConversion(out.toString(), unknown);
 }
+
+/// Parse the SELECT-list output column names, in authored order, from a raw
+/// SQL statement. Used by report views to preserve column order — Postgres
+/// jsonb rows come back with alphabetized keys, so the display layer must
+/// re-order using the SQL the user actually wrote.
+///
+/// Handles: `expr AS `Alias`` (MySQL), `expr AS "Alias"` (Postgres),
+/// `expr AS alias`, bare `tbl.col` (keyed by `col`), and bare `col`.
+/// Complex unaliased expressions are skipped (callers append leftover keys).
+List<String> extractSelectAliases(String sql) {
+  final masked = _maskLiteralsAndComments(sql).masked;
+  final selMatch =
+      RegExp(r'\bSELECT\b', caseSensitive: false).firstMatch(masked);
+  if (selMatch == null) return const [];
+  final start = selMatch.end;
+
+  // Find the FROM keyword at paren depth 0 (skips subquery FROMs).
+  int depth = 0;
+  int fromIdx = -1;
+  final fromRe = RegExp(r'\bFROM\b', caseSensitive: false);
+  for (int i = start; i < masked.length; i++) {
+    final ch = masked[i];
+    if (ch == '(') {
+      depth++;
+    } else if (ch == ')') {
+      depth--;
+    } else if (depth == 0 && (ch == 'F' || ch == 'f')) {
+      if (fromRe.matchAsPrefix(masked, i) != null) {
+        fromIdx = i;
+        break;
+      }
+    }
+  }
+  if (fromIdx < 0) return const [];
+
+  var selectList = masked.substring(start, fromIdx);
+  selectList = selectList.replaceFirst(
+      RegExp(r'^\s*DISTINCT\b', caseSensitive: false), '');
+
+  final out = <String>[];
+  for (final rawItem in _splitTopLevelArgs(selectList)) {
+    final item = rawItem.trim();
+    if (item.isEmpty) continue;
+    // Explicit alias at the end of the item: AS `x` / AS "x" / AS x
+    final asM = RegExp(
+      r'\bAS\s+(?:`([^`]+)`|"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))\s*;?\s*$',
+      caseSensitive: false,
+    ).firstMatch(item);
+    if (asM != null) {
+      final a = asM.group(1) ?? asM.group(2) ?? asM.group(3) ?? '';
+      if (a.isNotEmpty) out.add(a);
+      continue;
+    }
+    // No alias: a bare (possibly dotted) identifier is keyed by its last
+    // segment in the result rows.
+    if (RegExp(r'^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$')
+        .hasMatch(item)) {
+      out.add(item.split('.').last);
+    }
+    // Complex unaliased expression — skip; caller appends unmatched keys.
+  }
+  return out;
+}

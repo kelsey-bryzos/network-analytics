@@ -400,13 +400,15 @@ SqlNormalizerResult normalizeMySqlToPostgres(String input) {
   // Restore masked strings + comments.
   final restored = _unmask(sql, masked);
 
-  // Step 10b: GROUP BY completeness check — runs on the RESTORED sql so any
-  // column expressions quoted in the warning show real literals instead of
-  // __SQLLIT_N__ mask placeholders.
-  _checkGroupByCompleteness(restored, issues);
+  // Step 10b: GROUP BY loose-mode emulation — runs on the RESTORED sql.
+  // MySQL allows non-aggregated SELECT columns to be missing from GROUP BY
+  // (it returns an arbitrary value per group). Postgres rejects this outright.
+  // Postgres 16+ provides any_value(), which reproduces MySQL's behavior
+  // exactly — so we auto-wrap each missing column instead of failing.
+  final fixed = _fixGroupByCompleteness(restored, issues, applied);
 
   return SqlNormalizerResult(
-    normalized: restored,
+    normalized: fixed,
     issues: issues,
     appliedRewrites: applied,
   );
@@ -791,36 +793,44 @@ String _castRdsUserIdJoins(String sql, List<String> applied) {
   return sql;
 }
 
-// ─── GROUP BY completeness checker ───────────────────────────────────────────
+// ─── GROUP BY loose-mode emulation (MySQL → Postgres) ───────────────────────
 //
-// Postgres requires that every non-aggregated expression in the SELECT list
-// appears in the GROUP BY clause. MySQL allows "loose" GROUP BY (picks an
-// arbitrary row value for missing columns). We detect this mismatch and surface
-// an actionable warning rather than letting the DB produce a cryptic error.
+// Postgres requires every non-aggregated SELECT expression to appear in the
+// GROUP BY clause. MySQL (with ONLY_FULL_GROUP_BY off, the common default in
+// older deployments) allows them to be omitted and returns an arbitrary value
+// per group. Postgres 16+ ships any_value(), which has the identical
+// semantics — so instead of warning and letting the query fail, we wrap each
+// missing SELECT expression in any_value(expr), preserving its alias.
 //
-// Detection logic:
-//   1. Extract SELECT items. Classify each as "aggregated" (contains an
-//      aggregate function call at the top level) or "bare" (column reference
-//      or expression that must appear in GROUP BY).
-//   2. Extract the GROUP BY clause.
-//   3. For each bare SELECT item, check whether its core column reference
-//      appears in the GROUP BY text.
-//   4. If any bare items are missing, emit a SqlNormalizerIssue.warning with
-//      a helpful suggested fix listing the missing columns.
-void _checkGroupByCompleteness(String sql, List<SqlNormalizerIssue> issues) {
+// Logic:
+//   1. Extract SELECT items. Skip items already aggregated or covered by the
+//      GROUP BY clause.
+//   2. Wrap each uncovered item\'s core expression in any_value(), keeping
+//      the alias.
+//   3. Record an applied-rewrite entry and an info issue explaining what
+//      happened and how to get SUM() totals instead if that was the intent.
+String _fixGroupByCompleteness(
+    String sql, List<SqlNormalizerIssue> issues, List<String> applied) {
   // Only relevant when there IS a GROUP BY.
   final groupByMatch = RegExp(
           r'\bGROUP\s+BY\b(.+?)(?=\bHAVING\b|\bORDER\b|\bLIMIT\b|\bUNION\b|$)',
           caseSensitive: false,
           dotAll: true)
       .firstMatch(sql);
-  if (groupByMatch == null) return;
+  if (groupByMatch == null) return sql;
 
   final groupByText = groupByMatch.group(1)!.toLowerCase();
 
-  // Extract SELECT list.
-  final selectMatch = RegExp(r'\bSELECT\b', caseSensitive: false).firstMatch(sql);
-  if (selectMatch == null) return;
+  // GROUP BY 1, 2, 3 — positional references; assume the author covered
+  // everything intentionally.
+  if (RegExp(r'^\s*\d+\s*(,\s*\d+\s*)*;?\s*$').hasMatch(groupByText.trim())) {
+    return sql;
+  }
+
+  // Extract SELECT list boundaries.
+  final selectMatch =
+      RegExp(r'\bSELECT\b', caseSensitive: false).firstMatch(sql);
+  if (selectMatch == null) return sql;
   final selectStart = selectMatch.end;
 
   int fromIdx = -1;
@@ -836,80 +846,104 @@ void _checkGroupByCompleteness(String sql, List<SqlNormalizerIssue> issues) {
       continue;
     }
     if (depth == 0) {
-      if (RegExp(r'^\bFROM\b', caseSensitive: false).hasMatch(sql.substring(i))) {
+      if (RegExp(r'^\bFROM\b', caseSensitive: false)
+          .hasMatch(sql.substring(i))) {
         fromIdx = i;
         break;
       }
     }
   }
-  if (fromIdx < 0) return;
+  if (fromIdx < 0) return sql;
 
   final selectList = sql.substring(selectStart, fromIdx);
   final selectItems = _splitTopLevelArgs(selectList);
 
   // Aggregate function names (Postgres standard + common extensions).
   final aggFnRe = RegExp(
-      r'\b(?:SUM|COUNT|AVG|MIN|MAX|STRING_AGG|ARRAY_AGG|BOOL_AND|BOOL_OR|EVERY|'
-      r'STDDEV|STDDEV_POP|STDDEV_SAMP|VARIANCE|VAR_POP|VAR_SAMP|'
+      r'\b(?:SUM|COUNT|AVG|MIN|MAX|ANY_VALUE|STRING_AGG|ARRAY_AGG|BOOL_AND|'
+      r'BOOL_OR|EVERY|STDDEV|STDDEV_POP|STDDEV_SAMP|VARIANCE|VAR_POP|VAR_SAMP|'
       r'JSON_AGG|JSONB_AGG|PERCENTILE_CONT|PERCENTILE_DISC)\s*\(',
       caseSensitive: false);
 
-  final missing = <String>[];
+  final aliasRe = RegExp(r'\s+AS\s+("[^"]*"|[A-Za-z_][A-Za-z0-9_]*)\s*$',
+      caseSensitive: false);
+  final simpleIdentRe = RegExp(r'^[a-z_][a-z0-9_]*$');
+
+  bool changed = false;
+  final rebuilt = <String>[];
+  final wrapped = <String>[];
 
   for (final item in selectItems) {
     final trimmed = item.trim();
-    if (trimmed.isEmpty || trimmed == '*') continue;
-
-    // Skip aggregated expressions — they don't need to be in GROUP BY.
-    if (aggFnRe.hasMatch(trimmed)) continue;
-
-    // Strip any trailing AS alias to get the core expression.
-    final coreExpr = trimmed
-        .replaceAll(RegExp(r'\bAS\s+"[^"]*"\s*$', caseSensitive: false), '')
-        .replaceAll(RegExp(r'\bAS\s+[A-Za-z_][A-Za-z0-9_]*\s*$', caseSensitive: false), '')
-        .trim();
-
-    if (coreExpr.isEmpty) continue;
-
-    // Check if the core expression appears anywhere in the GROUP BY text.
-    // We check for table.column style refs and bare column names.
-    // Normalise to lowercase for comparison.
-    final coreLower = coreExpr.toLowerCase();
-
-    // Extract the innermost column name (last segment after dot, if any).
-    final parts = coreLower.split('.');
-    final colName = parts.last.trim();
-
-    // Consider it "covered" if:
-    //   - The full expression appears in GROUP BY, OR
-    //   - The column name (without table prefix) appears in GROUP BY, OR
-    //   - It's a positional reference (pure number) in the GROUP BY.
-    final covered = groupByText.contains(coreLower) ||
-        (colName.isNotEmpty && groupByText.contains(colName)) ||
-        // GROUP BY 1, 2, 3 — positional references cover everything.
-        RegExp(r'^\s*\d+\s*(,\s*\d+\s*)*$').hasMatch(groupByText.trim());
-
-    if (!covered) {
-      missing.add(coreExpr);
+    if (trimmed.isEmpty || trimmed == '*') {
+      rebuilt.add(item);
+      continue;
     }
+
+    // Already aggregated — leave alone.
+    if (aggFnRe.hasMatch(trimmed)) {
+      rebuilt.add(item);
+      continue;
+    }
+
+    // Split off a trailing AS alias.
+    String core = trimmed;
+    String alias = '';
+    final aliasM = aliasRe.firstMatch(trimmed);
+    if (aliasM != null) {
+      core = trimmed.substring(0, aliasM.start).trim();
+      alias = aliasM.group(1)!;
+    }
+    if (core.isEmpty) {
+      rebuilt.add(item);
+      continue;
+    }
+
+    final coreLower = core.toLowerCase();
+    final colName = coreLower.split('.').last.trim();
+
+    // Covered if the full expression appears in GROUP BY, or (for simple
+    // column refs only) the bare column name appears in GROUP BY.
+    final covered = groupByText.contains(coreLower) ||
+        (simpleIdentRe.hasMatch(colName) && groupByText.contains(colName));
+
+    if (covered) {
+      rebuilt.add(item);
+      continue;
+    }
+
+    // Wrap in any_value() to emulate MySQL loose GROUP BY.
+    final newItem =
+        alias.isEmpty ? 'any_value($core)' : 'any_value($core) AS $alias';
+    rebuilt.add('\n    $newItem');
+    wrapped.add(alias.isEmpty ? core : alias);
+    changed = true;
   }
 
-  if (missing.isNotEmpty) {
-    // Build a suggested GROUP BY that adds the missing columns.
-    final groupByItems = groupByText.trim().split(',').map((s) => s.trim()).toList();
-    final suggested = [...groupByItems, ...missing].join(', ');
-    issues.add(SqlNormalizerIssue(
-      severity: SqlIssueSeverity.warning,
-      code: 'group_by_incomplete',
-      message:
-          'GROUP BY is incomplete for Postgres. MySQL allows non-aggregated columns '
-          'to be omitted from GROUP BY, but Postgres does not.\n\n'
-          'Missing from GROUP BY: ${missing.join(', ')}\n\n'
-          'Either wrap each missing column in an aggregate function (SUM, MAX, MIN, etc.) '
-          'or add it to GROUP BY.',
-      suggestedFix: 'GROUP BY $suggested',
-    ));
-  }
+  if (!changed) return sql;
+
+  // Ensure the rebuilt list never glues onto the SELECT keyword (the arg
+  // splitter may have trimmed the first item's leading whitespace).
+  var joined = rebuilt.join(',');
+  if (!joined.startsWith(RegExp(r'\s'))) joined = '\n    $joined';
+  final newSelectList = '$joined\n';
+  final out =
+      sql.substring(0, selectStart) + newSelectList + sql.substring(fromIdx);
+
+  applied.add(
+      'Wrapped non-grouped SELECT columns in any_value() to emulate MySQL '
+      'loose GROUP BY: ${wrapped.join(', ')}');
+  issues.add(SqlNormalizerIssue(
+    severity: SqlIssueSeverity.info,
+    code: 'group_by_loose_emulated',
+    message:
+        'MySQL allows columns to be missing from GROUP BY; Postgres does not. '
+        'These columns were auto-wrapped in any_value(), which returns one '
+        'value per group — the same behavior as MySQL: ${wrapped.join(', ')}. '
+        'If you wanted totals per group instead, wrap them in SUM() yourself.',
+  ));
+
+  return out;
 }
 
 // ─── Date format conversion ──────────────────────────────────────────────────
